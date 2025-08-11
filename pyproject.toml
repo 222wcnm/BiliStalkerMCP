@@ -1,5 +1,5 @@
 [project]
-name = "bilibili-user-updates-mcp"
+name = "BiliStalkerMCP"
 version = "1.0.0"
 description = "MCP Server for getting Bilibili user video updates"
 requires-python = ">=3.10"
@@ -9,5 +9,11 @@ dependencies = [
     "pyyaml>=6.0",
 ]
 
+[project.scripts]
+bili-stalker-mcp = "BiliStalkerMCP.__main__:main"
+
 [tool.uv]
 dev-dependencies = []
+
+[tool.setuptools]
+packages = ["BiliStalkerMCP"]

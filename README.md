@@ -1,85 +1,145 @@
-# Bilibili User Updates MCP Server (Python Edition)
+# BiliStalkerMCP (b站用户视监MCP)
 
-一个用于获取B站用户视频更新信息的MCP (Model Context Protocol) 服务器，使用 Python 和 `bilibili-api-python` 库实现。
+[![Python](https://img.shields.io/badge/Python-3.10+-blue?logo=python)](https://www.python.org/)&nbsp;
+[![FastMCP](https://img.shields.io/badge/MCP-FastMCP-orange)](https://github.com/jlowin/fastmcp)&nbsp;
+[![bilibili-api](https://img.shields.io/badge/Bilibili-API-ff69b4)](https://github.com/Nemo2011/bilibili-api)
 
-## 功能
+**BiliStalkerMCP** 是一个 [MCP (Model-Context-Protocol)](https://github.com/model-context-protocol) 服务，允许AI模型通过工具调用来获取指定Bilibili用户的最新视频动态。
 
-- 获取指定B站用户的最新视频更新信息
-- 获取用户基本信息（用户名、头像、签名等）
-- 获取视频详细信息（标题、封面、播放量、点赞数等）
-- 支持自定义获取视频数量
 
-## 安装
+---
 
-1. 确保您已安装 Python 3.8+ 和 [uv](https://github.com/astral-sh/uv)。
+## ✨ 功能
 
-2. 使用 `uv` 安装依赖 (uv 会自动创建和管理虚拟环境):
-```bash
-uv sync
+- **获取用户视频更新**: 通过 `user_id` 或 `username` 查询指定B站UP主的最新视频列表。
+- **详细信息**: 返回内容包括用户信息（昵称、头像、签名等）和视频信息（标题、封面、播放量、BVID、URL等）。
+- **智能搜索**: 当提供 `username` 时，会自动搜索并匹配最相关的用户。
+
+---
+
+## 🛠️ 工具
+
+### `get_user_video_updates`
+
+获取指定B站用户的最新视频更新信息。
+
+#### 参数
+
+- `user_id` (int, 可选): B站用户的唯一ID。
+- `username` (str, 可选): B站用户的昵称。
+  - `user_id` 和 `username` 必须提供一个。如果同时提供，`user_id` 优先。
+- `limit` (int, 可选): 获取的视频数量限制，默认为 `10`，最大为 `50`。
+
+#### 返回
+
+一个包含用户和视频信息的字典。
+
+```json
+{
+  "user": {
+    "mid": 123456,
+    "name": "示例用户",
+    "face": "https://i1.hdslb.com/bfs/face/xxxxxxxx.jpg",
+    "sign": "这是一个签名",
+    "level": 6
+  },
+  "videos": [
+    {
+      "bvid": "BV1xx411c7xX",
+      "aid": 987654321,
+      "title": "示例视频标题",
+      "description": "这是一个示例视频描述。",
+      "created": 1678886400,
+      "length": "10:30",
+      "pic": "http://i2.hdslb.com/bfs/archive/xxxxxxxx.jpg",
+      "play": 100000,
+      "favorites": 5000,
+      "author": "示例用户",
+      "mid": 123456,
+      "url": "https://www.bilibili.com/video/BV1xx411c7xX"
+    }
+  ],
+  "total": 100
+}
 ```
 
-## 使用方法
+---
 
-### 配置MCP服务器
+## 🚀 快速开始
 
-在您的MCP客户端中添加以下配置：
+### 1. 安装
+
+推荐通过克隆仓库后进行本地安装，这能确保您使用的是最新版本。
+
+```bash
+# 克隆仓库
+git clone https://github.com/222wcnm/BiliStalkerMCP.git
+
+# 进入项目目录
+cd BiliStalkerMCP
+
+# 使用 uv 以可编辑模式安装
+uv pip install -e .
+```
+
+### 2. 配置环境变量
+
+为了验证Bilibili API请求，你需要提供自己的凭证信息。请在运行环境中设置以下环境变量：
+
+- `SESSDATA`: 你的Bilibili账户的 `SESSDATA` cookie。
+- `BILI_JCT`: 你的Bilibili账户的 `bili_jct` cookie。
+- `BUVID3`: 你的Bilibili账户的 `buvid3` cookie。
+
+> **如何获取Cookie?**
+> 1. 登录 [bilibili.com](https://www.bilibili.com)。
+> 2. 打开浏览器开发者工具 (通常按 `F12`)。
+> 3. 切换到 `Application` (应用) -> `Cookies` -> `https://www.bilibili.com`。
+> 4. 找到并复制 `SESSDATA`, `bili_jct`, 和 `buvid3` 的值。
+
+### 3. MCP客户端配置
+
+在您的MCP客户端（如 Cline）中，添加以下服务器配置。
+
+**注意**: 请将下面的 `D:/MCP_Projects/BiliStalkerMCP` 替换为您本地存放此项目的**绝对路径**。
 
 ```json
 {
   "mcpServers": {
-    "bilibili-user-updates": {
+    "BiliStalkerMCP": {
       "command": "uv",
       "args": [
         "--directory",
-        "<your-project-path>",
+        "D:/MCP_Projects/BiliStalkerMCP",
         "run",
-        "python",
-        "bilibili_mcp.py"
+        "bili-stalker-mcp"
       ],
       "env": {
         "SESSDATA": "在此处填入您的SESSDATA",
-        "BILI_JCT": "在此处填入您的bili_jct",
-        "BUVID3": "在此处填入您的buvid3"
+        "BILI_JCT": "在此处填入您的BILI_JCT",
+        "BUVID3": "在此处填入您的BUVID3"
       }
     }
   }
 }
 ```
+> **安全提示**:
+> - 为了您的账户安全，请勿将包含个人 `SESSDATA` 等凭证信息的配置文件提交到任何公共代码仓库。
 
-**注意**: 
-- 请根据您的实际项目路径调整 `--directory` 参数的值。
-- `SESSDATA` 是必需的。`BILI_JCT` 和 `BUVID3` 是可选的，但强烈建议提供，以提高请求成功率。
+---
 
-**如何获取凭证?**
-1. 登录 Bilibili 网站
-2. 打开浏览器开发者工具 (F12)
-3. 前往 Application/Storage -> Cookies
-4. 找到 `bilibili.com` 域名下的 `SESSDATA`, `bili_jct`, `buvid3` 值并复制
+## 🔗 相关项目
 
-### 可用工具
+- [lesir831/bilibili-video-info-mcp](https://github.com/lesir831/bilibili-video-info-mcp): 另一个用于获取B站视频信息的MCP服务。
+- [huccihuang/bilibili-mcp-server](https://github.com/huccihuang/bilibili-mcp-server): 功能更全面的Bilibili MCP服务。
 
-#### `get_user_video_updates`
+---
 
-获取指定B站用户的最新视频更新信息。可以通过 `user_id` 或 `username` 指定用户。
+## 📝 许可证
 
-**参数：**
-- `user_id` (int, 可选): B站用户ID。`user_id` 和 `username` 必须提供一个。如果同时提供，则优先使用 `user_id`。
-- `username` (str, 可选): B站用户名。
-- `limit` (int, 可选): 获取视频数量限制（默认10，有效范围1-50）。
+本项目基于 [MIT License](https://github.com/222wcnm/BiliStalkerMCP/blob/main/LICENSE) 开源。
 
-**响应格式：**
-返回的 JSON 对象包含以下字段：
-- `user`: 包含用户基本信息的对象。
-- `videos`: 包含用户最新视频信息的数组。每个视频对象都包含以下字段：
-  - `bvid`: 视频的 BV 号。
-  - `url`: 视频的完整 Bilibili 链接。
-  - `title`: 视频标题。
-  - `pic`: 视频封面图片 URL。
-  - `play`: 播放次数。
-  - `created`: 创建时间戳。
-  - ... (其他视频相关信息)
-- `total`: 用户视频的总数。
+---
 
-## 许可证
 
-MIT
+> **AI生成声明**:
+> 本项目的代码和文档在开发过程中部分使用了AI辅助工具生成。
