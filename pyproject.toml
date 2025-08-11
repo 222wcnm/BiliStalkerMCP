@@ -1,0 +1,13 @@
+[project]
+name = "bilibili-user-updates-mcp"
+version = "1.0.0"
+description = "MCP Server for getting Bilibili user video updates"
+requires-python = ">=3.10"
+dependencies = [
+    "bilibili-api-python",
+    "fastmcp",
+    "pyyaml>=6.0",
+]
+
+[tool.uv]
+dev-dependencies = []
