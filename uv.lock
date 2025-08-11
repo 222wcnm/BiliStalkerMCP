@@ -96,7 +96,7 @@ wheels = [
 ]
 
 [[package]]
-name = "bilibili-user-updates-mcp"
+name = "bilistalkermcp"
 version = "1.0.0"
 source = { virtual = "." }
 dependencies = [

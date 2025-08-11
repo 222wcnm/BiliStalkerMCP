@@ -16,7 +16,7 @@ cred = Credential(
     buvid3=BUVID3
 )
 
-mcp = FastMCP("Bilibili User Updates MCP Server")
+mcp = FastMCP("BiliStalkerMCP")
 
 @mcp.tool()
 def get_user_video_updates(user_id: int = None, username: str = None, limit: int = 10) -> Dict[str, Any]:
@@ -119,5 +119,8 @@ def get_user_video_updates(user_id: int = None, username: str = None, limit: int
     except Exception as e:
         return {"error": f"An unexpected error occurred: {str(e)}"}
 
-if __name__ == "__main__":
+def main():
     mcp.run(transport='stdio')
+
+if __name__ == "__main__":
+    main()
