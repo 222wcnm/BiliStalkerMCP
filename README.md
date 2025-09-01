@@ -1,6 +1,7 @@
 # BiliStalkerMCP (b站用户视监MCP)
 
 [![Python](https://img.shields.io/badge/Python-3.10+-blue?logo=python)](https://www.python.org/)
+[![PyPI](https://img.shields.io/pypi/v/bili_stalker_mcp.svg)](https://pypi.org/project/bili_stalker_mcp/)
 [![FastMCP](https://img.shields.io/badge/MCP-FastMCP-orange)](https://github.com/jlowin/fastmcp)
 [![bilibili-api](https://img.shields.io/badge/Bilibili-API-ff69b4)](https://github.com/Nemo2011/bilibili-api)
 
@@ -12,42 +13,22 @@
 
 ### 1. 安装
 
+通过 `uvx` 或 `pipx`，你可以轻松地在任何地方运行 `bili-stalker-mcp`，而无需担心项目路径或虚拟环境。
+
 ```bash
-# 克隆仓库
-git clone https://github.com/222wcnm/BiliStalkerMCP.git
-
-# 进入项目目录
-cd BiliStalkerMCP
-
-# 使用 uv 以可编辑模式安装
-uv pip install -e .
+uvx bili-stalker-mcp
 ```
 
-### 2. 配置环境变量
+### 2. MCP客户端配置
 
-设置以下环境变量用于Bilibili API认证：
-
-- `SESSDATA`: Bilibili账户的 `SESSDATA` cookie
-- `BILI_JCT`: Bilibili账户的 `bili_jct` cookie  
-- `BUVID3`: Bilibili账户的 `buvid3` cookie
-
-> **如何获取Cookie?**
-> 1. 登录 [bilibili.com](https://www.bilibili.com)
-> 2. 打开浏览器开发者工具 (F12)
-> 3. 切换到 `Application` -> `Cookies` -> `https://www.bilibili.com`
-> 4. 复制 `SESSDATA`, `bili_jct`, 和 `buvid3` 的值
-
-### 3. MCP客户端配置
+将以下配置添加到你的MCP客户端（如Cline）的 `settings.json` 文件中：
 
 ```json
 {
   "mcpServers": {
-    "BiliStalkerMCP": {
-      "command": "uv",
+    "bilistalker": {
+      "command": "uvx",
       "args": [
-        "--directory",
-        "<项目路径>",
-        "run", 
         "bili-stalker-mcp"
       ],
       "env": {
@@ -59,6 +40,12 @@ uv pip install -e .
   }
 }
 ```
+
+> **如何获取Cookie?**
+> 1. 登录 [bilibili.com](https://www.bilibili.com)
+> 2. 打开浏览器开发者工具 (F12)
+> 3. 切换到 `Application` -> `Cookies` -> `https://www.bilibili.com`
+> 4. 复制 `SESSDATA`, `bili_jct`, 和 `buvid3` 的值
 
 > ⚠️ **安全提示**: 不要将包含凭证的配置文件提交到公共仓库
 
@@ -95,15 +82,15 @@ B站用户动态获取工具，支持多类型过滤，返回完整的动态内�
 ## 📁 资源支持
 
 ### 用户信息资源
-- URI: `bili://user/{user_id}`
+- URI: `bili://user/{user_id}/info`
 - 获取用户基本信息
 
 ### 用户视频资源
-- URI: `bili://videos/{user_id}`
+- URI: `bili://user/{user_id}/videos`
 - 获取用户视频列表
 
 ### 用户动态资源
-- URI: `bili://dynamics/{user_id}`
+- URI: `bili://user/{user_id}/dynamics`
 - 获取用户动态更新
 
 ### 数据结构Schema资源
@@ -113,9 +100,9 @@ B站用户动态获取工具，支持多类型过滤，返回完整的动态内�
 ### 资源访问示例
 ```python
 # 通过URI直接访问资源（在支持资源的MCP客户端中）
-read_resource("bili://user/123456")
-read_resource("bili://videos/123456")
-read_resource("bili://dynamics/123456")
+read_resource("bili://user/123456/info")
+read_resource("bili://user/123456/videos")
+read_resource("bili://user/123456/dynamics")
 ```
 
 ---

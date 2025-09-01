@@ -29,7 +29,7 @@ cred = Credential(
 BILIBILI_DYNAMIC_API_URL = "https://api.bilibili.com/x/polymer/web-dynamic/v1/feed/space"
 REQUEST_DELAY = 0.1  # 请求间隔时间（秒）
 
-mcp = FastMCP("BiliStalkerMCP")
+mcp = FastMCP("bilistalker")
 
 # 资源URI模板
 USER_INFO_URI_TEMPLATE = "bili://user/{user_id}/info"
@@ -368,57 +368,6 @@ def get_user_dynamics_resource(user_id: int, limit: int = 10, dynamic_type: str 
         return {"error": f"Failed to get user dynamics: {str(e)}"}
 
 
-def parse_resource_uri(uri: str) -> tuple[str, dict]:
-    """
-    解析资源URI，提取资源类型和参数
-    
-    Args:
-        uri: 资源URI
-        
-    Returns:
-        tuple: (资源类型, 参数字典)
-    """
-    try:
-        # 解析URI
-        if uri.startswith("bili://user/"):
-            # 移除前缀
-            path = uri[12:]  # 移除 "bili://user/"
-            
-            # 分割路径
-            parts = path.split("/")
-            if len(parts) < 2:
-                return "unknown", {}
-                
-            user_id_str = parts[0]
-            resource_type = parts[1]
-            
-            # 解析用户ID
-            try:
-                user_id = int(user_id_str)
-            except ValueError:
-                return "unknown", {}
-            
-            # 解析查询参数
-            params = {}
-            if "?" in resource_type:
-                resource_type, query_string = resource_type.split("?", 1)
-                for param in query_string.split("&"):
-                    if "=" in param:
-                        key, value = param.split("=", 1)
-                        params[key] = value
-            
-            return resource_type, {
-                "user_id": user_id,
-                "limit": int(params.get("limit", 10)),
-                "type": params.get("type", "ALL")
-            }
-            
-        return "unknown", {}
-    except Exception as e:
-        logger.error(f"解析资源URI时发生错误: {str(e)}")
-        return "unknown", {}
-
-
 def get_user_id(user_id: int = None, username: str = None) -> Optional[int]:
     """
     获取用户ID，支持通过user_id或username获取
@@ -445,13 +394,8 @@ def get_user_id(user_id: int = None, username: str = None) -> Optional[int]:
             order_type=search.OrderUser.FANS
         ))
         # 兼容不同版本返回结构，提取用户列表
-        result_list = None
-        if isinstance(search_result, dict):
-            if 'result' in search_result and isinstance(search_result['result'], list):
-                result_list = search_result['result']
-            elif 'data' in search_result and isinstance(search_result['data'], dict) and isinstance(search_result['data'].get('result'), list):
-                result_list = search_result['data']['result']
-        if not result_list:
+        result_list = search_result.get("result") or (search_result.get("data", {}) or {}).get("result")
+        if not isinstance(result_list, list):
             logger.warning(f"用户 '{username}' 未找到")
             return None
         
@@ -621,19 +565,19 @@ def get_user_dynamic_updates(user_id: int = None, username: str = None, limit: i
         return {"error": f"An unexpected error occurred: {str(e)}"}
 
 
-@mcp.resource("bili://user/{user_id}")
+@mcp.resource(USER_INFO_URI_TEMPLATE)
 def get_user_info_resource_endpoint(user_id: int) -> TextContent:
     """获取用户信息资源"""
     data = get_user_info_resource(user_id)
     return TextContent(type="text", text=json.dumps(data), mimeType="application/json")
 
-@mcp.resource("bili://videos/{user_id}")
+@mcp.resource(USER_VIDEOS_URI_TEMPLATE)
 def get_user_videos_resource_endpoint(user_id: int, limit: int = 10) -> TextContent:
     """获取用户视频资源"""
     data = get_user_videos_resource(user_id, limit)
     return TextContent(type="text", text=json.dumps(data), mimeType="application/json")
 
-@mcp.resource("bili://dynamics/{user_id}")
+@mcp.resource(USER_DYNAMICS_URI_TEMPLATE)
 def get_user_dynamics_resource_endpoint(user_id: int, limit: int = 10, dynamic_type: str = "ALL") -> TextContent:
     """获取用户动态资源"""
     data = get_user_dynamics_resource(user_id, limit, dynamic_type)
@@ -762,7 +706,5 @@ def analyze_user_activity(user_info: str, recent_videos: str, recent_dynamics: s
 
 
 def main():
+    print("MCP Server is starting...")
     mcp.run(transport='stdio')
-
-if __name__ == "__main__":
-    main()
