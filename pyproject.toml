@@ -1,23 +1,54 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "bili_stalker_mcp"
-version = "1.0.5"
+version = "1.0"
 description = "MCP Server for getting Bilibili user video updates"
 authors = [
-    {name = "222wcnm", email = "222wcnm@gmail.com"},
+    {name = "222wcnm", email = "2328072813li@gmail.com"},
+]
+maintainers = [
+    {name = "222wcnm", email = "2328072813li@gmail.com"},
 ]
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "MIT"}
-keywords = ["mcp", "bilibili", "stalker"]
+keywords = ["mcp", "bilibili", "stalker", "video", "updates", "ai", "model-context-protocol"]
 classifiers = [
     "Development Status :: 4 - Beta",
-    "Programming Language :: Python",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Internet :: WWW/HTTP :: Dynamic Content",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Multimedia :: Video",
+    "Topic :: Communications",
 ]
 dependencies = [
-    "bilibili-api-python",
-    "fastmcp",
+    "bilibili-api-python>=16.0.0",
+    "fastmcp>=0.4.0",
+    "mcp[cli]>=1.11.0",
     "pyyaml>=6.0",
-    "requests",
+    "requests>=2.31.0",
+    "httpx>=0.25.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "black>=23.0.0",
+    "isort>=5.12.0",
+    "flake8>=6.0.0",
+    "mypy>=1.0.0",
 ]
 
 [project.scripts]
@@ -25,9 +56,63 @@ bili-stalker-mcp = "bili_stalker_mcp.cli:main"
 
 [project.urls]
 Homepage = "https://github.com/222wcnm/BiliStalkerMCP"
+Documentation = "https://github.com/222wcnm/BiliStalkerMCP#readme"
+Repository = "https://github.com/222wcnm/BiliStalkerMCP"
+Issues = "https://github.com/222wcnm/BiliStalkerMCP/issues"
+Changelog = "https://github.com/222wcnm/BiliStalkerMCP/releases"
 
 [tool.uv]
-dev-dependencies = []
+dev-dependencies = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "black>=23.0.0",
+    "isort>=5.12.0",
+    "flake8>=6.0.0",
+    "mypy>=1.0.0",
+]
 
 [tool.setuptools]
 packages = ["bili_stalker_mcp"]
+zip-safe = false
+
+[tool.setuptools.package-data]
+bili_stalker_mcp = ["py.typed"]
+
+[tool.black]
+line-length = 88
+target-version = ['py310']
+include = '\.pyi?$'
+extend-exclude = '''
+/(
+  # directories
+  \.eggs
+  | \.git
+  | \.hg
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | build
+  | dist
+)/
+'''
+
+[tool.isort]
+profile = "black"
+multi_line_output = 3
+line_length = 88
+known_first_party = ["bili_stalker_mcp"]
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+disallow_untyped_decorators = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+warn_unreachable = true
+strict_equality = true
