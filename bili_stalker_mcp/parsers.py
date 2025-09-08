@@ -1,6 +1,7 @@
 import logging
 import json
 from typing import Any, Dict, List, Optional, Tuple
+from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 
@@ -201,6 +202,7 @@ def _parse_dynamic_card(card: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         return {
             "dynamic_id": dynamic_id,
             "timestamp": timestamp,
+            "publish_time": desc.get("publish_time"),
             "type": dynamic_type,
             "stat": {
                 "forward": desc.get("repost", 0),
@@ -220,14 +222,26 @@ def _parse_dynamic_card(card: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         logger.error(f"Error parsing dynamic card: {e} - Card: {card}")
         return None
 
-def parse_dynamics_data(dynamics_page: Dict[str, Any]) -> List[Dict[str, Any]]:
+def parse_dynamics_data(dynamic_item: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """
-    解析从 bilibili-api get_dynamics 获取的整页动态数据
+    解析单个动态item数据（来自Web API）。
     """
-    parsed_dynamics = []
-    cards = dynamics_page.get("cards", [])
-    for card in cards:
-        parsed_card = _parse_dynamic_card(card)
-        if parsed_card:
-            parsed_dynamics.append(parsed_card)
-    return parsed_dynamics
+    try:
+        pub_ts = dynamic_item.get("modules", {}).get("module_author", {}).get("pub_ts")
+        publish_time_str = datetime.fromtimestamp(pub_ts, tz=timezone.utc).isoformat() if pub_ts else None
+
+        # 直接转换为期望的格式 - 从Web API的item结构转换为原有解析器期望的格式
+        card_data = {
+            "card": json.dumps(dynamic_item),  # 将整个item作为card数据
+            "desc": {
+                "dynamic_id_str": dynamic_item.get("id_str"),
+                "timestamp": pub_ts,
+                "publish_time": publish_time_str,
+                "type": dynamic_item.get("type")
+            }
+        }
+        # 使用内部解析函数处理
+        return _parse_dynamic_card(card_data)
+    except Exception as e:
+        logger.error(f"Error parsing dynamic item: {e} - Item: {dynamic_item}")
+        return None

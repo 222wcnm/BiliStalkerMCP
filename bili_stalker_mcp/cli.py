@@ -2,6 +2,7 @@ import os
 import logging
 import json
 from typing import Any, Dict, Optional
+from datetime import datetime
 
 from fastmcp import FastMCP
 from mcp.types import TextContent
@@ -13,10 +14,12 @@ from .core import (
     fetch_user_info,
     fetch_user_videos,
     fetch_user_dynamics,
+    _detect_network_environment,
 )
 from .config import (
     SCHEMAS_URI,
     DynamicType,
+    DEFAULT_HEADERS,
 )
 
 # --- 初始化 ---
@@ -42,13 +45,24 @@ def _resolve_user_id(user_id: Optional[int], username: Optional[str]) -> Optiona
 @mcp.tool()
 def get_user_video_updates(user_id: int = None, username: str = None, limit: int = 10) -> Dict[str, Any]:
     """
-    获取B站用户的视频列表，支持用户名或用户ID查询。
+    获取指定B站用户的最新视频列表。
 
-    使用用户名时会自动搜索并匹配最相关的用户。
-    返回完整的视频详情，包括播放量、时长、发布日期等。
-    
-    **提示**: 结果可用 `format_video_response` 提示进行格式化。
+    Args:
+        user_id (int, optional): 用户的数字ID。
+        username (str, optional): 用户的昵称。如果提供了`username`，将自动搜索并使用最匹配的用户ID。`user_id` 和 `username` 必须提供一个。
+        limit (int, optional): 返回视频的数量，默认为10，范围在1到50之间。
+
+    Returns:
+        Dict[str, Any]: 包含用户信息和视频列表的字典。
+                         - `user`: 包含用户`mid`, `name`, `face`等信息的字典。
+                         - `videos`: 视频对象列表。
+                         - `error`: 如果发生错误，则包含错误信息。
     """
+    # 检测网络环境
+    env_info = _detect_network_environment()
+    if env_info["is_cloud_env"]:
+        logger.info("检测到云环境，启用网络优化配置")
+    
     if not cred:
         return {"error": "Credential is not configured."}
     if not user_id and not username:
@@ -62,12 +76,14 @@ def get_user_video_updates(user_id: int = None, username: str = None, limit: int
             return {"error": "User not found."}
 
         user_info = fetch_user_info(target_uid, cred)
+        if "error" in user_info:
+            return {"user": user_info, "error": user_info["error"]}
+
         video_data = fetch_user_videos(target_uid, limit, cred)
+        if "error" in video_data:
+            return {"user": user_info, **video_data}
 
         return {"user": user_info, **video_data}
-    except ApiException as e:
-        logger.error(f"Bilibili API Error in get_user_video_updates: {e}")
-        return {"error": f"Bilibili API Error: {e.msg} (Code: {e.code})"}
     except Exception as e:
         logger.error(f"An unexpected error in get_user_video_updates: {e}")
         return {"error": f"An unexpected error occurred: {e}"}
@@ -75,13 +91,25 @@ def get_user_video_updates(user_id: int = None, username: str = None, limit: int
 @mcp.tool()
 def get_user_dynamic_updates(user_id: int = None, username: str = None, limit: int = 10, dynamic_type: str = "ALL") -> Dict[str, Any]:
     """
-    获取B站用户的动态列表，支持类型过滤和时间轴展示。
+    获取指定B站用户的最新动态列表。
 
-    支持多种动态类型过滤，显示完整的互动统计和媒体内容。
-    包含文本、图片、视频和文章等多种动态形式。
+    Args:
+        user_id (int, optional): 用户的数字ID。
+        username (str, optional): 用户的昵称。如果提供了`username`，将自动搜索并使用最匹配的用户ID。`user_id` 和 `username` 必须提供一个。
+        limit (int, optional): 返回动态的数量，默认为10，范围在1到50之间。
+        dynamic_type (str, optional): 动态类型过滤，可以是 "ALL", "VIDEO", "ARTICLE", "DRAW"。默认为 "ALL"。
 
-    **提示**: 结果可用 `format_dynamic_response` 提示进行格式化。
+    Returns:
+        Dict[str, Any]: 包含用户信息和动态列表的字典。
+                         - `user`: 包含用户`mid`, `name`, `face`等信息的字典。
+                         - `dynamics`: 动态对象列表，每个动态都包含格式化好的 `publish_time` (ISO 8601 格式)。
+                         - `error`: 如果发生错误，则包含错误信息。
     """
+    # 检测网络环境
+    env_info = _detect_network_environment()
+    if env_info["is_cloud_env"]:
+        logger.info("检测到云环境，启用网络优化配置")
+    
     if not cred:
         return {"error": "Credential is not configured. Please set SESSDATA, BILI_JCT, and BUVID3 environment variables."}
     if not user_id and not username:
@@ -98,55 +126,16 @@ def get_user_dynamic_updates(user_id: int = None, username: str = None, limit: i
 
         user_info = fetch_user_info(target_uid, cred)
         if "error" in user_info:
-            return {"error": f"Failed to fetch user info: {user_info['error']}"}
+            return {"user": user_info, "error": user_info["error"]}
 
         dynamic_data = fetch_user_dynamics(target_uid, limit, cred, dynamic_type)
         if "error" in dynamic_data:
-            return {"error": f"Failed to fetch dynamics: {dynamic_data['error']}"}
+            return {"user": user_info, **dynamic_data}
 
         return {"user": user_info, **dynamic_data}
-    except ApiException as e:
-        logger.error(f"Bilibili API Error in get_user_dynamic_updates: {e}")
-        return {
-            "error": "Bilibili API authentication rate-limited. Please check your credentials and try again later.",
-            "code": e.code,
-            "message": e.msg
-        }
-    except TimeoutError:
-        logger.error("Request timeout in get_user_dynamic_updates")
-        return {"error": "Request timed out. The Bilibili API may be experiencing high traffic."}
-    except ConnectionError:
-        logger.error("Connection error in get_user_dynamic_updates")
-        return {"error": "Connection failed. Please check your internet connection."}
     except Exception as e:
         logger.error(f"An unexpected error in get_user_dynamic_updates: {e}")
-        return {"error": f"An unexpected error occurred: {str(e)}. Please try again or contact support."}
-
-# --- MCP资源定义 ---
-@mcp.resource(SCHEMAS_URI)
-def get_data_schemas() -> TextContent:
-    """获取数据结构schema，提供工具返回数据的标准格式定义"""
-    schemas = {
-        "video_schema": {
-            "type": "object",
-            "properties": {
-                "bvid": {"type": "string", "description": "视频唯一标识"},
-                "title": {"type": "string", "description": "视频标题"},
-                "play": {"type": "integer", "description": "播放次数"},
-                "url": {"type": "string", "description": "视频完整URL"}
-            },
-        },
-        "dynamic_schema": {
-            "type": "object",
-            "properties": {
-                "dynamic_id": {"type": "string", "description": "动态唯一标识"},
-                "type": {"type": "string", "description": "动态类型"},
-                "content": {"type": "object", "description": "动态内容"},
-            },
-        }
-    }
-    return TextContent(type="text", text=json.dumps(schemas), mimeType="application/json")
-
+        return {"error": f"An unexpected error occurred: {str(e)}."}
 
 # --- 提示预设 (用于规范模型输出格式) ---
 @mcp.prompt()
@@ -164,7 +153,16 @@ def format_video_response(videos: str) -> str:
         md += "| 标题 | 播放量 | 时长 | 发布日期 |\n"
         md += "| --- | --- | --- | --- |\n"
         for v in video_list:
-            md += f"| [{v['title']}]({v['url']}) | {v['play']} | {v['length']} | {v['created']} |\n"
+            publish_date = "N/A"
+            if v.get('created'):
+                try:
+                    # 解析ISO 8601格式的日期字符串
+                    dt_object = datetime.strptime(v['created'], '%Y-%m-%dT%H:%M:%SZ')
+                    publish_date = dt_object.strftime('%Y-%m-%d')
+                except (ValueError, TypeError):
+                    publish_date = v['created'] # 如果解析失败，则显示原始值
+            
+            md += f"| [{v['title']}]({v['url']}) | {v['play']} | {v['length']} | {publish_date} |\n"
         return md
     except Exception as e:
         return f"格式化视频数据时出错: {e}"
@@ -183,7 +181,7 @@ def format_dynamic_response(dynamics: str) -> str:
 
         md = f"### {user_info.get('name', '用户')} 的最新动态\n\n"
         for d in dynamic_list:
-            md += f"- **[{d['type']}]** {d['timestamp']}\n"
+            md += f"- **[{d['type']}]** {d.get('publish_time', d.get('timestamp'))}\n"
             md += f"  > {d['content']['text']}\n"
             if d.get('url'):
                 md += f"  > [查看详情]({d['url']})\n"

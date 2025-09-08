@@ -1,5 +1,8 @@
 import logging
 import time
+import os
+from datetime import datetime, timezone
+import random
 from typing import Any, Dict, Optional
 
 import requests
@@ -7,18 +10,25 @@ import bilibili_api
 from bilibili_api import Credential, user, sync, search
 from bilibili_api.exceptions import ApiException
 
-from .config import DEFAULT_HEADERS, REQUEST_DELAY, BILIBILI_DYNAMIC_API_URL
+from .config import (
+    DEFAULT_HEADERS, REQUEST_DELAY, REQUEST_DELAY_MIN, REQUEST_DELAY_MAX,
+    BILIBILI_DYNAMIC_API_URL, PROXY_CONFIG, REQUEST_TIMEOUT,
+    CONNECT_TIMEOUT, READ_TIMEOUT
+)
 from .parsers import parse_dynamics_data
 
 # 配置 bilibili-api 请求设置
-bilibili_api.request_settings.set('headers', {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-    'Referer': 'https://www.bilibili.com/',
-    'Origin': 'https://www.bilibili.com',
-    'Accept': 'application/json, text/plain, */*',
-    'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
-})
-bilibili_api.request_settings.set('timeout', 15.0)
+bilibili_api.request_settings.set('headers', DEFAULT_HEADERS)
+bilibili_api.request_settings.set('timeout', REQUEST_TIMEOUT)
+
+# 配置代理设置（如果环境变量中有设置）
+proxy_config = {}
+if os.environ.get('HTTP_PROXY'):
+    proxy_config['http'] = os.environ.get('HTTP_PROXY')
+if os.environ.get('HTTPS_PROXY'):
+    proxy_config['https'] = os.environ.get('HTTPS_PROXY')
+if proxy_config:
+    bilibili_api.request_settings.set('proxies', proxy_config)
 
 # 重试配置 (来自 config.py)
 from .config import REQUEST_DELAY as RETRY_DELAY
@@ -27,11 +37,44 @@ API_RATE_LIMIT_DELAY = 5.0
 
 logger = logging.getLogger(__name__)
 
+def _detect_network_environment() -> Dict[str, Any]:
+    """检测网络环境，返回环境信息和建议配置"""
+    env_info = {
+        "is_cloud_env": False,
+        "has_proxy": False,
+        "suggested_config": {}
+    }
+    
+    # 检测是否在云环境中运行
+    cloud_indicators = [
+        "MODELSCOPE" in os.environ,
+        "CLOUD" in os.environ.get("HOSTNAME", "").upper(),
+        "KUBERNETES" in os.environ,
+        "DOCKER" in os.environ.get("HOSTNAME", "").upper()
+    ]
+    
+    if any(cloud_indicators):
+        env_info["is_cloud_env"] = True
+        env_info["suggested_config"] = {
+            "use_proxy": True,
+            "increase_timeout": True,
+            "reduce_request_frequency": True
+        }
+    
+    # 检测代理配置
+    if os.environ.get('HTTP_PROXY') or os.environ.get('HTTPS_PROXY'):
+        env_info["has_proxy"] = True
+    
+    return env_info
+
 def get_credential(sessdata: str, bili_jct: str, buvid3: str) -> Optional[Credential]:
     """创建Bilibili API的凭证对象"""
     if not sessdata:
-        logger.error("SESSDATA environment variable is not set.")
+        logger.error("SESSDATA environment variable is not set or empty. Please set the SESSDATA environment variable with your Bilibili cookies.")
+        logger.info("You can get SESSDATA by logging into bilibili.com and inspecting cookies in browser developer tools.")
         return None
+
+    logger.info("Creating Bilibili credential with provided SESSDATA")
     return Credential(sessdata=sessdata, bili_jct=bili_jct, buvid3=buvid3)
 
 def _build_cookie_string(cred: Credential) -> str:
@@ -78,14 +121,22 @@ def fetch_user_info(user_id: int, cred: Credential) -> Dict[str, Any]:
     try:
         u = user.User(uid=user_id, credential=cred)
         info = sync(u.get_user_info())
+        # 验证返回的数据结构
+        if not info or 'mid' not in info:
+            raise ValueError("User info response is invalid")
         return {
             "mid": info.get("mid"), "name": info.get("name"), "face": info.get("face"),
             "sign": info.get("sign"), "level": info.get("level"),
             "following": info.get("following"), "follower": info.get("follower")
         }
+    except ApiException as e:
+        logger.error(f"API error when fetching user info for UID {user_id}: {e}")
+        if e.code == -412:
+            return {"error": "请求被B站服务器拒绝 (412)，可能是因为SESSDATA等凭证失效或网络环境被限制。"}
+        return {"error": f"获取用户信息时B站API错误: {e.msg} (代码: {e.code})"}
     except Exception as e:
         logger.error(f"Failed to get user info for UID {user_id}: {e}")
-        return {"error": f"Failed to get user info: {e}"}
+        return {"error": f"获取用户信息失败: {e}"}
 
 def fetch_user_videos(user_id: int, limit: int, cred: Credential) -> Dict[str, Any]:
     """获取并处理用户视频列表"""
@@ -94,193 +145,106 @@ def fetch_user_videos(user_id: int, limit: int, cred: Credential) -> Dict[str, A
         video_list = sync(u.get_videos(ps=limit))
         
         raw_videos = video_list.get("list", {}).get("vlist", [])
-        processed_videos = [
-            {
+        processed_videos = []
+        for v in raw_videos:
+            created_timestamp = v.get("created")
+            if created_timestamp:
+                # Bilibili API返回的是东八区时间戳，直接转换为ISO 8601字符串
+                publish_time = datetime.fromtimestamp(created_timestamp, tz=timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+            else:
+                publish_time = None
+            
+            processed_videos.append({
                 "bvid": v.get("bvid"), "aid": v.get("aid"), "title": v.get("title"),
-                "description": v.get("description"), "created": v.get("created"),
+                "description": v.get("description"), "created": publish_time,
                 "length": v.get("length"), "pic": v.get("pic"), "play": v.get("play"),
                 "favorites": v.get("favorites"), "author": v.get("author"), "mid": v.get("mid"),
                 "url": f"https://www.bilibili.com/video/{v.get('bvid')}" if v.get('bvid') else None
-            } for v in raw_videos
-        ]
+            })
         return {"videos": processed_videos, "total": video_list.get("page", {}).get("count", 0)}
+    except ApiException as e:
+        logger.error(f"API error when fetching user videos for UID {user_id}: {e}")
+        if e.code == -412:
+            return {"error": "请求被B站服务器拒绝 (412)，可能是因为SESSDATA等凭证失效或网络环境被限制。"}
+        return {"error": f"获取视频列表时B站API错误: {e.msg} (代码: {e.code})"}
     except Exception as e:
         logger.error(f"Failed to get user videos for UID {user_id}: {e}")
-        return {"error": f"Failed to get user videos: {e}"}
+        return {"error": f"获取用户视频失败: {e}"}
 
-def _fetch_user_dynamics_fallback(user_id: int, limit: int, cred: Credential, dynamic_type: str = "ALL") -> Dict[str, Any]:
-    """使用 polymer web 动态接口的回退方案"""
-    headers = {
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
-        'Accept-Language': 'zh-CN,zh;q=0.9',
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36',
-        'Cookie': _build_cookie_string(cred)
-    }
+def fetch_user_dynamics(user_id: int, limit: int, cred: Credential, dynamic_type: str = "ALL") -> Dict[str, Any]:
+    """
+    获取用户动态列表。
+    由于bilibili-api的动态API已不稳定，此函数直接使用requests调用Web API。
+    """
+    headers = DEFAULT_HEADERS.copy()
+    headers['Cookie'] = _build_cookie_string(cred)
+    
+    proxies = PROXY_CONFIG.copy()
+    if os.environ.get('HTTP_PROXY'):
+        proxies['http'] = os.environ.get('HTTP_PROXY')
+    if os.environ.get('HTTPS_PROXY'):
+        proxies['https'] = os.environ.get('HTTPS_PROXY')
 
     offset = ""
     collected = []
 
     while len(collected) < limit:
-        params = {
-            "offset": offset,
-            "host_mid": user_id
-        }
-        retry_count = 0
-        resp = None
-        while retry_count < MAX_RETRIES:
-            try:
-                resp = requests.get(BILIBILI_DYNAMIC_API_URL, headers=headers, params=params, timeout=15)
-                if resp.status_code == 200:
-                    break  # 成功获取响应
-                elif resp.status_code == 429:  # 请求过于频繁
-                    logger.warning(f"Rate limited (429), retrying in {API_RATE_LIMIT_DELAY} seconds...")
-                    time.sleep(API_RATE_LIMIT_DELAY)
-                elif resp.status_code == 412:  # 请求被拒绝
-                    logger.warning(f"Request blocked (412), body: {resp.text[:200]}")
-                    if retry_count < MAX_RETRIES - 1:
-                        sleep_time = RETRY_DELAY * (2 ** retry_count)  # 指数退避
-                        logger.info(f"Retrying in {sleep_time} seconds due to 412 error...")
-                        time.sleep(sleep_time)
-                    else:
-                        logger.error("Max retries reached for 412 error")
-                        break
-                else:
-                    logger.warning(f"HTTP {resp.status_code}, body: {resp.text[:200]}")
+        params = {"offset": offset, "host_mid": user_id}
+
+        try:
+            resp = requests.get(
+                BILIBILI_DYNAMIC_API_URL,
+                headers=headers,
+                params=params,
+                timeout=(CONNECT_TIMEOUT, READ_TIMEOUT),
+                proxies=proxies if any(proxies.values()) else None
+            )
+            if resp.status_code == 200:
+                data = resp.json().get("data", {})
+                items = data.get("items", [])
+
+                for item in items:
+                    if item is None: continue
+                    parsed_item = parse_dynamics_data(item)
+                    if parsed_item:
+                        collected.append(parsed_item)
+                    if len(collected) >= limit: break
+
+                if not data.get("has_more") or len(collected) >= limit:
                     break
-            except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
-                logger.warning(f"Network error on attempt {retry_count + 1}: {e}")
-                if retry_count < MAX_RETRIES - 1:
-                    sleep_time = RETRY_DELAY * (2 ** retry_count)
-                    logger.info(f"Retrying in {sleep_time} seconds...")
-                    time.sleep(sleep_time)
+                offset = data.get("offset", "")
+
+                # 随机延迟：根据数据量动态调整延迟时间
+                if len(collected) > 0 and len(data.get("items", [])) > 0:
+                    # 当成功获取数据时，使用较长的随机延迟
+                    delay = random.uniform(REQUEST_DELAY_MIN * 1.5, REQUEST_DELAY_MAX * 2.0)
+                    logger.info(f"Successfully fetched {len(data.get('items', []))} items, waiting {delay:.2f} seconds...")
                 else:
-                    logger.error("Max retries reached for network error")
-                    break
+                    # 当获取空数据时，使用较短的固定延迟
+                    delay = REQUEST_DELAY_MIN
+                    logger.info(f"Empty response, waiting {delay:.2f} seconds...")
 
-            retry_count += 1
+                time.sleep(delay)
+            elif resp.status_code == 412:
+                logger.error("Request blocked by Bilibili (412). Check credentials or network.")
+                return {"error": "请求被B站服务器拒绝 (412)，请检查SESSDATA等凭证是否有效或已过期。"}
+            else:
+                logger.error(f"HTTP Error {resp.status_code}: {resp.text[:200]}")
+                return {"error": f"获取动态时遇到HTTP错误，状态码：{resp.status_code}"}
 
-        if not resp or resp.status_code != 200:
-            logger.error(f"Failed to get valid response after {MAX_RETRIES} attempts")
-            break
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Network error when fetching dynamics: {e}")
+            return {"error": f"网络请求错误: {e}"}
 
-        data = resp.json().get("data") or {}
-        items = data.get("items") or []
-
-        for it in items:
-            if it is None:
-                logger.warning("Encountered None item in dynamics, skipping")
-                continue
-
-            try:
-                dynamic_id = str(it.get("id_str") or it.get("id") or "")
-                # 安全获取timestamp，避免NoneType错误
-                modules = it.get("modules", {}) or {}
-                module_author = modules.get("module_author", {}) or {}
-                timestamp = module_author.get("pub_ts") or 0
-
-                # 检查动态类型是否有效
-                dynamic_type_num = it.get("type")
-                if dynamic_type_num is None:
-                    logger.warning("Dynamic item missing type field, skipping")
-                    continue
-
-                # 提取文本内容
-                modules = it.get("modules", {})
-                text_content = ""
-
-                if modules.get("module_dynamic", {}).get("desc", {}).get("text"):
-                    text_content = modules["module_dynamic"]["desc"]["text"]
-
-                if not text_content and it.get("type") == "DYNAMIC_TYPE_DRAW":
-                    major = modules.get("module_dynamic", {}).get("major", {})
-                    if major.get("type") == "MAJOR_TYPE_DRAW":
-                        text_content = major.get("draw", {}).get("rich_text", "")
-
-                if not text_content:
-                    desc = modules.get("module_dynamic", {}).get("desc", {})
-                    text_content = (desc or {}).get("text", "") or (desc or {}).get("rich_desc", {}).get("text", "")
-
-                dynamic_url = it.get("id_str") and f"https://t.bilibili.com/{it.get('id_str')}"
-
-                collected.append({
-                    "dynamic_id": dynamic_id,
-                    "timestamp": timestamp,
-                    "type": dynamic_type_num,
-                    "stat": {},
-                    "content": {
-                        "text": text_content
-                    },
-                    "url": dynamic_url
-                })
-            except Exception as parse_error:
-                logger.warning(f"Error parsing dynamic item: {parse_error}, skipping this item")
-                continue
-            if len(collected) >= limit:
-                break
-
-        if not data.get("has_more"):
-            break
-        offset = data.get("offset") or ""
-        time.sleep(REQUEST_DELAY)
-
-    # 在fallback函数中也应用动态类型过滤
+    # 类型过滤
     if dynamic_type != "ALL":
-        type_filters = {
-            "VIDEO": ["DYNAMIC_TYPE_AV"],
-            "ARTICLE": ["DYNAMIC_TYPE_AV"],
-            "ANIME": ["DYNAMIC_TYPE_AV"],
-            "DRAW": [2, "DYNAMIC_TYPE_DRAW"],
+        type_map = {
+            "VIDEO": "DYNAMIC_TYPE_AV",
+            "ARTICLE": "DYNAMIC_TYPE_ARTICLE",
+            "DRAW": "DYNAMIC_TYPE_DRAW",
         }
-        if dynamic_type in type_filters:
-            collected = [
-                d for d in collected
-                if d.get("type") in type_filters[dynamic_type]
-            ]
+        target_type = type_map.get(dynamic_type)
+        if target_type:
+            collected = [d for d in collected if d.get("type") == target_type]
 
-    return {"dynamics": collected[:limit], "count": len(collected[:limit])}
-
-def fetch_user_dynamics(user_id: int, limit: int, cred: Credential, dynamic_type: str = "ALL") -> Dict[str, Any]:
-    """获取用户动态列表（优先API，失败回退）"""
-    try:
-        u = user.User(uid=user_id, credential=cred)
-        offset = ""
-        all_dynamics = []
-
-        while len(all_dynamics) < limit:
-            page_data = sync(u.get_dynamics(offset=offset))
-            if not page_data or not page_data.get("cards"):
-                break
-
-            parsed_page_dynamics = parse_dynamics_data(page_data)
-
-            # 根据动态类型过滤
-            if dynamic_type != "ALL":
-                type_filters = {
-                    "VIDEO": ["DYNAMIC_TYPE_AV"],
-                    "ARTICLE": ["DYNAMIC_TYPE_AV"],
-                    "ANIME": ["DYNAMIC_TYPE_AV"],
-                    "DRAW": [2, "DYNAMIC_TYPE_DRAW"],
-                }
-                if dynamic_type in type_filters:
-                    parsed_page_dynamics = [
-                        d for d in parsed_page_dynamics
-                        if d.get("type") in type_filters[dynamic_type]
-                    ]
-
-            all_dynamics.extend(parsed_page_dynamics)
-
-            if not page_data.get("has_more"):
-                break
-            offset = page_data.get("offset", "")
-            time.sleep(REQUEST_DELAY)
-
-        if all_dynamics:
-            return {"dynamics": all_dynamics[:limit], "count": len(all_dynamics[:limit])}
-        logger.info("Empty dynamics from bilibili_api, switching to fallback.")
-        return _fetch_user_dynamics_fallback(user_id, limit, cred, dynamic_type)
-    except ApiException as e:
-        logger.warning(f"bilibili_api ApiException in dynamics: {e}, fallback to requests.")
-        return _fetch_user_dynamics_fallback(user_id, limit, cred, dynamic_type)
-    except Exception as e:
-        logger.warning(f"bilibili_api exception in dynamics: {e}, fallback to requests.")
-        return _fetch_user_dynamics_fallback(user_id, limit, cred, dynamic_type)
+    return {"dynamics": collected[:limit], "count": len(collected)}
