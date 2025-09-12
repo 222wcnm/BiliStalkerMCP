@@ -72,24 +72,23 @@
 
 ### 4. 用户动态 (`user.get_dynamics()`)
 
-这是最复杂的数据结构，一条动态可以是多种类型的复合体。核心是 `card` 字段，其内容根据动态类型而变化。
+这是最复杂的数据结构，一条动态可以是多种类型的复合体。核心是 `modules` 字段，其内容根据动态类型而变化。
 
-**动态基础信息:**
-- `dynamic_id`: 动态的唯一ID
-- `type`: 动态的数字类型代码 (如 2: 图文, 8: 视频, 64: 文章, 1: 转发)
-- `timestamp`: 发布时间的Unix时间戳
-- `stat.like`, `stat.comment`, `stat.forward`: 转评赞统计
+| 字段名 | 数据类型 | 解释 |
+| :--- | :--- | :--- |
+| `id_str` | string | **动态的唯一ID** |
+| `type` | string | 动态的类型名 (如 `DYNAMIC_TYPE_DRAW`) |
+| `modules.module_author.mid` | integer | **作者的用户ID** |
+| `modules.module_author.name`| string | 作者的昵称 |
+| `modules.module_author.pub_ts`| integer | 发布的Unix时间戳 |
+| `modules.module_dynamic.major.opus.summary.text` | string | **图文动态的文本内容** |
+| `modules.module_dynamic.major.opus.pics` | list | 图文动态的图片列表，每项包含 `url` |
+| `modules.module_dynamic.major.archive.bvid` | string | 视频动态的BVID |
+| `modules.module_dynamic.major.article.id` | integer | 文章动态的cv号 |
+| `modules.module_stat.comment.count` | integer | 评论数 |
+| `modules.module_stat.forward.count` | integer | 转发数 |
+| `modules.module_stat.like.count` | integer | 点赞数 |
 
-**根据类型，动态 `card` 内可能包含的核心内容:**
-- **视频 (type=8)**: 包含一个完整的视频对象，结构类似上面的“视频投稿”。
-- **图文 (type=2)**: 
-    - `item.description`: **动态的文本内容**
-    - `item.pictures`: 一个图片列表，每项包含 `img_src` (图片URL)。
-- **文章 (type=64)**: 
-    - `title`, `summary`, `banner_url`, `id` (cv号)
-- **转发 (type=1)**: 
-    - `item.content`: **转发时添加的评论文本**
-    - `origin`: 一个字符串形式的JSON，包含了被转发的**原始动态**的全部信息，需要再次解析。
 
 ### 5. 专栏文章 (`user.get_articles()`)
 

@@ -1,8 +1,7 @@
 import logging
 import os
 import asyncio
-from datetime import datetime, timezone
-import random
+import json
 from typing import Any, Dict, Optional
 
 import httpx
@@ -39,6 +38,65 @@ def _get_cookies(cred: Credential) -> str:
     if getattr(cred, "buvid3", None):
         cookie_parts.append(f"buvid3={cred.buvid3}")
     return "; ".join(cookie_parts)
+
+def _parse_dynamic_item(item: dict) -> dict:
+    """Helper function to parse a single dynamic item into a clean dict."""
+    try:
+        # Core modules
+        module_author = item.get('modules', {}).get('module_author', {})
+        module_dynamic = item.get('modules', {}).get('module_dynamic', {})
+        module_stat = item.get('modules', {}).get('module_stat', {})
+
+        # Base structure
+        parsed = {
+            "dynamic_id": item.get('id_str'),
+            "type": item.get('type'),
+            "author_mid": module_author.get('mid'),
+            "timestamp": module_author.get('pub_ts'),
+            "stats": {
+                "like": module_stat.get('like', {}).get('count'),
+                "comment": module_stat.get('comment', {}).get('count'),
+                "forward": module_stat.get('forward', {}).get('count'),
+            }
+        }
+
+        # Type-specific parsing
+        major = module_dynamic.get('major', {})
+        if not major:
+            # Handle cases like deleted content
+            if module_dynamic.get('desc'):
+                parsed['text_content'] = module_dynamic.get('desc', {}).get('text')
+            return parsed
+
+        major_type = major.get('type')
+        if major_type == 'MAJOR_TYPE_OPUS':  # Image-and-text
+            opus = major.get('opus', {})
+            parsed['text_content'] = opus.get('summary', {}).get('text')
+            parsed['images'] = [f"![image]({p.get('url')})" for p in opus.get('pics', [])]
+        elif major_type == 'MAJOR_TYPE_ARCHIVE':  # Video
+            archive = major.get('archive', {})
+            parsed['text_content'] = archive.get('dynamic')
+            parsed['video'] = {
+                "title": archive.get('title'),
+                "bvid": archive.get('bvid'),
+                "desc": archive.get('desc'),
+                "pic": f"![cover]({archive.get('pic')})" if archive.get('pic') else ""
+            }
+        elif major_type == 'MAJOR_TYPE_ARTICLE': # Article
+            article = major.get('article', {})
+            parsed['text_content'] = article.get('title')
+            parsed['article'] = {
+                "id": article.get('id'),
+                "title": article.get('title'),
+                "desc": article.get('desc'),
+                "cover": f"![cover]({article.get('covers',[''])[0]})" if article.get('covers') else ""
+            }
+        # To-do: Add parsers for other major_types like FORWARD, LIVE, etc.
+
+        return parsed
+    except Exception as e:
+        logger.error(f"Failed to parse dynamic item: {item.get('id_str')}, error: {e}")
+        return {"error": "Failed to parse dynamic", "id": item.get('id_str')}
 
 @alru_cache(maxsize=128)
 async def get_user_id_by_username(username: str) -> Optional[int]:
@@ -160,13 +218,19 @@ async def fetch_user_videos(user_id: int, limit: int, cred: Credential) -> Dict[
         return {"error": f"获取用户视频失败: {str(e)}"}
 
 async def fetch_user_dynamics(user_id: int, limit: int, cred: Credential, dynamic_type: str = "ALL") -> Dict[str, Any]:
-    """获取用户动态列表"""
+    """获取用户的动态列表。为保证数据可用性，返回JSON列表。会尝试解析不同类型的动态。"""
     try:
         u = user.User(uid=user_id, credential=cred)
-        dynamics_data = await u.get_dynamics()
-        # 注意：直接返回库处理好的数据，其中可能包含比我们手动解析更丰富的信息
-        # 我们可以在cli层或调用方进行瘦身
-        return dynamics_data
+        raw_dynamics_data = await u.get_dynamics(offset=0)
+        
+        processed_dynamics = []
+        if raw_dynamics_data and raw_dynamics_data.get("cards"):
+            for card in raw_dynamics_data["cards"]:
+                if len(processed_dynamics) >= limit:
+                    break
+                processed_dynamics.append(_parse_dynamic_item(card))
+
+        return {"dynamics": processed_dynamics}
     except ApiException as e:
         logger.error(f"Bilibili API error for dynamics of UID {user_id}: {e}")
         return {"error": f"Bilibili API 错误: {str(e)}"}

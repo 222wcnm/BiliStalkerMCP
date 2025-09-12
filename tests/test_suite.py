@@ -92,10 +92,10 @@ async def test_dynamics(cred, user_id, limit):
     dynamics = dynamics_result.get("dynamics", [])
     logger.info(f"成功获取 {len(dynamics)} 条动态。")
 
-    for dynamic in dynamics:
-        text = dynamic.get('modules', {}).get('module_dynamic', {}).get('desc', {}).get('text', '(无文本)')
+    for dynamic_item in dynamics:
+        text = dynamic_item.get('text_content', '(无文本)')
         text_preview = text.replace('\n', ' ').strip()[:30] + "..." if text != '(无文本)' else "(无文本)"
-        logger.info(f"  - [动态] 类型: {dynamic.get('type')}, 内容: {text_preview}")
+        logger.info(f"  - [动态] 类型: {dynamic_item.get('type')}, 内容: {text_preview}")
 
 async def test_articles(cred, user_id, limit):
     """测试专栏文章获取"""
