@@ -2,17 +2,28 @@
 
 ## 1. 项目概述
 
-BiliStalkerMCP 是一个模型上下文协议 (MCP) 服务器，旨在为 AI 模型提供有关 Bilibili 用户的最新信息。它允许 AI 代理以结构化格式获取用户的视频、动态和文章。
+BiliStalkerMCP 是一个模型上下文协议 (MCP) 服务器，旨在为 AI 模型提供关于特定 Bilibili 用户的深度、实时且只读的各类信息。
 
-该项目使用 Python 构建，并利用了 `FastMCP` 和 `bilibili-api-python`。
+该项目使用 Python 构建，并利用了 `FastMCP` 和 `bilibili-api-python`。项目代码完全异步，并使用缓存以提高性能。
 
-经过一次重大重构后，该项目现在是完全异步的，使用缓存来提高性能，并直接依赖 `bilibili-api` 库进行稳健的数据解析，移除了之前的手动实现。
+### 核心原则
+- **用户中心**: 严格专注于获取单个用户的详细数据画像，不实现平台级搜索或发现功能。
+- **只读操作**: 所有工具只检索信息，不进行任何点赞、评论、发布等修改性操作。
+- **数据时效**: 致力于提供新鲜、准确的数据。
 
-### 暴露的工具:
-*   `get_user_info`: 获取用户的个人资料信息。
-*   `get_user_video_updates`: 检索用户的最新视频上传。
-*   `get_user_dynamic_updates`: 获取用户的最新动态。
-*   `get_user_articles`: 获取用户发布的文章。
+### 暴露的工具与提示
+
+#### 工具 (Tools)
+- **`get_user_info`**: 获取用户的详细个人资料，包括昵称、签名、等级和粉丝统计。
+- **`get_user_video_updates`**: 获取用户最近发布的视频列表，包含标题、统计数据和封面图。
+- **`get_user_dynamic_updates`**: 获取用户最近的动态（帖子），支持纯文字、视频和图文等多种类型。
+- **`get_user_articles`**: 获取用户最近发布的专栏文章列表，包含摘要、统计数据和横幅。
+
+#### 提示 (Prompts)
+- **`format_user_info_response`**: 将用户信息格式化为易读的Markdown。
+- **`format_video_response`**: 将视频列表格式化为易读的Markdown。
+- **`format_dynamic_response`**: 将动态列表格式化为易读的Markdown。
+- **`format_articles_response`**: 将文章列表格式化为易读的Markdown。
 
 ---
 
@@ -51,92 +62,14 @@ uvx bili-stalker-mcp
 
 ---
 
-## 3. 当前任务：定义数据负载
+## 3. 开发准则与注意事项
 
-**目标**: 修改 `bili_stalker_mcp/core.py` 中的 `fetch_*` 函数，使其根据以下要求返回特定的结构化 JSON 对象。
+### 3.1. 核心开发准则
+- **前置知识**: 在实施任何功能前，必须对Model Context Protocol (MCP)、FastMCP框架及Bilibili API有充分理解。
+- **信息获取**: 鼓励使用外部信息工具来补充背景知识。
+- **CLI语法**: 优先使用PowerShell语法。
 
-### 目标数据模式:
-
-**`get_user_info` 应返回:**
-返回 `user.get_user_info` 和 `relation.stat` 中的所有字段，但**排除** `vip` (会员) 和 `official` (认证) 相关字段。
-```json
-{
-  "mid": 12345,
-  "name": "UserName",
-  "face": "http://...",
-  "sign": "用户的个性签名。",
-  "level": 6,
-  "birthday": "MM-DD",
-  "sex": "男",
-  "top_photo": "http://...",
-  "live_room": {
-      "roomid": 12345,
-      "url": "http://...",
-      "title": "直播间标题",
-      "liveStatus": 1
-  },
-  "following": 500,
-  "follower": 10000
-}
-```
-
-**`get_user_video_updates` 应返回一个列表，其中包含:**
-返回视频的所有可用字段。如果视频没有字幕，`subtitle` 字段应包含字符串 "视频无字幕"。
-```json
-{
-  "bvid": "BV1xx411c7xx",
-  "aid": 54321,
-  "title": "视频标题",
-  "description": "视频简介文本。",
-  "created": 1672531200,
-  "length": "10:30",
-  "play": 150000,
-  "comment": 1200,
-  "favorites": 3000,
-  "like": 8000,
-  "pic": "http://...",
-  "subtitle": "视频无字幕"
-}
-```
-
-**`get_user_dynamic_updates` 应返回一个列表，其中包含:**
-(需求待定，暂时不做修改。)
-```json
-{
-  "dynamic_id": "123456789012345678",
-  "type": "VIDEO / DRAW / FORWARD",
-  "publish_time": "2023-10-27T10:00:00Z",
-  "text": "动态的核心文本内容。",
-  "url": "指向动态或其引用内容URL",
-  "bvid": "BV1xx411c7xx", // (仅当类型为 VIDEO 时)
-  "stat": {
-    "like": 100,
-    "comment": 20,
-    "forward": 5
-  }
-}
-```
-
-**`get_user_articles` 应返回一个列表，其中包含:**
-返回所有可用字段，但**排除** `category.name`。
-```json
-{
-  "id": 12345,
-  "title": "文章标题",
-  "summary": "文章摘要文本。",
-  "banner_url": "http://...",
-  "publish_time": 1672531200,
-  "stats": {
-    "view": 5000,
-    "like": 200,
-    "reply": 30
-  },
-  "words": 1500
-}
-```
-
-### 后续步骤:
-1.  阅读此文档以确认需求。
-2.  阅读 `bili_stalker_mcp/core.py`。
-3.  根据上述模式修改 `fetch_*` 函数，从 `fetch_user_info` 开始。
-4.  频繁提交变更。
+### 3.2. 图文动态解析
+- **问题背景**: 项目早期曾遇到 `bilibili-api-python` 无法直接从图文动态中返回完整文本内容的问题。
+- **解决方案**: 通过 `core.py` 中的自定义解析逻辑 (`_parse_dynamic_item`)，对原始 API 返回的动态数据进行深度解析，提取并重组图文内容。
+- **开发要求**: 任何涉及动态数据获取或处理的修改，都必须进行回归测试，确保图文动态的文本内容能够被正确、完整地提取。

@@ -45,7 +45,16 @@ async def _resolve_user_id(user_id: Optional[int], username: Optional[str]) -> O
 # --- MCP工具定义 ---
 @mcp.tool()
 async def get_user_info(user_id: Optional[int] = None, username: Optional[str] = None) -> Dict[str, Any]:
-    """获取B站用户的详细资料。返回JSON对象，为保证数据完整，默认返回所有字段。"""
+    """
+    根据Bilibili用户的UID或用户名，获取该用户的个人主页信息。
+
+    此工具会返回一个包含用户详细资料的JSON对象，例如昵称、签名、等级、粉丝数和关注数等。
+    您必须提供 user_id 或 username 中的一个。
+
+    :param user_id: 用户的Bilibili UID (可选)。
+    :param username: 用户的Bilibili昵称 (可选)。
+    :return: 包含用户详细信息的JSON对象。
+    """
     if not cred:
         return {"error": "Credential is not configured."}
     if not user_id and not username:
@@ -65,7 +74,18 @@ async def get_user_info(user_id: Optional[int] = None, username: Optional[str] =
 
 @mcp.tool()
 async def get_user_video_updates(user_id: Optional[int] = None, username: Optional[str] = None, limit: int = 10) -> Dict[str, Any]:
-    """获取用户的视频列表。'subtitle'字段包含字幕对象，其'subtitles'列表内含可用于文本分析的字幕URL。"""
+    """
+    根据Bilibili用户的UID或用户名，获取该用户最近发布的视频列表。
+
+    您可以指定获取视频的数量。返回的每个视频对象都包含标题、描述、播放量、弹幕数以及封面图URL等信息。
+    如果视频有字幕，'subtitle'字段会包含字幕信息；否则，该字段为字符串 "视频无字幕"。
+    您必须提供 user_id 或 username 中的一个。
+
+    :param user_id: 用户的Bilibili UID (可选)。
+    :param username: 用户的Bilibili昵称 (可选)。
+    :param limit: 需要获取的视频数量，默认为10，最大为50。
+    :return: 包含视频列表的JSON对象。
+    """
     if not cred:
         return {"error": "Credential is not configured."}
     if not user_id and not username:
@@ -86,7 +106,19 @@ async def get_user_video_updates(user_id: Optional[int] = None, username: Option
 
 @mcp.tool()
 async def get_user_dynamic_updates(user_id: Optional[int] = None, username: Optional[str] = None, limit: int = 10, dynamic_type: str = "ALL") -> Dict[str, Any]:
-    """获取用户的动态列表。为保证数据可用性，返回JSON列表。会尝试解析不同类型的动态。"""
+    """
+    根据Bilibili用户的UID或用户名，获取该用户最近发布的动态。
+
+    您可以指定获取动态的数量和类型（如纯文字、视频、图文等）。
+    返回的每个动态对象都包含其类型、发布时间、文本内容以及点赞/评论/转发数。
+    您必须提供 user_id 或 username 中的一个。
+
+    :param user_id: 用户的Bilibili UID (可选)。
+    :param username: 用户的Bilibili昵称 (可选)。
+    :param limit: 需要获取的动态数量，默认为10，最大为50。
+    :param dynamic_type: 动态类型，可以是 "ALL", "VIDEO", "TEXT", "DRAW"。默认为 "ALL"。
+    :return: 包含动态列表的JSON对象。
+    """
     if not cred:
         return {"error": "Credential is not configured. Please set SESSDATA, BILI_JCT, and BUVID3 environment variables."}
     if not user_id and not username:
@@ -110,7 +142,17 @@ async def get_user_dynamic_updates(user_id: Optional[int] = None, username: Opti
 
 @mcp.tool()
 async def get_user_articles(user_id: Optional[int] = None, username: Optional[str] = None, limit: int = 10) -> Dict[str, Any]:
-    """获取用户的专栏文章列表。为保证数据完整，默认返回所有字段。"""
+    """
+    根据Bilibili用户的UID或用户名，获取该用户最近发布的专栏文章列表。
+
+    您可以指定获取文章的数量。返回的每个文章对象都包含标题、摘要、阅读量和封面图URL等信息。
+    您必须提供 user_id 或 username 中的一个。
+
+    :param user_id: 用户的Bilibili UID (可选)。
+    :param username: 用户的Bilibili昵称 (可选)。
+    :param limit: 需要获取的文章数量，默认为10，最大为50。
+    :return: 包含文章列表的JSON对象。
+    """
     if not cred:
         return {"error": "Credential is not configured. Please set SESSDATA, BILI_JCT, and BUVID3 environment variables."}
     if not user_id and not username:
@@ -131,6 +173,41 @@ async def get_user_articles(user_id: Optional[int] = None, username: Optional[st
 
 
 # --- 提示预设 (用于规范模型输出格式) ---
+@mcp.prompt()
+def format_user_info_response(user_info_json: str) -> str:
+    """格式化用户个人信息为Markdown, 支持get_user_info工具的输出"""
+    try:
+        data = json.loads(user_info_json)
+        if not data or data.get("error"):
+            return f"获取用户信息失败: {data.get('error', '未知错误')}"
+
+        md = f"### {data.get('name', 'N/A')}\n\n"
+        if data.get('face'):
+            md += f"![头像]({data.get('face')})\n\n"
+        
+        if data.get('sign'):
+            md += f"> {data.get('sign')}\n\n"
+
+        md += f"- **等级**: LV.{data.get('level', 'N/A')}\n"
+        md += f"- **关注数**: {data.get('following', 'N/A')}\n"
+        md += f"- **粉丝数**: {data.get('follower', 'N/A')}\n"
+        md += f"- **性别**: {data.get('sex', 'N/A')}\n"
+        if data.get('birthday'):
+            md += f"- **生日**: {data.get('birthday')}\n"
+        
+        live_room = data.get('live_room')
+        if live_room and live_room.get('liveStatus') == 1:
+            md += "\n---\n\n"
+            md += "#### 直播间信息\n"
+            md += f"- **标题**: {live_room.get('title', 'N/A')}\n"
+            md += f"- **状态**: 正在直播\n"
+            if live_room.get('url'):
+                md += f"- **链接**: [点击进入]({live_room.get('url')})\n"
+        
+        return md
+    except Exception as e:
+        return f"格式化用户信息时出错: {e}"
+
 @mcp.prompt()
 def format_video_response(videos_json: str) -> str:
     """格式化视频数据为Markdown, 支持get_user_video_updates工具的输出"""
@@ -166,7 +243,7 @@ def format_dynamic_response(dynamics_json: str) -> str:
             md += f"> {d.get('text_content', '')}\n\n"
             if d.get('images'):
                 md += " ".join([f"![image]({img})" for img in d['images']]) + "\n\n"
-            md += "---"
+            md += "---\n"
         return md
     except Exception as e:
         return f"格式化动态数据时出错: {e}"
