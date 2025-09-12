@@ -42,59 +42,87 @@ def _get_cookies(cred: Credential) -> str:
 def _parse_dynamic_item(item: dict) -> dict:
     """将单个动态的原始字典数据解析为干净的目标格式。"""
     try:
-        # Core modules
-        module_author = item.get('modules', {}).get('module_author', {})
-        module_dynamic = item.get('modules', {}).get('module_dynamic', {})
-        module_stat = item.get('modules', {}).get('module_stat', {})
+        desc = item.get('desc', {})
+        card = item.get('card', {}) # It's a dict now, not a string.
 
-        # Base structure
+        # Base structure from 'desc'
         parsed = {
-            "dynamic_id": item.get('id_str'),
-            "type": item.get('type'),
-            "author_mid": module_author.get('mid'),
-            "timestamp": module_author.get('pub_ts'),
+            "dynamic_id": desc.get('dynamic_id_str'),
+            "type_id": desc.get('type'),
+            "author_mid": desc.get('uid'),
+            "timestamp": desc.get('timestamp'),
             "stats": {
-                "like": module_stat.get('like', {}).get('count'),
-                "comment": module_stat.get('comment', {}).get('count'),
-                "forward": module_stat.get('forward', {}).get('count'),
+                "like": desc.get('like'),
+                "comment": desc.get('comment'),
+                "forward": desc.get('repost'),
             }
         }
 
-        # Type-specific parsing
-        major = module_dynamic.get('major', {})
-        if not major:
-            if module_dynamic.get('desc'):
-                parsed['text_content'] = module_dynamic.get('desc', {}).get('text')
-            return parsed
+        # --- Content Extraction ---
+        dynamic_type = desc.get('type')
+        
+        # Type 1: Repost
+        if dynamic_type == 1:
+            parsed['type'] = 'REPOST'
+            parsed['text_content'] = card.get('item', {}).get('content')
+            if 'origin' in card:
+                try:
+                    # Origin is a JSON string inside the card dict
+                    origin_card = json.loads(card['origin'])
+                    origin_item = origin_card.get('item', {})
+                    parsed['origin_user'] = origin_card.get('user', {}).get('uname')
+                    parsed['origin_content'] = origin_item.get('content') or origin_item.get('description')
+                except Exception:
+                    parsed['origin_content'] = "(转发内容解析失败)"
 
-        major_type = major.get('type')
-        if major_type == 'MAJOR_TYPE_OPUS':  # Image-and-text
-            opus = major.get('opus', {})
-            parsed['text_content'] = opus.get('summary', {}).get('text')
-            parsed['images'] = [p.get('url') for p in opus.get('pics', [])]
-        elif major_type == 'MAJOR_TYPE_ARCHIVE':  # Video
-            archive = major.get('archive', {})
-            parsed['text_content'] = archive.get('dynamic')
+        # Type 2: Image-text
+        elif dynamic_type == 2:
+            parsed['type'] = 'IMAGE_TEXT'
+            item_data = card.get('item', {})
+            parsed['text_content'] = item_data.get('description')
+            parsed['images'] = [p.get('img_src') for p in item_data.get('pictures', [])]
+
+        # Type 4: Text-only
+        elif dynamic_type == 4:
+            parsed['type'] = 'TEXT'
+            parsed['text_content'] = card.get('item', {}).get('content')
+
+        # Type 8: Video
+        elif dynamic_type == 8:
+            parsed['type'] = 'VIDEO'
+            parsed['text_content'] = card.get('dynamic')
             parsed['video'] = {
-                "title": archive.get('title'),
-                "bvid": archive.get('bvid'),
-                "desc": archive.get('desc'),
-                "pic": archive.get('pic')
+                "title": card.get('title'),
+                "bvid": card.get('bvid'),
+                "desc": card.get('desc'),
+                "pic": card.get('pic')
             }
-        elif major_type == 'MAJOR_TYPE_ARTICLE': # Article
-            article = major.get('article', {})
-            parsed['text_content'] = article.get('title')
+
+        # Type 64: Article
+        elif dynamic_type == 64:
+            parsed['type'] = 'ARTICLE'
+            parsed['text_content'] = card.get('summary')
             parsed['article'] = {
-                "id": article.get('id'),
-                "title": article.get('title'),
-                "desc": article.get('desc'),
-                "covers": article.get('covers', [])
+                "id": card.get('id'),
+                "title": card.get('title'),
+                "covers": card.get('image_urls', [])
             }
+        
+        # Type 2048: Charge/QA post (the one from our test)
+        elif dynamic_type == 2048:
+            parsed['type'] = 'CHARGE_QA'
+            parsed['text_content'] = card.get('vest', {}).get('content')
+            if 'sketch' in card:
+                parsed['text_content'] += f" | {card['sketch'].get('title')}"
+        
+        else:
+            parsed['type'] = f"UNKNOWN_{dynamic_type}"
+            parsed['text_content'] = '(内容无法解析)'
 
         return parsed
     except Exception as e:
-        logger.error(f"Failed to parse dynamic item: {item.get('id_str')}, error: {e}")
-        return {"error": "Failed to parse dynamic", "id": item.get('id_str')}
+        logger.error(f"Failed to parse dynamic item: {item.get('desc', {}).get('dynamic_id_str')}, error: {e}")
+        return {"error": "Failed to parse dynamic", "id": item.get('desc', {}).get('dynamic_id_str')}
 
 @alru_cache(maxsize=128)
 async def get_user_id_by_username(username: str) -> Optional[int]:
