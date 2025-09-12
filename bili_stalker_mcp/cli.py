@@ -45,16 +45,7 @@ async def _resolve_user_id(user_id: Optional[int], username: Optional[str]) -> O
 # --- MCP工具定义 ---
 @mcp.tool()
 async def get_user_info(user_id: Optional[int] = None, username: Optional[str] = None) -> Dict[str, Any]:
-    """
-    获取指定B站用户的个人信息。
-
-    Args:
-        user_id (int, optional): 用户的数字ID。
-        username (str, optional): 用户的昵称。如果提供了`username`，将自动搜索并使用最匹配的用户ID。`user_id` 和 `username` 必须提供一个。
-
-    Returns:
-        Dict[str, Any]: 包含用户详细信息的字典。
-    """
+    """获取B站用户的详细资料。返回JSON对象，为保证数据完整，默认返回所有字段。"""
     if not cred:
         return {"error": "Credential is not configured."}
     if not user_id and not username:
@@ -74,17 +65,7 @@ async def get_user_info(user_id: Optional[int] = None, username: Optional[str] =
 
 @mcp.tool()
 async def get_user_video_updates(user_id: Optional[int] = None, username: Optional[str] = None, limit: int = 10) -> Dict[str, Any]:
-    """
-    获取指定B站用户的最新视频列表。
-
-    Args:
-        user_id (int, optional): 用户的数字ID。
-        username (str, optional): 用户的昵称。如果提供了`username`，将自动搜索并使用最匹配的用户ID。`user_id` 和 `username` 必须提供一个。
-        limit (int, optional): 返回视频的数量，默认为10，范围在1到50之间。
-
-    Returns:
-        Dict[str, Any]: 包含视频列表的字典。
-    """
+    """获取用户的视频列表。'subtitle'字段包含字幕对象，其'subtitles'列表内含可用于文本分析的字幕URL。"""
     if not cred:
         return {"error": "Credential is not configured."}
     if not user_id and not username:
@@ -105,18 +86,7 @@ async def get_user_video_updates(user_id: Optional[int] = None, username: Option
 
 @mcp.tool()
 async def get_user_dynamic_updates(user_id: Optional[int] = None, username: Optional[str] = None, limit: int = 10, dynamic_type: str = "ALL") -> Dict[str, Any]:
-    """
-    获取指定B站用户的最新动态列表。
-
-    Args:
-        user_id (int, optional): 用户的数字ID。
-        username (str, optional): 用户的昵称。如果提供了`username`，将自动搜索并使用最匹配的用户ID。`user_id` 和 `username` 必须提供一个。
-        limit (int, optional): 返回动态的数量，默认为10，范围在1到50之间。
-        dynamic_type (str, optional): 动态类型过滤，可以是 "ALL", "VIDEO", "ARTICLE", "DRAW"。默认为 "ALL"。
-
-    Returns:
-        Dict[str, Any]: 包含动态列表的字典。
-    """
+    """获取用户的动态列表。为保证数据可用性，返回JSON列表。会尝试解析不同类型的动态。"""
     if not cred:
         return {"error": "Credential is not configured. Please set SESSDATA, BILI_JCT, and BUVID3 environment variables."}
     if not user_id and not username:
@@ -140,17 +110,7 @@ async def get_user_dynamic_updates(user_id: Optional[int] = None, username: Opti
 
 @mcp.tool()
 async def get_user_articles(user_id: Optional[int] = None, username: Optional[str] = None, limit: int = 10) -> Dict[str, Any]:
-    """
-    获取指定B站用户的最新专栏文章列表。
-
-    Args:
-        user_id (int, optional): 用户的数字ID。
-        username (str, optional): 用户的昵称。如果提供了`username`，将自动搜索并使用最匹配的用户ID。`user_id` 和 `username` 必须提供一个。
-        limit (int, optional): 返回文章的数量，默认为10，范围在1到50之间。
-
-    Returns:
-        Dict[str, Any]: 包含文章列表的字典。
-    """
+    """获取用户的专栏文章列表。为保证数据完整，默认返回所有字段。"""
     if not cred:
         return {"error": "Credential is not configured. Please set SESSDATA, BILI_JCT, and BUVID3 environment variables."}
     if not user_id and not username:
@@ -172,83 +132,64 @@ async def get_user_articles(user_id: Optional[int] = None, username: Optional[st
 
 # --- 提示预设 (用于规范模型输出格式) ---
 @mcp.prompt()
-def format_video_response(videos: str) -> str:
-    """格式化视频数据为Markdown表格，支持get_user_video_updates工具的输出"""
+def format_video_response(videos_json: str) -> str:
+    """格式化视频数据为Markdown, 支持get_user_video_updates工具的输出"""
     try:
-        data = json.loads(videos)
-        user_info = data.get("user", {})
+        data = json.loads(videos_json)
         video_list = data.get("videos", [])
-
         if not video_list:
-            return f"**{user_info.get('name', '用户')}** 最近没有发布新视频。"
-
-        md = f"### {user_info.get('name', '用户')} 的最新视频\n\n"
-        md += "| 标题 | 播放量 | 时长 | 发布日期 |\n"
-        md += "| --- | --- | --- | --- |\n"
+            return "用户最近没有发布新视频。"
+        
+        md = "### 最新视频\n\n"
         for v in video_list:
-            publish_date = "N/A"
-            if v.get('created'):
-                try:
-                    dt_object = datetime.fromisoformat(v['created'].replace('Z', '+00:00'))
-                    publish_date = dt_object.strftime('%Y-%m-%d')
-                except (ValueError, TypeError):
-                    publish_date = v['created']
-            
-            md += f"| [{v['title']}]({v['url']}) | {v['play']} | {v['length']} | {publish_date} |\n"
+            md += f"#### [{v.get('title', '无标题')}]({v.get('url')})\n"
+            if v.get('pic'):
+                md += f"![cover]({v['pic']})\n\n"
+            md += f"- **播放**: {v.get('play', 0)} | **点赞**: {v.get('like', 0)} | **发布于**: {datetime.fromtimestamp(v.get('created')).strftime('%Y-%m-%d')}\n\n"
         return md
     except Exception as e:
         return f"格式化视频数据时出错: {e}"
 
 
 @mcp.prompt()
-def format_dynamic_response(dynamics: str) -> str:
-    """格式化动态数据为按时间倒序的Markdown列表，支持get_user_dynamic_updates工具的输出"""
+def format_dynamic_response(dynamics_json: str) -> str:
+    """格式化动态数据为Markdown, 支持get_user_dynamic_updates工具的输出"""
     try:
-        data = json.loads(dynamics)
-        user_info = data.get("user", {})
+        data = json.loads(dynamics_json)
         dynamic_list = data.get("dynamics", [])
-
         if not dynamic_list:
-            return f"**{user_info.get('name', '用户')}** 最近没有发布新动态。"
+            return "用户最近没有发布新动态。"
 
-        md = f"### {user_info.get('name', '用户')} 的最新动态\n\n"
+        md = "### 最新动态\n\n"
         for d in dynamic_list:
-            md += f"- **[{d['type']}]** {d.get('publish_time', d.get('timestamp'))}\n"
-            md += f"  > {d['content']['text']}\n"
-            if d.get('url'):
-                md += f"  > [查看详情]({d['url']})\n"
-            md += "\n"
+            md += f"**类型**: {d.get('type')} | **发布于**: {datetime.fromtimestamp(d.get('timestamp')).strftime('%Y-%m-%d %H:%M')}"
+            md += f"> {d.get('text_content', '')}\n\n"
+            if d.get('images'):
+                md += " ".join([f"![image]({img})" for img in d['images']]) + "\n\n"
+            md += "---"
         return md
     except Exception as e:
         return f"格式化动态数据时出错: {e}"
 
 @mcp.prompt()
-def format_articles_response(articles: str) -> str:
-    """格式化专栏文章数据为Markdown列表，支持get_user_articles工具的输出"""
+def format_articles_response(articles_json: str) -> str:
+    """格式化专栏文章数据为Markdown, 支持get_user_articles工具的输出"""
     try:
-        data = json.loads(articles)
+        data = json.loads(articles_json)
         article_list = data.get("articles", [])
-
         if not article_list:
-            return "最近没有发布新专栏文章。"
+            return "用户最近没有发布新专栏文章。"
 
         md = "### 最新专栏文章\n\n"
-        for article in article_list:
-            publish_date = "N/A"
-            if article.get('publish_time'):
-                try:
-                    dt_object = datetime.fromisoformat(article['publish_time'].replace('Z', '+00:00'))
-                    publish_date = dt_object.strftime('%Y-%m-%d')
-                except (ValueError, TypeError):
-                    publish_date = article['publish_time']
-            
-            md += f"- **[{publish_date}]** [{article['title']}]({article['url']})\n"
-            if article.get('summary'):
-                md += f"  > {article['summary']}\n"
-            md += "\n"
+        for a in article_list:
+            md += f"#### [{a.get('title', '无标题')}]({a.get('url')})\n"
+            if a.get('banner_url'):
+                md += f"![banner]({a['banner_url']})\n\n"
+            md += f"- **阅读**: {a.get('stats', {}).get('view', 0)} | **发布于**: {datetime.fromtimestamp(a.get('publish_time')).strftime('%Y-%m-%d')}"
+            md += f"> {a.get('summary', '无摘要')}\n\n"
         return md
     except Exception as e:
-        return f"格式化专栏文章数据时出错: {e}"
+        return f"格式化专栏文章时出错: {e}"
 
 # --- 主函数 ---
 def main():

@@ -40,7 +40,7 @@ def _get_cookies(cred: Credential) -> str:
     return "; ".join(cookie_parts)
 
 def _parse_dynamic_item(item: dict) -> dict:
-    """Helper function to parse a single dynamic item into a clean dict."""
+    """将单个动态的原始字典数据解析为干净的目标格式。"""
     try:
         # Core modules
         module_author = item.get('modules', {}).get('module_author', {})
@@ -63,7 +63,6 @@ def _parse_dynamic_item(item: dict) -> dict:
         # Type-specific parsing
         major = module_dynamic.get('major', {})
         if not major:
-            # Handle cases like deleted content
             if module_dynamic.get('desc'):
                 parsed['text_content'] = module_dynamic.get('desc', {}).get('text')
             return parsed
@@ -72,7 +71,7 @@ def _parse_dynamic_item(item: dict) -> dict:
         if major_type == 'MAJOR_TYPE_OPUS':  # Image-and-text
             opus = major.get('opus', {})
             parsed['text_content'] = opus.get('summary', {}).get('text')
-            parsed['images'] = [f"![image]({p.get('url')})" for p in opus.get('pics', [])]
+            parsed['images'] = [p.get('url') for p in opus.get('pics', [])]
         elif major_type == 'MAJOR_TYPE_ARCHIVE':  # Video
             archive = major.get('archive', {})
             parsed['text_content'] = archive.get('dynamic')
@@ -80,7 +79,7 @@ def _parse_dynamic_item(item: dict) -> dict:
                 "title": archive.get('title'),
                 "bvid": archive.get('bvid'),
                 "desc": archive.get('desc'),
-                "pic": f"![cover]({archive.get('pic')})" if archive.get('pic') else ""
+                "pic": archive.get('pic')
             }
         elif major_type == 'MAJOR_TYPE_ARTICLE': # Article
             article = major.get('article', {})
@@ -89,9 +88,8 @@ def _parse_dynamic_item(item: dict) -> dict:
                 "id": article.get('id'),
                 "title": article.get('title'),
                 "desc": article.get('desc'),
-                "cover": f"![cover]({article.get('covers',[''])[0]})" if article.get('covers') else ""
+                "covers": article.get('covers', [])
             }
-        # To-do: Add parsers for other major_types like FORWARD, LIVE, etc.
 
         return parsed
     except Exception as e:
@@ -122,25 +120,22 @@ async def get_user_id_by_username(username: str) -> Optional[int]:
 
 @alru_cache(maxsize=32)
 async def fetch_user_info(user_id: int, cred: Credential) -> Dict[str, Any]:
-    """获取B站用户的详细资料。返回JSON对象，其中头像(face)和头图(top_photo)为Markdown格式。为保证数据完整，默认返回所有字段。"""
+    """获取B站用户的详细资料。返回JSON对象，为保证数据完整，默认返回所有字段。"""
     try:
         u = user.User(uid=user_id, credential=cred)
         info = await u.get_user_info()
         if not info or 'mid' not in info:
             raise ValueError("User info response is invalid")
 
-        face_url = info.get("face")
-        top_photo_url = info.get("top_photo")
-
         user_data = {
             "mid": info.get("mid"),
             "name": info.get("name"),
-            "face": f"![avatar]({face_url})" if face_url else "",
+            "face": info.get("face"),
             "sign": info.get("sign"),
             "level": info.get("level"),
             "birthday": info.get("birthday"),
             "sex": info.get("sex"),
-            "top_photo": f"![header]({top_photo_url})" if top_photo_url else "",
+            "top_photo": info.get("top_photo"),
             "live_room": info.get("live_room"),
             "following": None,
             "follower": None
@@ -178,14 +173,13 @@ async def fetch_user_info(user_id: int, cred: Credential) -> Dict[str, Any]:
         return {"error": f"获取用户信息时发生未知错误: {str(e)}"}
 
 async def fetch_user_videos(user_id: int, limit: int, cred: Credential) -> Dict[str, Any]:
-    """获取用户的视频列表。返回JSON列表，其中封面(pic)为Markdown格式。'subtitle'字段包含字幕对象，其'subtitles'列表内含可用于文本分析的字幕URL。"""
+    """获取用户的视频列表。'subtitle'字段包含字幕对象，其'subtitles'列表内含可用于文本分析的字幕URL。"""
     try:
         u = user.User(uid=user_id, credential=cred)
         video_list = await u.get_videos(ps=limit)
         raw_videos = video_list.get("list", {}).get("vlist", [])
         processed_videos = []
         for v_data in raw_videos:
-            pic_url = v_data.get("pic")
             processed_video = {
                 "mid": v_data.get("mid"),
                 "bvid": v_data.get("bvid"),
@@ -198,7 +192,7 @@ async def fetch_user_videos(user_id: int, limit: int, cred: Credential) -> Dict[
                 "comment": v_data.get("comment"),
                 "favorites": v_data.get("favorites"),
                 "like": v_data.get("like"),
-                "pic": f"![cover]({pic_url})" if pic_url else "",
+                "pic": v_data.get("pic"),
                 "subtitle": v_data.get("subtitle"),
                 "url": f"https://www.bilibili.com/video/{v_data.get('bvid')}"
             }
@@ -239,7 +233,7 @@ async def fetch_user_dynamics(user_id: int, limit: int, cred: Credential, dynami
         return {"error": f"处理动态数据时发生未知错误: {str(e)}"}
 
 async def fetch_user_articles(user_id: int, limit: int, cred: Credential) -> Dict[str, Any]:
-    """获取用户的专栏文章列表。返回JSON列表，其中头图(banner_url)为Markdown格式。为保证数据完整，默认返回所有字段。"""
+    """获取用户的专栏文章列表。为保证数据完整，默认返回所有字段。"""
     try:
         u = user.User(uid=user_id, credential=cred)
         articles_data = await u.get_articles(ps=limit)
@@ -250,13 +244,12 @@ async def fetch_user_articles(user_id: int, limit: int, cred: Credential) -> Dic
             if len(processed_articles) >= limit:
                 break
 
-            banner_url = article_data.get("banner_url")
             processed_article = {
                 "mid": article_data.get("author", {}).get("mid"),
                 "id": article_data.get("id"),
                 "title": article_data.get("title"),
                 "summary": article_data.get("summary"),
-                "banner_url": f"![banner]({banner_url})" if banner_url else "",
+                "banner_url": article_data.get("banner_url"),
                 "publish_time": article_data.get("publish_time"),
                 "stats": article_data.get("stats"),
                 "words": article_data.get("words"),
