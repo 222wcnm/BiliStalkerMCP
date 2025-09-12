@@ -1,31 +1,31 @@
 # GEMINI.md - BiliStalkerMCP
 
-## 1. Project Overview
+## 1. 项目概述
 
-BiliStalkerMCP is a Model Context Protocol (MCP) server designed to provide AI models with up-to-date information about Bilibili users. It allows AI agents to fetch a user's videos, dynamics, and articles in a structured format.
+BiliStalkerMCP 是一个模型上下文协议 (MCP) 服务器，旨在为 AI 模型提供有关 Bilibili 用户的最新信息。它允许 AI 代理以结构化格式获取用户的视频、动态和文章。
 
-The project is built in Python and leverages `FastMCP` and `bilibili-api-python`.
+该项目使用 Python 构建，并利用了 `FastMCP` 和 `bilibili-api-python`。
 
-After a major refactoring, the project is now fully asynchronous, uses caching for performance, and relies directly on the `bilibili-api` library for robust data parsing, having removed previous manual implementations.
+经过一次重大重构后，该项目现在是完全异步的，使用缓存来提高性能，并直接依赖 `bilibili-api` 库进行稳健的数据解析，移除了之前的手动实现。
 
-### Exposed Tools:
-*   `get_user_info`: Fetches a user's profile information.
-*   `get_user_video_updates`: Retrieves a user's latest video uploads.
-*   `get_user_dynamic_updates`: Gets a user's latest dynamics.
-*   `get_user_articles`: Fetches a user's published articles.
+### 暴露的工具:
+*   `get_user_info`: 获取用户的个人资料信息。
+*   `get_user_video_updates`: 检索用户的最新视频上传。
+*   `get_user_dynamic_updates`: 获取用户的最新动态。
+*   `get_user_articles`: 获取用户发布的文章。
 
 ---
 
-## 2. Build, Run, and Test
+## 2. 构建、运行与测试
 
-### Installation
+### 安装
 ```bash
-# Install and run the server via uvx
+# 通过 uvx 安装并运行服务器
 uvx bili-stalker-mcp
 ```
 
-### Server Configuration (Example for Cline)
-Add to `settings.json` and provide your Bilibili cookie values:
+### 服务器配置 (Cline 示例)
+添加到 `settings.json` 并提供您的 Bilibili cookie 值:
 ```json
 {
   "mcpServers": {
@@ -42,55 +42,73 @@ Add to `settings.json` and provide your Bilibili cookie values:
 }
 ```
 
-### Running Tests
-1.  Create a `BILI_COOKIE.txt` file in the project root with your cookie string.
-2.  Run the test suite:
+### 运行测试
+1.  在项目根目录中创建一个 `BILI_COOKIE.txt` 文件，并包含您的 cookie 字符串。
+2.  运行测试套件:
     ```bash
     python tests/test_suite.py -u <username_or_uid>
     ```
 
 ---
 
-## 3. Current Task: Data Payload Slimming
+## 3. 当前任务：定义数据负载
 
-**Goal**: Modify the `fetch_*` functions in `bili_stalker_mcp/core.py` to return lean, structured JSON objects optimized for a downstream AI analysis agent.
+**目标**: 修改 `bili_stalker_mcp/core.py` 中的 `fetch_*` 函数，使其根据以下要求返回特定的结构化 JSON 对象。
 
-### Target Data Schemas:
+### 目标数据模式:
 
-**`get_user_info` should return:**
+**`get_user_info` 应返回:**
+返回 `user.get_user_info` 和 `relation.stat` 中的所有字段，但**排除** `vip` (会员) 和 `official` (认证) 相关字段。
 ```json
 {
   "mid": 12345,
   "name": "UserName",
-  "sign": "User's signature text.",
+  "face": "http://...",
+  "sign": "用户的个性签名。",
   "level": 6,
+  "birthday": "MM-DD",
+  "sex": "男",
+  "top_photo": "http://...",
+  "live_room": {
+      "roomid": 12345,
+      "url": "http://...",
+      "title": "直播间标题",
+      "liveStatus": 1
+  },
   "following": 500,
   "follower": 10000
 }
 ```
 
-**`get_user_video_updates` should return a list of:**
+**`get_user_video_updates` 应返回一个列表，其中包含:**
+返回视频的所有可用字段。如果视频没有字幕，`subtitle` 字段应包含字符串 "视频无字幕"。
 ```json
 {
   "bvid": "BV1xx411c7xx",
-  "url": "https://www.bilibili.com/video/BV1xx411c7xx",
-  "title": "Video Title",
-  "description": "Video description text.",
-  "created": "2023-10-27T10:00:00Z",
+  "aid": 54321,
+  "title": "视频标题",
+  "description": "视频简介文本。",
+  "created": 1672531200,
   "length": "10:30",
-  "play": 150000
+  "play": 150000,
+  "comment": 1200,
+  "favorites": 3000,
+  "like": 8000,
+  "pic": "http://...",
+  "subtitle": "视频无字幕"
 }
 ```
 
-**`get_user_dynamic_updates` should return a list of:**
+**`get_user_dynamic_updates` 应返回一个列表，其中包含:**
+(需求待定，暂时不做修改。)
 ```json
 {
   "dynamic_id": "123456789012345678",
-  "type": "VIDEO" or "DRAW" or "FORWARD",
+  "type": "VIDEO / DRAW / FORWARD",
   "publish_time": "2023-10-27T10:00:00Z",
-  "text": "The core text content of the dynamic.",
-  "url": "URL to the dynamic or the content it refers to",
-  "bvid": "BV1xx411c7xx", // (only if type is VIDEO)
+  "text": "动态的核心文本内容。",
+  "url": "指向动态或其引用内容URL",
+  "bvid": "BV1xx411c7xx", // (仅当类型为 VIDEO 时)
   "stat": {
     "like": 100,
     "comment": 20,
@@ -99,21 +117,26 @@ Add to `settings.json` and provide your Bilibili cookie values:
 }
 ```
 
-**`get_user_articles` should return a list of:**
+**`get_user_articles` 应返回一个列表，其中包含:**
+返回所有可用字段，但**排除** `category.name`。
 ```json
 {
   "id": 12345,
-  "url": "https://www.bilibili.com/read/cv12345",
-  "title": "Article Title",
-  "summary": "Article summary text.",
-  "publish_time": "2023-10-27T10:00:00Z",
-  "view": 5000,
-  "like": 200,
-  "comment": 30
+  "title": "文章标题",
+  "summary": "文章摘要文本。",
+  "banner_url": "http://...",
+  "publish_time": 1672531200,
+  "stats": {
+    "view": 5000,
+    "like": 200,
+    "reply": 30
+  },
+  "words": 1500
 }
 ```
 
-### Next Step for New Agent:
-1.  Read this document.
-2.  Read `bili_stalker_mcp/core.py`.
-3.  Start by modifying the `fetch_user_info` function to match the target schema above.
+### 后续步骤:
+1.  阅读此文档以确认需求。
+2.  阅读 `bili_stalker_mcp/core.py`。
+3.  根据上述模式修改 `fetch_*` 函数，从 `fetch_user_info` 开始。
+4.  频繁提交变更。
