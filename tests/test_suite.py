@@ -114,7 +114,7 @@ async def main():
     parser = argparse.ArgumentParser(description="BiliStalkerMCP 测试套件")
     parser.add_argument("-u", "--user", help="要测试的用户名或用户ID", default="35847683")
     parser.add_argument("-l", "--limit", type=int, help="获取内容的数量限制", default=10)
-    parser.add_argument("-t", "--tests", nargs='+'. help="指定要运行的测试模块 (all, user, video, dynamic, article)", default=["all"])
+    parser.add_argument("-t", "--tests", nargs='+', help="指定要运行的测试模块 (all, user, video, dynamic, article)", default=["all"])
     args = parser.parse_args()
 
     cred = load_credentials()

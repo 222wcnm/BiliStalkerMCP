@@ -82,7 +82,7 @@ bili_stalker_mcp = ["py.typed"]
 [tool.black]
 line-length = 88
 target-version = ['py310']
-include = '\.pyi?
+include = '\.pyi?'
 
 extend-exclude = '''
 /(
