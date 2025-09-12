@@ -71,21 +71,14 @@ async def fetch_user_info(user_id: int, cred: Credential) -> Dict[str, Any]:
         if not info or 'mid' not in info:
             raise ValueError("User info response is invalid")
 
-        user_data = {
-            "mid": info.get("mid"),
-            "name": info.get("name"),
-            "face": info.get("face"),
-            "sign": info.get("sign"),
-            "level": info.get("level"),
-            "following": None, 
-            "follower": None, 
-            "birthday": info.get("birthday"),
-            "sex": info.get("sex"),
-            "vip": info.get("vip"),
-            "official": info.get("official"),
-            "top_photo": info.get("top_photo"),
-            "live_room": info.get("live_room")
-        }
+        # 从API返回结果中复制基础信息，然后移除不需要的字段
+        user_data = info.copy()
+        user_data.pop("vip", None)
+        user_data.pop("official", None)
+
+        # 初始化并获取关注/粉丝数
+        user_data['following'] = None
+        user_data['follower'] = None
 
         try:
             stat_url = "https://api.bilibili.com/x/relation/stat"
@@ -126,16 +119,18 @@ async def fetch_user_videos(user_id: int, limit: int, cred: Credential) -> Dict[
         raw_videos = video_list.get("list", {}).get("vlist", [])
         processed_videos = []
         for v_data in raw_videos:
-            publish_time = datetime.fromtimestamp(v_data.get("created"), tz=timezone.utc).isoformat() if v_data.get("created") else None
-            processed_videos.append({
-                "bvid": v_data.get("bvid"),
-                "title": v_data.get("title"),
-                "description": v_data.get("description"),
-                "created": publish_time,
-                "length": v_data.get("length"),
-                "play": v_data.get("play"),
-                "url": f"https://www.bilibili.com/video/{v_data.get('bvid')}",
-            })
+            # 直接复制 API 返回的视频数据
+            processed_video = v_data.copy()
+
+            # 添加便利的 URL 字段
+            processed_video['url'] = f"https://www.bilibili.com/video/{v_data.get('bvid')}"
+
+            # 根据需求处理字幕字段
+            subtitle_info = v_data.get("subtitle", {})
+            if not subtitle_info or not subtitle_info.get("subtitles"):
+                processed_video["subtitle"] = "视频无字幕"
+            
+            processed_videos.append(processed_video)
         return {"videos": processed_videos, "total": video_list.get("page", {}).get("count", 0)}
     except ApiException as e:
         logger.error(f"Bilibili API error for videos of UID {user_id}: {e}")
@@ -170,26 +165,17 @@ async def fetch_user_articles(user_id: int, limit: int, cred: Credential) -> Dic
         for article_data in raw_articles:
             if len(processed_articles) >= limit:
                 break
-            
-            publish_time = None
-            publish_timestamp = article_data.get("publish_time")
-            if publish_timestamp:
-                try:
-                    publish_time = datetime.fromtimestamp(publish_timestamp, tz=timezone.utc).isoformat()
-                except (ValueError, OSError) as e:
-                    logger.warning(f"Invalid timestamp for article {article_data.get('id')}: {e}")
 
-            processed_articles.append({
-                "id": article_data.get("id"),
-                "title": article_data.get("title"),
-                "summary": article_data.get("summary"),
-                "banner_url": article_data.get("banner_url"),
-                "publish_time": publish_time,
-                "view": article_data.get("stats", {}).get("view", 0),
-                "like": article_data.get("stats", {}).get("like", 0),
-                "comment": article_data.get("stats", {}).get("reply", 0),
-                "url": f"https://www.bilibili.com/read/cv{article_data.get('id')}"
-            })
+            # 直接复制 API 返回的文章数据
+            processed_article = article_data.copy()
+
+            # 根据需求移除 category 字段
+            processed_article.pop("category", None)
+            
+            # 添加便利的 URL 字段
+            processed_article['url'] = f"https://www.bilibili.com/read/cv{article_data.get('id')}"
+
+            processed_articles.append(processed_article)
             
         return {"articles": processed_articles}
     except ApiException as e:
