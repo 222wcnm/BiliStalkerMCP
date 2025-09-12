@@ -78,7 +78,6 @@ async def get_user_video_updates(user_id: Optional[int] = None, username: Option
     根据Bilibili用户的UID或用户名，获取该用户最近发布的视频列表。
 
     您可以指定获取视频的数量。返回的每个视频对象都包含标题、描述、播放量、弹幕数以及封面图URL等信息。
-    如果视频有字幕，'subtitle'字段会包含字幕信息；否则，该字段为字符串 "视频无字幕"。
     您必须提供 user_id 或 username 中的一个。
 
     :param user_id: 用户的Bilibili UID (可选)。
@@ -222,7 +221,7 @@ def format_video_response(videos_json: str) -> str:
             md += f"#### [{v.get('title', '无标题')}]({v.get('url')})\n"
             if v.get('pic'):
                 md += f"![cover]({v['pic']})\n\n"
-            md += f"- **播放**: {v.get('play', 0)} | **点赞**: {v.get('like', 0)} | **发布于**: {datetime.fromtimestamp(v.get('created')).strftime('%Y-%m-%d')}\n\n"
+            md += f"- **播放**: {v.get('play', 0)} | **点赞**: {v.get('like', 0)} | **发布于**: {datetime.fromtimestamp(v.get('created')).strftime('%Y-%m-%d %H:%M')}\n\n"
         return md
     except Exception as e:
         return f"格式化视频数据时出错: {e}"
@@ -262,7 +261,7 @@ def format_articles_response(articles_json: str) -> str:
             md += f"#### [{a.get('title', '无标题')}]({a.get('url')})\n"
             if a.get('banner_url'):
                 md += f"![banner]({a['banner_url']})\n\n"
-            md += f"- **阅读**: {a.get('stats', {}).get('view', 0)} | **发布于**: {datetime.fromtimestamp(a.get('publish_time')).strftime('%Y-%m-%d')}"
+            md += f"- **阅读**: {a.get('stats', {}).get('view', 0)} | **发布于**: {datetime.fromtimestamp(a.get('publish_time')).strftime('%Y-%m-%d %H:%M')}"
             md += f"> {a.get('summary', '无摘要')}\n\n"
         return md
     except Exception as e:
