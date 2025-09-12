@@ -39,6 +39,7 @@ dependencies = [
     "pyyaml>=6.0",
     "requests>=2.31.0",
     "httpx>=0.25.0",
+    "async-lru>=2.0.4",
 ]
 
 [project.optional-dependencies]
@@ -81,7 +82,8 @@ bili_stalker_mcp = ["py.typed"]
 [tool.black]
 line-length = 88
 target-version = ['py310']
-include = '\.pyi?$'
+include = '\.pyi?
+
 extend-exclude = '''
 /(
   # directories
