@@ -1,45 +1,31 @@
 # GEMINI.md - BiliStalkerMCP
 
-## Project Overview
+## 1. Project Overview
 
-BiliStalkerMCP is a Model Context Protocol (MCP) server designed to provide AI models with up-to-date information about Bilibili users. It allows AI agents to fetch a user's videos, dynamics (social media-style posts), and articles in a structured format.
+BiliStalkerMCP is a Model Context Protocol (MCP) server designed to provide AI models with up-to-date information about Bilibili users. It allows AI agents to fetch a user's videos, dynamics, and articles in a structured format.
 
-The project is built in Python and leverages the following key technologies:
+The project is built in Python and leverages `FastMCP` and `bilibili-api-python`.
 
-*   **FastMCP**: A Python framework for rapidly building MCP servers.
-*   **bilibili-api-python**: A comprehensive library for interacting with the Bilibili API.
-*   **WBI Signing**: Implements the necessary signing mechanism to access some of Bilibili's newer APIs.
+After a major refactoring, the project is now fully asynchronous, uses caching for performance, and relies directly on the `bilibili-api` library for robust data parsing, having removed previous manual implementations.
 
-The server exposes several tools that an AI agent can call:
-
+### Exposed Tools:
 *   `get_user_info`: Fetches a user's profile information.
 *   `get_user_video_updates`: Retrieves a user's latest video uploads.
-*   `get_user_dynamic_updates`: Gets a user's latest dynamics, with support for filtering by type (e.g., video, article, image posts).
+*   `get_user_dynamic_updates`: Gets a user's latest dynamics.
 *   `get_user_articles`: Fetches a user's published articles.
 
-It also includes prompts to format the raw JSON output from the tools into human-readable Markdown.
+---
 
-## Building and Running
+## 2. Build, Run, and Test
 
 ### Installation
-
-The project is packaged and can be installed using a Python package manager like `uv` or `pip`.
-
 ```bash
-# Using uv
+# Install and run the server via uvx
 uvx bili-stalker-mcp
-
-# Or using pip
-pip install bili-stalker-mcp
 ```
 
-### Running the Server
-
-The server is designed to be run as a command-line application. The `pyproject.toml` file defines the entry point.
-
-To run the server for a client like Cline, you would configure it in the client's settings file, specifying the command and necessary environment variables for Bilibili authentication (SESSDATA, BILI_JCT, BUVID3).
-
-Example `settings.json` for Cline:
+### Server Configuration (Example for Cline)
+Add to `settings.json` and provide your Bilibili cookie values:
 ```json
 {
   "mcpServers": {
@@ -57,22 +43,77 @@ Example `settings.json` for Cline:
 ```
 
 ### Running Tests
-
-The project includes a test suite in `tests/test_suite.py`. It can be run from the command line to verify the core functionality.
-
-1.  **Set up credentials**: Create a `BILI_COOKIE.txt` file in the project root with your Bilibili cookie string, or set the `SESSDATA`, `BILI_JCT`, and `BUVID3` environment variables.
-2.  **Run the test suite**:
-
+1.  Create a `BILI_COOKIE.txt` file in the project root with your cookie string.
+2.  Run the test suite:
     ```bash
-    python tests/test_suite.py -u <username_or_uid> -l <limit>
+    python tests/test_suite.py -u <username_or_uid>
     ```
 
-## Development Conventions
+---
 
-The `.clinerules/bili-stalker-mcp-guidelines.md` file outlines the development philosophy for this project. Key conventions include:
+## 3. Current Task: Data Payload Slimming
 
-*   **User-Focused**: The project is strictly focused on fetching data for a *specific* Bilibili user.
-*   **Read-Only**: All operations must be read-only. No liking, commenting, or other state-changing actions are allowed.
-*   **Data Freshness**: The server should provide the most up-to-date information possible.
-*   **Custom Parsing**: The project includes custom parsers in `bili_stalker_mcp/parsers.py` to handle complex data structures from the Bilibili API, especially for "draw" dynamics (image posts), which the underlying `bilibili-api-python` library may not fully parse. Any changes to dynamic fetching logic must be carefully tested against this.
-*   **Code Style**: The project uses `black` for code formatting and `isort` for import sorting, with configurations defined in `pyproject.toml`.
+**Goal**: Modify the `fetch_*` functions in `bili_stalker_mcp/core.py` to return lean, structured JSON objects optimized for a downstream AI analysis agent.
+
+### Target Data Schemas:
+
+**`get_user_info` should return:**
+```json
+{
+  "mid": 12345,
+  "name": "UserName",
+  "sign": "User's signature text.",
+  "level": 6,
+  "following": 500,
+  "follower": 10000
+}
+```
+
+**`get_user_video_updates` should return a list of:**
+```json
+{
+  "bvid": "BV1xx411c7xx",
+  "url": "https://www.bilibili.com/video/BV1xx411c7xx",
+  "title": "Video Title",
+  "description": "Video description text.",
+  "created": "2023-10-27T10:00:00Z",
+  "length": "10:30",
+  "play": 150000
+}
+```
+
+**`get_user_dynamic_updates` should return a list of:**
+```json
+{
+  "dynamic_id": "123456789012345678",
+  "type": "VIDEO" or "DRAW" or "FORWARD",
+  "publish_time": "2023-10-27T10:00:00Z",
+  "text": "The core text content of the dynamic.",
+  "url": "URL to the dynamic or the content it refers to",
+  "bvid": "BV1xx411c7xx", // (only if type is VIDEO)
+  "stat": {
+    "like": 100,
+    "comment": 20,
+    "forward": 5
+  }
+}
+```
+
+**`get_user_articles` should return a list of:**
+```json
+{
+  "id": 12345,
+  "url": "https://www.bilibili.com/read/cv12345",
+  "title": "Article Title",
+  "summary": "Article summary text.",
+  "publish_time": "2023-10-27T10:00:00Z",
+  "view": 5000,
+  "like": 200,
+  "comment": 30
+}
+```
+
+### Next Step for New Agent:
+1.  Read this document.
+2.  Read `bili_stalker_mcp/core.py`.
+3.  Start by modifying the `fetch_user_info` function to match the target schema above.
