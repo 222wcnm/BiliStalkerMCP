@@ -71,14 +71,20 @@ async def fetch_user_info(user_id: int, cred: Credential) -> Dict[str, Any]:
         if not info or 'mid' not in info:
             raise ValueError("User info response is invalid")
 
-        # 从API返回结果中复制基础信息，然后移除不需要的字段
-        user_data = info.copy()
-        user_data.pop("vip", None)
-        user_data.pop("official", None)
-
-        # 初始化并获取关注/粉丝数
-        user_data['following'] = None
-        user_data['follower'] = None
+        # 根据 GEMINI.md 的定义，精确构建返回对象
+        user_data = {
+            "mid": info.get("mid"),
+            "name": info.get("name"),
+            "face": info.get("face"),
+            "sign": info.get("sign"),
+            "level": info.get("level"),
+            "birthday": info.get("birthday"),
+            "sex": info.get("sex"),
+            "top_photo": info.get("top_photo"),
+            "live_room": info.get("live_room"),
+            "following": None,
+            "follower": None
+        }
 
         try:
             stat_url = "https://api.bilibili.com/x/relation/stat"
@@ -126,8 +132,8 @@ async def fetch_user_videos(user_id: int, limit: int, cred: Credential) -> Dict[
             processed_video['url'] = f"https://www.bilibili.com/video/{v_data.get('bvid')}"
 
             # 根据需求处理字幕字段
-            subtitle_info = v_data.get("subtitle", {})
-            if not subtitle_info or not subtitle_info.get("subtitles"):
+            subtitle_obj = v_data.get("subtitle")
+            if not subtitle_obj or not isinstance(subtitle_obj, dict) or not subtitle_obj.get("subtitles"):
                 processed_video["subtitle"] = "视频无字幕"
             
             processed_videos.append(processed_video)
