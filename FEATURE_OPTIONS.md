@@ -14,22 +14,25 @@
 | :--- | :--- | :--- |
 | `mid` | integer | **用户的唯一数字ID** |
 | `name` | string | 用户的昵称 |
+| `sex` | string | 性别 (`男`, `女`, `保密`) |
 | `face` | string | 头像图片的URL |
 | `sign` | string | 用户的个性签名 |
 | `level` | integer | B站用户等级 (0-6) |
+| `rank` | integer | 排名 (通常是 10000) |
 | `birthday` | string | 生日 (格式如 `MM-DD`) |
-| `sex` | string | 性别 (`男`, `女`, `保密`) |
+| `coins` | integer | 持有的硬币数 |
+| `is_followed` | boolean | 当前凭证是否已关注该用户 |
 | `top_photo` | string | 用户个人空间头图的URL |
-| `live_room.roomid` | integer | 直播间ID |
-| `live_room.url` | string | 直播间URL |
-| `live_room.title` | string | 直播间标题 |
-| `live_room.liveStatus`| integer | 直播状态 (0: 未开播, 1: 直播中) |
-| `vip.type` | integer | 会员类型 (0: 无, 1: 月度, 2: 年度) |
-| `vip.status` | integer | 会员状态 (0: 无, 1: 有效) |
-| `vip.label.text` | string | 会员标签文本 (如 "年度大会员") |
-| `official.role` | integer | 认证类型 (例如 1: 官方, 2: B站UP主) |
-| `official.title` | string | 认证信息标题 (如 "bilibili 知名UP主") |
-| `official.desc` | string | 认证信息的详细描述 |
+| `live_room` | object | 直播间信息，包含 `roomid`, `url`, `title`, `liveStatus` 等 |
+| `vip` | object | 大会员信息，包含 `type`, `status`, `label` 等 |
+| `official` | object | 认证信息，包含 `role`, `title`, `desc` 等 |
+| `fans_medal` | object | 粉丝勋章信息 |
+| `pendant` | object | 头像挂件信息 |
+| `nameplate` | object | 认证铭牌信息 |
+| `school` | object | 学校信息，包含 `name` |
+| `profession` | object | 职业信息 |
+| `series` | object | 系列信息，如是否是UP主工房成员 |
+| `elec` | object | 充电信息 |
 
 ### 2. 用户关系数据 (`relation.stat`)
 
@@ -48,17 +51,24 @@
 | :--- | :--- | :--- |
 | `bvid` | string | **视频的唯一BV号** |
 | `aid` | integer | 视频的av号 |
+| `mid` | integer | **作者的用户ID** |
+| `author` | string | 作者的昵称 |
 | `title` | string | 视频标题 |
 | `description` | string | 视频简介 |
 | `created` | integer | 视频发布时间的Unix时间戳 |
 | `length` | string | 视频时长 (格式 `MM:SS`) |
 | `play` | integer | 播放量 |
 | `comment` | integer | 评论数 |
+| `video_review` | integer | 弹幕数 |
 | `favorites` | integer | 收藏数 |
 | `like` | integer | 点赞数 |
 | `pic` | string | 视频封面的URL |
-| `subtitle.subtitles`| list | 一个包含所有可用字幕信息的列表 |
-| `subtitle.subtitles[].lan_doc` | string | 字幕的语言名称 (如 "中文（中国）") |
+| `copyright` | string | 是否原创 (1: 是) |
+| `typeid` | integer | 视频分区ID |
+| `is_union_video` | integer | 是否为联合投稿 (1: 是) |
+| `is_pay` | integer | 是否为付费视频 (1: 是) |
+| `attribute` | integer | 视频属性的位掩码 |
+| `subtitle` | object | 字幕信息对象，包含 `subtitles` 列表 |
 
 ### 4. 用户动态 (`user.get_dynamics()`)
 
@@ -88,15 +98,18 @@
 | 字段名 | 数据类型 | 解释 |
 | :--- | :--- | :--- |
 | `id` | integer | **文章的唯一ID (cv号)** |
+| `author.mid` | integer | **作者的用户ID** |
+| `author.name` | string | 作者的昵称 |
 | `title` | string | 文章标题 |
 | `summary` | string | 文章摘要 |
 | `banner_url` | string | 文章头图的URL |
 | `publish_time` | integer | 发布时间的Unix时间戳 |
-| `stats.view` | integer | 阅读量 |
-| `stats.like` | integer | 点赞数 |
-| `stats.reply` | integer | 评论数 |
+| `ctime` | integer | 创建时间的Unix时间戳 |
 | `words` | integer | 文章字数 |
-| `category.name` | string | 文章分区名称 |
+| `stats` | object | 统计信息，包含 `view`, `favorite`, `like`, `reply` 等 |
+| `category` | object | 分区信息，包含 `id` 和 `name` |
+| `reprint` | integer | 是否为转载 (0: 原创, 1: 转载) |
+| `image_urls` | list | 正文中所有图片的URL列表 |
 
 ---
 

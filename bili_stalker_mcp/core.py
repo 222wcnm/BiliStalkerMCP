@@ -64,23 +64,25 @@ async def get_user_id_by_username(username: str) -> Optional[int]:
 
 @alru_cache(maxsize=32)
 async def fetch_user_info(user_id: int, cred: Credential) -> Dict[str, Any]:
-    """获取并处理B站用户信息"""
+    """获取B站用户的详细资料。返回JSON对象，其中头像(face)和头图(top_photo)为Markdown格式。为保证数据完整，默认返回所有字段。"""
     try:
         u = user.User(uid=user_id, credential=cred)
         info = await u.get_user_info()
         if not info or 'mid' not in info:
             raise ValueError("User info response is invalid")
 
-        # 根据 GEMINI.md 的定义，精确构建返回对象
+        face_url = info.get("face")
+        top_photo_url = info.get("top_photo")
+
         user_data = {
             "mid": info.get("mid"),
             "name": info.get("name"),
-            "face": info.get("face"),
+            "face": f"![avatar]({face_url})" if face_url else "",
             "sign": info.get("sign"),
             "level": info.get("level"),
             "birthday": info.get("birthday"),
             "sex": info.get("sex"),
-            "top_photo": info.get("top_photo"),
+            "top_photo": f"![header]({top_photo_url})" if top_photo_url else "",
             "live_room": info.get("live_room"),
             "following": None,
             "follower": None
@@ -118,25 +120,37 @@ async def fetch_user_info(user_id: int, cred: Credential) -> Dict[str, Any]:
         return {"error": f"获取用户信息时发生未知错误: {str(e)}"}
 
 async def fetch_user_videos(user_id: int, limit: int, cred: Credential) -> Dict[str, Any]:
-    """获取并处理用户视频列表"""
+    """获取用户的视频列表。返回JSON列表，其中封面(pic)为Markdown格式。'subtitle'字段包含字幕对象，其'subtitles'列表内含可用于文本分析的字幕URL。"""
     try:
         u = user.User(uid=user_id, credential=cred)
         video_list = await u.get_videos(ps=limit)
         raw_videos = video_list.get("list", {}).get("vlist", [])
         processed_videos = []
         for v_data in raw_videos:
-            # 直接复制 API 返回的视频数据
-            processed_video = v_data.copy()
+            pic_url = v_data.get("pic")
+            processed_video = {
+                "mid": v_data.get("mid"),
+                "bvid": v_data.get("bvid"),
+                "aid": v_data.get("aid"),
+                "title": v_data.get("title"),
+                "description": v_data.get("description"),
+                "created": v_data.get("created"),
+                "length": v_data.get("length"),
+                "play": v_data.get("play"),
+                "comment": v_data.get("comment"),
+                "favorites": v_data.get("favorites"),
+                "like": v_data.get("like"),
+                "pic": f"![cover]({pic_url})" if pic_url else "",
+                "subtitle": v_data.get("subtitle"),
+                "url": f"https://www.bilibili.com/video/{v_data.get('bvid')}"
+            }
 
-            # 添加便利的 URL 字段
-            processed_video['url'] = f"https://www.bilibili.com/video/{v_data.get('bvid')}"
-
-            # 根据需求处理字幕字段
-            subtitle_obj = v_data.get("subtitle")
+            subtitle_obj = processed_video.get("subtitle")
             if not subtitle_obj or not isinstance(subtitle_obj, dict) or not subtitle_obj.get("subtitles"):
                 processed_video["subtitle"] = "视频无字幕"
             
             processed_videos.append(processed_video)
+
         return {"videos": processed_videos, "total": video_list.get("page", {}).get("count", 0)}
     except ApiException as e:
         logger.error(f"Bilibili API error for videos of UID {user_id}: {e}")
@@ -161,7 +175,7 @@ async def fetch_user_dynamics(user_id: int, limit: int, cred: Credential, dynami
         return {"error": f"处理动态数据时发生未知错误: {str(e)}"}
 
 async def fetch_user_articles(user_id: int, limit: int, cred: Credential) -> Dict[str, Any]:
-    """获取用户专栏文章列表"""
+    """获取用户的专栏文章列表。返回JSON列表，其中头图(banner_url)为Markdown格式。为保证数据完整，默认返回所有字段。"""
     try:
         u = user.User(uid=user_id, credential=cred)
         articles_data = await u.get_articles(ps=limit)
@@ -172,15 +186,18 @@ async def fetch_user_articles(user_id: int, limit: int, cred: Credential) -> Dic
             if len(processed_articles) >= limit:
                 break
 
-            # 直接复制 API 返回的文章数据
-            processed_article = article_data.copy()
-
-            # 根据需求移除 category 字段
-            processed_article.pop("category", None)
-            
-            # 添加便利的 URL 字段
-            processed_article['url'] = f"https://www.bilibili.com/read/cv{article_data.get('id')}"
-
+            banner_url = article_data.get("banner_url")
+            processed_article = {
+                "mid": article_data.get("author", {}).get("mid"),
+                "id": article_data.get("id"),
+                "title": article_data.get("title"),
+                "summary": article_data.get("summary"),
+                "banner_url": f"![banner]({banner_url})" if banner_url else "",
+                "publish_time": article_data.get("publish_time"),
+                "stats": article_data.get("stats"),
+                "words": article_data.get("words"),
+                "url": f"https://www.bilibili.com/read/cv{article_data.get('id')}"
+            }
             processed_articles.append(processed_article)
             
         return {"articles": processed_articles}

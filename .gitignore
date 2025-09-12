@@ -1,46 +1,10 @@
-# Dependencies
-node_modules/
-.env
-
-# Python
+# Byte-compiled / optimized / DLL files
 __pycache__/
-*.pyc
-*.pyo
-*.pyd
-.Python
+*.py[cod]
+*$py.class
+
+# C extensions
 *.so
-.coverage
-.coverage.*
-.cache
-.pytest_cache/
-.pytest_cache
-nosetests.xml
-coverage.xml
-*.cover
-*.log
-.pytest_cache/
-.pytest_cache
-.hypothesis/
-
-# IDEs
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-
-# OS
-.DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
-Thumbs.db
-
-# uv
-.venv/
-uv.lock
 
 # Distribution / packaging
 .Python
@@ -56,16 +20,20 @@ parts/
 sdist/
 var/
 wheels/
+pip-wheel-metadata/
+share/python-wheels/
 *.egg-info/
 .installed.cfg
 *.egg
 MANIFEST
 
 # PyInstaller
-#  Usually these files are written by a python script from a template
-#  before PyInstaller builds the exe, so as to inject date/other infos into it.
-*.manifest
+#  Usually these files are written by a PyInstaller script; a good rule of
+#  thumb is to gitignore PyInstaller-generated files and commit a single script
+#  that builds them.
 *.spec
+dist/
+build/
 
 # Installer logs
 pip-log.txt
@@ -118,14 +86,7 @@ ipython_config.py
 # pyenv
 .python-version
 
-# pipenv
-#   According to pypa/pipenv#598, it is recommended to include Pipfile.lock in version control.
-#   However, in case of collaboration, if having platform-specific dependencies or dependencies
-#   having no cross-platform support, pipenv may install dependencies that don't work, or not
-#   install all needed dependencies.
-#Pipfile.lock
-
-# PEP 582; used by e.g. github.com/David-OConnor/pyflow
+# PEP 582; used by PDM, PEP 582 compatible tools and project runners
 __pypackages__/
 
 # Celery stuff
@@ -162,10 +123,10 @@ dmypy.json
 # Pyre type checker
 .pyre/
 
-# editors
-/.vscode
-/.idea
+# pytype static analyzer
+.pytype/
 
-# temp files
-*.tmp
-*.temp
+# Cython debug symbols
+cython_debug/
+
+BILI_COOKIE.txt
