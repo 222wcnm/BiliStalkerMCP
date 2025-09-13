@@ -192,7 +192,7 @@ async def get_user_followings(user_id: int, page: int = 1, limit: int = 20) -> D
     return await fetch_user_followings(user_id, page, limit, cred)
 
 
-# --- 提示预设 (用于规范智能体输出格式) ---
+# --- 提示预设 (用于规范模型输出格式) ---
 @mcp.prompt()
 def format_user_info_response(user_info_json: str) -> str:
     """格式化用户个人信息为Markdown, 支持get_user_info工具的输出"""

@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "bili_stalker_mcp"
 version = "2.1"
-description = "MCP Server for getting Bilibili user data for AI agents"
+description = "MCP Server for getting Bilibili user video updates"
 authors = [
     {name = "222wcnm", email = "2328072813li@gmail.com"},
 ]
@@ -15,7 +15,7 @@ maintainers = [
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "MIT"}
-keywords = ["mcp", "bilibili", "stalker", "video", "updates", "ai", "agent", "model-context-protocol"]
+keywords = ["mcp", "bilibili", "stalker", "video", "updates", "ai", "model-context-protocol"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Environment :: Console",

@@ -1,6 +1,6 @@
 # BiliStalkerMCP - Gemini 工作台
 
-本文档是为 AI 智能体提供的核心上下文，用于记录项目的关键信息、开发准则和任务规划。
+本文档是为 AI 助手提供的核心上下文，用于记录项目的关键信息、开发准则和任务规划。
 
 ---
 
@@ -62,7 +62,7 @@
     *   在 `user_service.py` 中添加 `search_users(...)` 方法，负责调用 API、处理分页并将结果转换为 Pydantic 模型。
 
 3.  **工具层 (`cli.py`)**:
-    *   在 `cli.py` 中注册新的 `search_users` 工具，使其对 AI 智能体可用。
+    *   在 `cli.py` 中注册新的 `search_users` 工具，使其对 AI 模型可用。
 
 ### 3.2. 任务清单 (Todo List)
 
