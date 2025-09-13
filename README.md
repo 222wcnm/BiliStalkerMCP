@@ -3,7 +3,7 @@
 [![Python](https://img.shields.io/badge/Python-3.10+-blue?logo=python)](https://www.python.org/)
 [![MCP](https://img.shields.io/badge/MCP-Compatible-orange)](https://github.com/jlowin/fastmcp)
 
-Model Context Protocol server for Bilibili user data acquisition.
+Model Context Protocol server for Bilibili user data acquisition by AI agents.
 
 ## Installation
 
