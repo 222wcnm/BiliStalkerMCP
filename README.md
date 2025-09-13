@@ -44,7 +44,7 @@ Add to your MCP client settings:
 ```bash
 git clone https://github.com/222wcnm/BiliStalkerMCP.git
 cd BiliStalkerMCP
-pip install -e .
+uv pip install -e .
 python tests/test_suite.py -u <user_id_or_username>
 ```
 
