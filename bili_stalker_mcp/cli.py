@@ -71,8 +71,7 @@ def precheck(func: Callable[..., Coroutine[Any, Any, Dict[str, Any]]]) -> Callab
 
 # --- MCP工具定义 ---
 @mcp.tool()
-@precheck
-async def get_user_info(user_id: int) -> Dict[str, Any]:
+async def get_user_info(user_id: Optional[int] = None, username: Optional[str] = None) -> Dict[str, Any]:
     """
     根据Bilibili用户的UID或用户名，获取该用户的个人主页信息。
 
@@ -83,12 +82,24 @@ async def get_user_info(user_id: int) -> Dict[str, Any]:
     :param username: 用户的Bilibili昵称 (可选)。
     :return: 包含用户详细信息的JSON对象。
     """
-    return await fetch_user_info(user_id, cred)
+    if not cred:
+        return {"error": "Credential is not configured. Please set SESSDATA, BILI_JCT, and BUVID3 environment variables."}
+    if not user_id and not username:
+        return {"error": "Either user_id or username must be provided."}
+
+    try:
+        target_uid = await _resolve_user_id(user_id, username)
+        if not target_uid:
+            return {"error": f"User '{username or user_id}' not found. Please check the username or user ID."}
+        
+        return await fetch_user_info(target_uid, cred)
+    except Exception as e:
+        logger.error(f"An unexpected error in get_user_info: {e}")
+        return {"error": f"An unexpected error occurred: {str(e)}."}
 
 
 @mcp.tool()
-@precheck
-async def get_user_video_updates(user_id: int, page: int = 1, limit: int = 10) -> Dict[str, Any]:
+async def get_user_video_updates(user_id: Optional[int] = None, username: Optional[str] = None, page: int = 1, limit: int = 10) -> Dict[str, Any]:
     """
     根据Bilibili用户的UID或用户名，获取该用户最近发布的视频列表。
 
@@ -101,9 +112,22 @@ async def get_user_video_updates(user_id: int, page: int = 1, limit: int = 10) -
     :param limit: 每页数量，默认为10，最大为50。
     :return: 包含视频列表的JSON对象。
     """
+    if not cred:
+        return {"error": "Credential is not configured. Please set SESSDATA, BILI_JCT, and BUVID3 environment variables."}
+    if not user_id and not username:
+        return {"error": "Either user_id or username must be provided."}
     if not (1 <= limit <= 50):
         return {"error": "Limit must be between 1 and 50."}
-    return await fetch_user_videos(user_id, page, limit, cred)
+
+    try:
+        target_uid = await _resolve_user_id(user_id, username)
+        if not target_uid:
+            return {"error": f"User '{username or user_id}' not found. Please check the username or user ID."}
+        
+        return await fetch_user_videos(target_uid, page, limit, cred)
+    except Exception as e:
+        logger.error(f"An unexpected error in get_user_video_updates: {e}")
+        return {"error": f"An unexpected error occurred: {str(e)}."}
 
 @mcp.tool()
 @precheck
