@@ -48,6 +48,8 @@ def load_credentials():
         logger.error("凭证不完整 (SESSDATA, BILI_JCT, BUVID3 都需要)。请检查 BILI_COOKIE.txt 或环境变量。")
         return None
         
+    # 类型断言：这里我们已经确认了所有凭证都不为 None
+    assert sessdata is not None and bili_jct is not None and buvid3 is not None
     return core.get_credential(sessdata, bili_jct, buvid3)
 
 async def test_user_info(cred, user_id, username):
@@ -79,7 +81,16 @@ async def test_videos(cred, user_id, limit):
     logger.info(f"成功获取 {len(videos)} 个视频。")
     
     for video in videos:
+        bvid = video.get('bvid', 'None')
+        aid = video.get('aid', 'None')
+        subtitle_info = video.get('subtitle', {})
+        has_subtitle = subtitle_info.get('has_subtitle', False)
+        subtitle_count = subtitle_info.get('subtitle_count', 0)
+        
         logger.info(f"  - [视频] {video['title']}")
+        logger.info(f"    BVID: {bvid}, AID: {aid}")
+        logger.info(f"    字幕: {has_subtitle} (数量: {subtitle_count})")
+        logger.info(f"    URL: {video.get('url', 'None')}")
 
 async def test_dynamics(cred, user_id, limit):
     """测试动态获取和解析"""
@@ -93,9 +104,22 @@ async def test_dynamics(cred, user_id, limit):
     logger.info(f"成功获取 {len(dynamics)} 条动态。")
 
     for dynamic_item in dynamics:
+        dynamic_type = dynamic_item.get('type', 'UNKNOWN')
+        type_id = dynamic_item.get('type_id', 'N/A')
         text = dynamic_item.get('text_content', '(无文本)')
         text_preview = text.replace('\n', ' ').strip()[:30] + "..." if text != '(无文本)' else "(无文本)"
-        logger.info(f"  - [动态] 类型: {dynamic_item.get('type')}, 内容: {text_preview}")
+        
+        logger.info(f"  - [动态] 类型: {dynamic_type} (ID: {type_id}), 内容: {text_preview}")
+        
+        # 显示特殊字段
+        if 'images' in dynamic_item:
+            images_count = len(dynamic_item['images'])
+            logger.info(f"    图片数量: {images_count}")
+        if 'video' in dynamic_item:
+            video_info = dynamic_item['video']
+            logger.info(f"    视频: {video_info.get('title', 'N/A')} (BVID: {video_info.get('bvid', 'N/A')})")
+        if 'error' in dynamic_item:
+            logger.warning(f"    解析错误: {dynamic_item['error']}")
 
 async def test_articles(cred, user_id, limit):
     """测试专栏文章获取"""

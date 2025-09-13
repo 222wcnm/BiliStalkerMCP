@@ -130,3 +130,19 @@ dmypy.json
 cython_debug/
 
 BILI_COOKIE.txt
+.qoder/repowiki/zh/content/安装与配置.md
+.qoder/repowiki/zh/content/开发与测试.md
+.qoder/repowiki/zh/content/配置文件详解.md
+.qoder/repowiki/zh/content/项目概述.md
+.qoder/repowiki/zh/content/API参考/获取用户动态内容.md
+.qoder/repowiki/zh/content/API参考/获取用户关注列表.md
+.qoder/repowiki/zh/content/API参考/获取用户视频更新.md
+.qoder/repowiki/zh/content/API参考/获取用户信息.md
+.qoder/repowiki/zh/content/API参考/获取用户专栏文章.md
+.qoder/repowiki/zh/content/API参考/API参考.md
+.qoder/repowiki/zh/content/核心架构与代码结构/核心架构与代码结构.md
+.qoder/repowiki/zh/content/核心架构与代码结构/接口层 (cli.py).md
+.qoder/repowiki/zh/content/核心架构与代码结构/配置层 (config.py).md
+.qoder/repowiki/zh/content/核心架构与代码结构/业务逻辑层 (core.py).md
+.qoder/repowiki/zh/meta/repowiki-metadata.json
+OPTIMIZATION_REPORT.md

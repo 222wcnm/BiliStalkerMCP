@@ -99,35 +99,26 @@ async def get_user_info(user_id: Optional[int] = None, username: Optional[str] =
 
 
 @mcp.tool()
-async def get_user_video_updates(user_id: Optional[int] = None, username: Optional[str] = None, page: int = 1, limit: int = 10) -> Dict[str, Any]:
+@precheck
+async def get_user_video_updates(user_id: int, page: int = 1, limit: int = 10) -> Dict[str, Any]:
     """
     根据Bilibili用户的UID或用户名，获取该用户最近发布的视频列表。
 
-    您可以指定获取视频的数量和页码。返回的每个视频对象都包含标题、描述、播放量、弹幕数以及封面图URL等信息。
+    您可以指定获取视频的数量和页码。返回的每个视频对象都包含标题、描述、播放量、弹幕数、封面图URL以及详细的字幕信息等。
+    字幕信息包含：是否有字幕、字幕数量、字幕语言列表和字幕下载URL等。
     您必须提供 user_id 或 username 中的一个。
 
-    :param user_id: 用户的Bilibili UID (可选)。
-    :param username: 用户的Bilibili昵称 (可选)。
+    :param user_id: 用户的Bilibili UID (通过@precheck装饰器自动解析)。
+    :param username: 用户的Bilibili昵称 (通过@precheck装饰器自动解析)。
     :param page: 页码，默认为1。
     :param limit: 每页数量，默认为10，最大为50。
-    :return: 包含视频列表的JSON对象。
+    :return: 包含视频列表的JSON对象，每个视频包含详细的字幕信息。
     """
-    if not cred:
-        return {"error": "Credential is not configured. Please set SESSDATA, BILI_JCT, and BUVID3 environment variables."}
-    if not user_id and not username:
-        return {"error": "Either user_id or username must be provided."}
     if not (1 <= limit <= 50):
         return {"error": "Limit must be between 1 and 50."}
-
-    try:
-        target_uid = await _resolve_user_id(user_id, username)
-        if not target_uid:
-            return {"error": f"User '{username or user_id}' not found. Please check the username or user ID."}
-        
-        return await fetch_user_videos(target_uid, page, limit, cred)
-    except Exception as e:
-        logger.error(f"An unexpected error in get_user_video_updates: {e}")
-        return {"error": f"An unexpected error occurred: {str(e)}."}
+    # @precheck装饰器已经检查了cred，所以这里安全
+    assert cred is not None
+    return await fetch_user_videos(user_id, page, limit, cred)
 
 @mcp.tool()
 @precheck
@@ -150,6 +141,8 @@ async def get_user_dynamic_updates(user_id: int, offset: int = 0, limit: int = 1
         return {"error": "Limit must be between 1 and 50."}
     if dynamic_type not in DynamicType.VALID_TYPES:
         return {"error": f"Invalid dynamic_type. Must be one of {DynamicType.VALID_TYPES}"}
+    # @precheck装饰器已经检查了cred，所以这里安全
+    assert cred is not None
     return await fetch_user_dynamics(user_id, offset, limit, cred, dynamic_type)
 
 
@@ -170,6 +163,8 @@ async def get_user_articles(user_id: int, page: int = 1, limit: int = 10) -> Dic
     """
     if not (1 <= limit <= 50):
         return {"error": "Limit must be between 1 and 50."}
+    # @precheck装饰器已经检查了cred，所以这里安全
+    assert cred is not None
     return await fetch_user_articles(user_id, page, limit, cred)
 
 @mcp.tool()
@@ -189,6 +184,8 @@ async def get_user_followings(user_id: int, page: int = 1, limit: int = 20) -> D
     """
     if not (1 <= limit <= 50):
         return {"error": "Limit must be between 1 and 50."}
+    # @precheck装饰器已经检查了cred，所以这里安全
+    assert cred is not None
     return await fetch_user_followings(user_id, page, limit, cred)
 
 
@@ -230,7 +227,7 @@ def format_user_info_response(user_info_json: str) -> str:
 
 @mcp.prompt()
 def format_video_response(videos_json: str) -> str:
-    """格式化视频数据为Markdown, 支持get_user_video_updates工具的输出"""
+    """格式化视频数据为Markdown, 支持get_user_video_updates工具的输出，现在包含字幕信息"""
     try:
         data = json.loads(videos_json)
         video_list = data.get("videos", [])
@@ -242,7 +239,25 @@ def format_video_response(videos_json: str) -> str:
             md += f"#### [{v.get('title', '无标题')}]({v.get('url')})\n"
             if v.get('pic'):
                 md += f"![cover]({v['pic']})\n\n"
-            md += f"- **播放**: {v.get('play', 0)} | **点赞**: {v.get('like', 0)} | **发布于**: {datetime.fromtimestamp(v.get('created')).strftime('%Y-%m-%d %H:%M')}\n\n"
+            
+            # 基本信息
+            md += f"- **播放**: {v.get('play', 0)} | **点赞**: {v.get('like', 0)} | **发布于**: {datetime.fromtimestamp(v.get('created')).strftime('%Y-%m-%d %H:%M')}\n"
+            
+            # 字幕信息
+            subtitle = v.get('subtitle', {})
+            if subtitle.get('has_subtitle'):
+                subtitle_count = subtitle.get('subtitle_count', 0)
+                subtitle_langs = []
+                for sub in subtitle.get('subtitle_list', []):
+                    lang_doc = sub.get('lan_doc', sub.get('lan', '未知语言'))
+                    subtitle_langs.append(lang_doc)
+                
+                md += f"- **字幕**: 有 ({subtitle_count}种语言: {', '.join(subtitle_langs)})\n"
+            else:
+                md += f"- **字幕**: 无\n"
+            
+            md += "\n"
+        
         return md
     except Exception as e:
         return f"格式化视频数据时出错: {e}"
