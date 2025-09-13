@@ -70,7 +70,7 @@ async def test_user_info(cred, user_id, username):
 async def test_videos(cred, user_id, limit):
     """测试视频和字幕获取"""
     logger.info(f"--- 测试: 获取最新 {limit} 个视频 ---")
-    video_result = await core.fetch_user_videos(user_id, limit, cred)
+    video_result = await core.fetch_user_videos(user_id, 1, limit, cred)
     if "error" in video_result:
         logger.error(f"获取视频失败: {video_result['error']}")
         return
@@ -84,7 +84,7 @@ async def test_videos(cred, user_id, limit):
 async def test_dynamics(cred, user_id, limit):
     """测试动态获取和解析"""
     logger.info(f"--- 测试: 获取最新 {limit} 条动态 (所有类型) ---")
-    dynamics_result = await core.fetch_user_dynamics(user_id, limit, cred, dynamic_type="ALL")
+    dynamics_result = await core.fetch_user_dynamics(user_id, 0, limit, cred, dynamic_type="ALL")
     if "error" in dynamics_result:
         logger.error(f"获取动态失败: {dynamics_result['error']}")
         return
@@ -100,7 +100,7 @@ async def test_dynamics(cred, user_id, limit):
 async def test_articles(cred, user_id, limit):
     """测试专栏文章获取"""
     logger.info(f"--- 测试: 获取最新 {limit} 篇专栏文章 ---")
-    article_result = await core.fetch_user_articles(user_id, limit, cred)
+    article_result = await core.fetch_user_articles(user_id, 1, limit, cred)
     if "error" in article_result:
         logger.error(f"获取专栏文章失败: {article_result['error']}")
         return
@@ -113,13 +113,14 @@ async def test_articles(cred, user_id, limit):
 async def test_followings(cred, user_id, limit):
     """测试关注列表获取"""
     logger.info(f"--- 测试: 获取最新 {limit} 个关注 ---")
-    followings_result = await core.fetch_user_followings(user_id, limit, cred)
+    followings_result = await core.fetch_user_followings(user_id, 1, limit, cred)
     if "error" in followings_result:
         if "隐私" in followings_result['error']:
-            logger.warn(f"获取关注列表失败: {followings_result['error']}")
+            logger.warning(f"获取关注列表失败: {followings_result['error']}")
         else:
             logger.error(f"获取关注列表失败: {followings_result['error']}")
         return
+
 
     followings = followings_result.get("followings", [])
     logger.info(f"成功获取 {len(followings)} 个关注。")
