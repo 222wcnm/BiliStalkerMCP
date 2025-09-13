@@ -15,6 +15,7 @@ from .core import (
     fetch_user_videos,
     fetch_user_dynamics,
     fetch_user_articles,
+    fetch_user_followings,
 )
 from .config import (
     SCHEMAS_URI,
@@ -170,6 +171,37 @@ async def get_user_articles(user_id: Optional[int] = None, username: Optional[st
         logger.error(f"An unexpected error in get_user_articles: {e}")
         return {"error": f"An unexpected error occurred: {str(e)}."}
 
+@mcp.tool()
+async def get_user_followings(user_id: Optional[int] = None, username: Optional[str] = None, limit: int = 20) -> Dict[str, Any]:
+    """
+    根据Bilibili用户的UID或用户名，获取该用户的关注列表。
+
+    您可以指定获取关注用户的数量。返回的每个用户对象都包含昵称、签名和头像等信息。
+    您必须提供 user_id 或 username 中的一个。
+
+    :param user_id: 用户的Bilibili UID (可选)。
+    :param username: 用户的Bilibili昵称 (可选)。
+    :param limit: 需要获取的关注用户数量，默认为20，最大为50。
+    :return: 包含关注用户列表的JSON对象。
+    """
+    if not cred:
+        return {"error": "Credential is not configured. Please set SESSDATA, BILI_JCT, and BUVID3 environment variables."}
+    if not user_id and not username:
+        return {"error": "Either user_id or username must be provided."}
+    if not (1 <= limit <= 50):
+        return {"error": "Limit must be between 1 and 50."}
+
+    try:
+        target_uid = await _resolve_user_id(user_id, username)
+        if not target_uid:
+            return {"error": f"User '{username or user_id}' not found. Please check the username or user ID."}
+
+        followings_data = await fetch_user_followings(target_uid, limit, cred)
+        return followings_data
+    except Exception as e:
+        logger.error(f"An unexpected error in get_user_followings: {e}")
+        return {"error": f"An unexpected error occurred: {str(e)}."}
+
 
 # --- 提示预设 (用于规范模型输出格式) ---
 @mcp.prompt()
@@ -266,6 +298,30 @@ def format_articles_response(articles_json: str) -> str:
         return md
     except Exception as e:
         return f"格式化专栏文章时出错: {e}"
+
+@mcp.prompt()
+def format_followings_response(followings_json: str) -> str:
+    """格式化关注列表数据为Markdown, 支持get_user_followings工具的输出"""
+    try:
+        data = json.loads(followings_json)
+        followings_list = data.get("followings", [])
+        if not followings_list:
+            return "用户没有关注任何人。"
+
+        md = "### 关注列表\n\n"
+        for f in followings_list:
+            md += f"#### {f.get('uname', '无昵称')}\n"
+            if f.get('face'):
+                md += f"![avatar]({f['face']})\n\n"
+            if f.get('sign'):
+                md += f"> {f.get('sign')}\n\n"
+            md += f"- **UID**: {f.get('mid')}\n"
+            if f.get('official_verify'):
+                md += f"- **认证**: {f.get('official_verify')}\n"
+            md += "---\n"
+        return md
+    except Exception as e:
+        return f"格式化关注列表数据时出错: {e}"
 
 # --- 主函数 ---
 def main():

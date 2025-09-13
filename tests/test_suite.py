@@ -110,11 +110,27 @@ async def test_articles(cred, user_id, limit):
     for article in articles:
         logger.info(f"  - [文章] {article['title']}")
 
+async def test_followings(cred, user_id, limit):
+    """测试关注列表获取"""
+    logger.info(f"--- 测试: 获取最新 {limit} 个关注 ---")
+    followings_result = await core.fetch_user_followings(user_id, limit, cred)
+    if "error" in followings_result:
+        if "隐私" in followings_result['error']:
+            logger.warn(f"获取关注列表失败: {followings_result['error']}")
+        else:
+            logger.error(f"获取关注列表失败: {followings_result['error']}")
+        return
+
+    followings = followings_result.get("followings", [])
+    logger.info(f"成功获取 {len(followings)} 个关注。")
+    for following in followings:
+        logger.info(f"  - [关注] {following['uname']}")
+
 async def main():
     parser = argparse.ArgumentParser(description="BiliStalkerMCP 测试套件")
     parser.add_argument("-u", "--user", help="要测试的用户名或用户ID", default="35847683")
     parser.add_argument("-l", "--limit", type=int, help="获取内容的数量限制", default=10)
-    parser.add_argument("-t", "--tests", nargs='+', help="指定要运行的测试模块 (all, user, video, dynamic, article)", default=["all"])
+    parser.add_argument("-t", "--tests", nargs='+', help="指定要运行的测试模块 (all, user, video, dynamic, article, followings)", default=["all"])
     args = parser.parse_args()
 
     cred = load_credentials()
@@ -145,6 +161,9 @@ async def main():
 
     if run_all or "article" in args.tests:
         await test_articles(cred, target_uid, args.limit)
+
+    if run_all or "followings" in args.tests:
+        await test_followings(cred, target_uid, args.limit)
 
     logger.info("--- 测试套件运行完毕 ---")
 
