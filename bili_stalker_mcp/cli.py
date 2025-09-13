@@ -78,7 +78,6 @@ async def get_user_video_updates(user_id: Optional[int] = None, username: Option
     根据Bilibili用户的UID或用户名，获取该用户最近发布的视频列表。
 
     您可以指定获取视频的数量。返回的每个视频对象都包含标题、描述、播放量、弹幕数以及封面图URL等信息。
-    如果视频有字幕，'subtitle'字段会包含字幕信息；否则，该字段为字符串 "视频无字幕"。
     您必须提供 user_id 或 username 中的一个。
 
     :param user_id: 用户的Bilibili UID (可选)。
