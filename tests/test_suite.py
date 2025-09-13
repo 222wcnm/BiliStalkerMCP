@@ -70,7 +70,7 @@ async def test_user_info(cred, user_id, username):
 async def test_videos(cred, user_id, limit):
     """测试视频和字幕获取"""
     logger.info(f"--- 测试: 获取最新 {limit} 个视频 ---")
-    video_result = await core.fetch_user_videos(user_id, limit, cred)
+    video_result = await core.fetch_user_videos(user_id, 1, limit, cred)
     if "error" in video_result:
         logger.error(f"获取视频失败: {video_result['error']}")
         return
@@ -84,7 +84,7 @@ async def test_videos(cred, user_id, limit):
 async def test_dynamics(cred, user_id, limit):
     """测试动态获取和解析"""
     logger.info(f"--- 测试: 获取最新 {limit} 条动态 (所有类型) ---")
-    dynamics_result = await core.fetch_user_dynamics(user_id, limit, cred, dynamic_type="ALL")
+    dynamics_result = await core.fetch_user_dynamics(user_id, 0, limit, cred, dynamic_type="ALL")
     if "error" in dynamics_result:
         logger.error(f"获取动态失败: {dynamics_result['error']}")
         return
@@ -100,7 +100,7 @@ async def test_dynamics(cred, user_id, limit):
 async def test_articles(cred, user_id, limit):
     """测试专栏文章获取"""
     logger.info(f"--- 测试: 获取最新 {limit} 篇专栏文章 ---")
-    article_result = await core.fetch_user_articles(user_id, limit, cred)
+    article_result = await core.fetch_user_articles(user_id, 1, limit, cred)
     if "error" in article_result:
         logger.error(f"获取专栏文章失败: {article_result['error']}")
         return
@@ -110,11 +110,28 @@ async def test_articles(cred, user_id, limit):
     for article in articles:
         logger.info(f"  - [文章] {article['title']}")
 
+async def test_followings(cred, user_id, limit):
+    """测试关注列表获取"""
+    logger.info(f"--- 测试: 获取最新 {limit} 个关注 ---")
+    followings_result = await core.fetch_user_followings(user_id, 1, limit, cred)
+    if "error" in followings_result:
+        if "隐私" in followings_result['error']:
+            logger.warning(f"获取关注列表失败: {followings_result['error']}")
+        else:
+            logger.error(f"获取关注列表失败: {followings_result['error']}")
+        return
+
+
+    followings = followings_result.get("followings", [])
+    logger.info(f"成功获取 {len(followings)} 个关注。")
+    for following in followings:
+        logger.info(f"  - [关注] {following['uname']}")
+
 async def main():
     parser = argparse.ArgumentParser(description="BiliStalkerMCP 测试套件")
     parser.add_argument("-u", "--user", help="要测试的用户名或用户ID", default="35847683")
     parser.add_argument("-l", "--limit", type=int, help="获取内容的数量限制", default=10)
-    parser.add_argument("-t", "--tests", nargs='+', help="指定要运行的测试模块 (all, user, video, dynamic, article)", default=["all"])
+    parser.add_argument("-t", "--tests", nargs='+', help="指定要运行的测试模块 (all, user, video, dynamic, article, followings)", default=["all"])
     args = parser.parse_args()
 
     cred = load_credentials()
@@ -145,6 +162,9 @@ async def main():
 
     if run_all or "article" in args.tests:
         await test_articles(cred, target_uid, args.limit)
+
+    if run_all or "followings" in args.tests:
+        await test_followings(cred, target_uid, args.limit)
 
     logger.info("--- 测试套件运行完毕 ---")
 

@@ -18,12 +18,14 @@ BiliStalkerMCP 是一个模型上下文协议 (MCP) 服务器，旨在为 AI 模
 - **`get_user_video_updates`**: 获取用户最近发布的视频列表，包含标题、统计数据和封面图。
 - **`get_user_dynamic_updates`**: 获取用户最近的动态（帖子），支持纯文字、视频和图文等多种类型。
 - **`get_user_articles`**: 获取用户最近发布的专栏文章列表，包含摘要、统计数据和横幅。
+- **`get_user_followings`**: 获取用户最近关注的用户列表，包含昵称、签名和头像。
 
 #### 提示 (Prompts)
 - **`format_user_info_response`**: 将用户信息格式化为易读的Markdown。
 - **`format_video_response`**: 将视频列表格式化为易读的Markdown。
 - **`format_dynamic_response`**: 将动态列表格式化为易读的Markdown。
 - **`format_articles_response`**: 将文章列表格式化为易读的Markdown。
+- **`format_followings_response`**: 将关注列表格式化为易读的Markdown。
 
 ---
 

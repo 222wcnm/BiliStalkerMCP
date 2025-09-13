@@ -1,8 +1,9 @@
 import os
 import logging
 import json
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Callable, Coroutine
 from datetime import datetime
+from functools import wraps
 
 from fastmcp import FastMCP
 from mcp.types import TextContent
@@ -15,6 +16,7 @@ from .core import (
     fetch_user_videos,
     fetch_user_dynamics,
     fetch_user_articles,
+    fetch_user_followings,
 )
 from .config import (
     SCHEMAS_URI,
@@ -42,9 +44,35 @@ async def _resolve_user_id(user_id: Optional[int], username: Optional[str]) -> O
         return await get_user_id_by_username(username)
     return None
 
+# --- 用于预检的装饰器 ---
+def precheck(func: Callable[..., Coroutine[Any, Any, Dict[str, Any]]]) -> Callable[..., Coroutine[Any, Any, Dict[str, Any]]]:
+    """
+    处理凭证和用户ID解析的模板代码的装饰器。
+    """
+    @wraps(func)
+    async def wrapper(user_id: Optional[int] = None, username: Optional[str] = None, **kwargs: Any) -> Dict[str, Any]:
+        if not cred:
+            return {"error": "Credential is not configured. Please set SESSDATA, BILI_JCT, and BUVID3 environment variables."}
+        if not user_id and not username:
+            return {"error": "Either user_id or username must be provided."}
+
+        try:
+            target_uid = await _resolve_user_id(user_id, username)
+            if not target_uid:
+                return {"error": f"User '{username or user_id}' not found. Please check the username or user ID."}
+            
+            # 将解析后的UID传递给被装饰的函数
+            return await func(user_id=target_uid, **kwargs)
+        except Exception as e:
+            logger.error(f"An unexpected error in decorator for {func.__name__}: {e}")
+            return {"error": f"An unexpected error occurred during pre-check: {str(e)}."}
+            
+    return wrapper
+
 # --- MCP工具定义 ---
 @mcp.tool()
-async def get_user_info(user_id: Optional[int] = None, username: Optional[str] = None) -> Dict[str, Any]:
+@precheck
+async def get_user_info(user_id: int) -> Dict[str, Any]:
     """
     根据Bilibili用户的UID或用户名，获取该用户的个人主页信息。
 
@@ -55,56 +83,31 @@ async def get_user_info(user_id: Optional[int] = None, username: Optional[str] =
     :param username: 用户的Bilibili昵称 (可选)。
     :return: 包含用户详细信息的JSON对象。
     """
-    if not cred:
-        return {"error": "Credential is not configured."}
-    if not user_id and not username:
-        return {"error": "Either user_id or username must be provided."}
-
-    try:
-        target_uid = await _resolve_user_id(user_id, username)
-        if not target_uid:
-            return {"error": "User not found."}
-
-        user_info = await fetch_user_info(target_uid, cred)
-        return user_info
-    except Exception as e:
-        logger.error(f"An unexpected error in get_user_info: {e}")
-        return {"error": f"An unexpected error occurred: {e}"}
+    return await fetch_user_info(user_id, cred)
 
 
 @mcp.tool()
-async def get_user_video_updates(user_id: Optional[int] = None, username: Optional[str] = None, limit: int = 10) -> Dict[str, Any]:
+@precheck
+async def get_user_video_updates(user_id: int, page: int = 1, limit: int = 10) -> Dict[str, Any]:
     """
     根据Bilibili用户的UID或用户名，获取该用户最近发布的视频列表。
 
-    您可以指定获取视频的数量。返回的每个视频对象都包含标题、描述、播放量、弹幕数以及封面图URL等信息。
+    您可以指定获取视频的数量和页码。返回的每个视频对象都包含标题、描述、播放量、弹幕数以及封面图URL等信息。
     您必须提供 user_id 或 username 中的一个。
 
     :param user_id: 用户的Bilibili UID (可选)。
     :param username: 用户的Bilibili昵称 (可选)。
-    :param limit: 需要获取的视频数量，默认为10，最大为50。
+    :param page: 页码，默认为1。
+    :param limit: 每页数量，默认为10，最大为50。
     :return: 包含视频列表的JSON对象。
     """
-    if not cred:
-        return {"error": "Credential is not configured."}
-    if not user_id and not username:
-        return {"error": "Either user_id or username must be provided."}
     if not (1 <= limit <= 50):
         return {"error": "Limit must be between 1 and 50."}
-
-    try:
-        target_uid = await _resolve_user_id(user_id, username)
-        if not target_uid:
-            return {"error": "User not found."}
-
-        video_data = await fetch_user_videos(target_uid, limit, cred)
-        return video_data
-    except Exception as e:
-        logger.error(f"An unexpected error in get_user_video_updates: {e}")
-        return {"error": f"An unexpected error occurred: {e}"}
+    return await fetch_user_videos(user_id, page, limit, cred)
 
 @mcp.tool()
-async def get_user_dynamic_updates(user_id: Optional[int] = None, username: Optional[str] = None, limit: int = 10, dynamic_type: str = "ALL") -> Dict[str, Any]:
+@precheck
+async def get_user_dynamic_updates(user_id: int, offset: int = 0, limit: int = 10, dynamic_type: str = "ALL") -> Dict[str, Any]:
     """
     根据Bilibili用户的UID或用户名，获取该用户最近发布的动态。
 
@@ -114,61 +117,55 @@ async def get_user_dynamic_updates(user_id: Optional[int] = None, username: Opti
 
     :param user_id: 用户的Bilibili UID (可选)。
     :param username: 用户的Bilibili昵称 (可选)。
+    :param offset: 动态偏移量, 用于分页，默认为0。
     :param limit: 需要获取的动态数量，默认为10，最大为50。
     :param dynamic_type: 动态类型，可以是 "ALL", "VIDEO", "TEXT", "DRAW"。默认为 "ALL"。
     :return: 包含动态列表的JSON对象。
     """
-    if not cred:
-        return {"error": "Credential is not configured. Please set SESSDATA, BILI_JCT, and BUVID3 environment variables."}
-    if not user_id and not username:
-        return {"error": "Either user_id or username must be provided."}
     if not (1 <= limit <= 50):
         return {"error": "Limit must be between 1 and 50."}
     if dynamic_type not in DynamicType.VALID_TYPES:
         return {"error": f"Invalid dynamic_type. Must be one of {DynamicType.VALID_TYPES}"}
-
-    try:
-        target_uid = await _resolve_user_id(user_id, username)
-        if not target_uid:
-            return {"error": f"User '{username or user_id}' not found. Please check the username or user ID."}
-
-        dynamic_data = await fetch_user_dynamics(target_uid, limit, cred, dynamic_type)
-        return dynamic_data
-    except Exception as e:
-        logger.error(f"An unexpected error in get_user_dynamic_updates: {e}")
-        return {"error": f"An unexpected error occurred: {str(e)}."}
+    return await fetch_user_dynamics(user_id, offset, limit, cred, dynamic_type)
 
 
 @mcp.tool()
-async def get_user_articles(user_id: Optional[int] = None, username: Optional[str] = None, limit: int = 10) -> Dict[str, Any]:
+@precheck
+async def get_user_articles(user_id: int, page: int = 1, limit: int = 10) -> Dict[str, Any]:
     """
     根据Bilibili用户的UID或用户名，获取该用户最近发布的专栏文章列表。
 
-    您可以指定获取文章的数量。返回的每个文章对象都包含标题、摘要、阅读量和封面图URL等信息。
+    您可以指定获取文章的数量和页码。返回的每个文章对象都包含标题、摘要、阅读量和封面图URL等信息。
     您必须提供 user_id 或 username 中的一个。
 
     :param user_id: 用户的Bilibili UID (可选)。
     :param username: 用户的Bilibili昵称 (可选)。
-    :param limit: 需要获取的文章数量，默认为10，最大为50。
+    :param page: 页码，默认为1。
+    :param limit: 每页数量，默认为10，最大为50。
     :return: 包含文章列表的JSON对象。
     """
-    if not cred:
-        return {"error": "Credential is not configured. Please set SESSDATA, BILI_JCT, and BUVID3 environment variables."}
-    if not user_id and not username:
-        return {"error": "Either user_id or username must be provided."}
     if not (1 <= limit <= 50):
         return {"error": "Limit must be between 1 and 50."}
+    return await fetch_user_articles(user_id, page, limit, cred)
 
-    try:
-        target_uid = await _resolve_user_id(user_id, username)
-        if not target_uid:
-            return {"error": f"User '{username or user_id}' not found. Please check the username or user ID."}
+@mcp.tool()
+@precheck
+async def get_user_followings(user_id: int, page: int = 1, limit: int = 20) -> Dict[str, Any]:
+    """
+    根据Bilibili用户的UID或用户名，获取该用户的关注列表。
 
-        article_data = await fetch_user_articles(target_uid, limit, cred)
-        return article_data
-    except Exception as e:
-        logger.error(f"An unexpected error in get_user_articles: {e}")
-        return {"error": f"An unexpected error occurred: {str(e)}."}
+    您可以指定获取关注用户的数量和页码。返回的每个用户对象都包含昵称、签名和头像等信息。
+    您必须提供 user_id 或 username 中的一个。
+
+    :param user_id: 用户的Bilibili UID (可选)。
+    :param username: 用户的Bilibili昵称 (可选)。
+    :param page: 页码，默认为1。
+    :param limit: 每页数量，默认为20，最大为50。
+    :return: 包含关注用户列表的JSON对象。
+    """
+    if not (1 <= limit <= 50):
+        return {"error": "Limit must be between 1 and 50."}
+    return await fetch_user_followings(user_id, page, limit, cred)
 
 
 # --- 提示预设 (用于规范模型输出格式) ---
@@ -199,7 +196,7 @@ def format_user_info_response(user_info_json: str) -> str:
             md += "\n---\n\n"
             md += "#### 直播间信息\n"
             md += f"- **标题**: {live_room.get('title', 'N/A')}\n"
-            md += f"- **状态**: 正在直播\n"
+            md += "- **状态**: 正在直播\n"
             if live_room.get('url'):
                 md += f"- **链接**: [点击进入]({live_room.get('url')})\n"
         
@@ -266,6 +263,30 @@ def format_articles_response(articles_json: str) -> str:
         return md
     except Exception as e:
         return f"格式化专栏文章时出错: {e}"
+
+@mcp.prompt()
+def format_followings_response(followings_json: str) -> str:
+    """格式化关注列表数据为Markdown, 支持get_user_followings工具的输出"""
+    try:
+        data = json.loads(followings_json)
+        followings_list = data.get("followings", [])
+        if not followings_list:
+            return "用户没有关注任何人。"
+
+        md = "### 关注列表\n\n"
+        for f in followings_list:
+            md += f"#### {f.get('uname', '无昵称')}\n"
+            if f.get('face'):
+                md += f"![avatar]({f['face']})\n\n"
+            if f.get('sign'):
+                md += f"> {f.get('sign')}\n\n"
+            md += f"- **UID**: {f.get('mid')}\n"
+            if f.get('official_verify'):
+                md += f"- **认证**: {f.get('official_verify')}\n"
+            md += "---\n"
+        return md
+    except Exception as e:
+        return f"格式化关注列表数据时出错: {e}"
 
 # --- 主函数 ---
 def main():
