@@ -124,7 +124,7 @@ def _parse_dynamic_item(item: dict) -> dict:
         logger.error(f"Failed to parse dynamic item: {item.get('desc', {}).get('dynamic_id_str')}, error: {e}")
         return {"error": "Failed to parse dynamic", "id": item.get('desc', {}).get('dynamic_id_str')}
 
-@alru_cache(maxsize=128)
+@alru_cache(maxsize=128, ttl=3600)
 async def get_user_id_by_username(username: str) -> Optional[int]:
     """通过用户名搜索并获取用户ID"""
     if not username:
@@ -146,7 +146,7 @@ async def get_user_id_by_username(username: str) -> Optional[int]:
         logger.error(f"Unexpected error while searching for user '{username}': {e}")
         return None
 
-@alru_cache(maxsize=32)
+@alru_cache(maxsize=32, ttl=300)
 async def fetch_user_info(user_id: int, cred: Credential) -> Dict[str, Any]:
     """获取B站用户的详细资料。返回JSON对象，为保证数据完整，默认返回所有字段。"""
     try:
@@ -200,11 +200,11 @@ async def fetch_user_info(user_id: int, cred: Credential) -> Dict[str, Any]:
         logger.error(f"Failed to get user info for UID {user_id}: {e}")
         return {"error": f"获取用户信息时发生未知错误: {str(e)}"}
 
-async def fetch_user_videos(user_id: int, limit: int, cred: Credential) -> Dict[str, Any]:
+async def fetch_user_videos(user_id: int, page: int, limit: int, cred: Credential) -> Dict[str, Any]:
     """获取用户的视频列表。'subtitle'字段包含字幕对象，其'subtitles'列表内含可用于文本分析的字幕URL。"""
     try:
         u = user.User(uid=user_id, credential=cred)
-        video_list = await u.get_videos(ps=limit)
+        video_list = await u.get_videos(pn=page, ps=limit)
         raw_videos = video_list.get("list", {}).get("vlist", [])
         processed_videos = []
         for v_data in raw_videos:
@@ -232,13 +232,13 @@ async def fetch_user_videos(user_id: int, limit: int, cred: Credential) -> Dict[
         return {"error": f"Bilibili API 错误: {str(e)}"}
     except Exception as e:
         logger.error(f"Failed to get user videos for UID {user_id}: {e}")
-        return {"error": f"获取用户视频失败: {str(e)}"}
+        return {"error": f"获取用户视频时发生未知错误: {str(e)}"}
 
-async def fetch_user_dynamics(user_id: int, limit: int, cred: Credential, dynamic_type: str = "ALL") -> Dict[str, Any]:
+async def fetch_user_dynamics(user_id: int, offset: int, limit: int, cred: Credential, dynamic_type: str = "ALL") -> Dict[str, Any]:
     """获取用户的动态列表。为保证数据可用性，返回JSON列表。会尝试解析不同类型的动态。"""
     try:
         u = user.User(uid=user_id, credential=cred)
-        raw_dynamics_data = await u.get_dynamics(offset=0)
+        raw_dynamics_data = await u.get_dynamics(offset=offset)
         
         processed_dynamics = []
         if raw_dynamics_data and raw_dynamics_data.get("cards"):
@@ -255,11 +255,11 @@ async def fetch_user_dynamics(user_id: int, limit: int, cred: Credential, dynami
         logger.error(f"An unexpected error in fetch_user_dynamics for UID {user_id}: {e}")
         return {"error": f"处理动态数据时发生未知错误: {str(e)}"}
 
-async def fetch_user_articles(user_id: int, limit: int, cred: Credential) -> Dict[str, Any]:
+async def fetch_user_articles(user_id: int, page: int, limit: int, cred: Credential) -> Dict[str, Any]:
     """获取用户的专栏文章列表。为保证数据完整，默认返回所有字段。"""
     try:
         u = user.User(uid=user_id, credential=cred)
-        articles_data = await u.get_articles(ps=limit)
+        articles_data = await u.get_articles(pn=page, ps=limit)
         
         raw_articles = articles_data.get("articles", [])
         processed_articles = []
@@ -286,14 +286,14 @@ async def fetch_user_articles(user_id: int, limit: int, cred: Credential) -> Dic
         return {"error": f"Bilibili API 错误: {str(e)}"}
     except Exception as e:
         logger.error(f"Failed to get user articles for UID {user_id}: {e}")
-        return {"error": f"获取用户专栏文章失败: {str(e)}"}
+        return {"error": f"获取用户专栏文章时发生未知错误: {str(e)}"}
 
 
-async def fetch_user_followings(user_id: int, limit: int, cred: Credential) -> Dict[str, Any]:
+async def fetch_user_followings(user_id: int, page: int, limit: int, cred: Credential) -> Dict[str, Any]:
     """获取用户的关注列表。"""
     try:
         api_url = "https://api.bilibili.com/x/relation/followings"
-        params = {'vmid': user_id, 'ps': limit, 'pn': 1}
+        params = {'vmid': user_id, 'ps': limit, 'pn': page}
         headers = DEFAULT_HEADERS.copy()
         headers['Cookie'] = _get_cookies(cred)
         async with httpx.AsyncClient() as client:
