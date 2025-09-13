@@ -6,7 +6,7 @@ from typing import Any, Dict, Optional
 
 import httpx
 import bilibili_api
-from bilibili_api import Credential, user, search
+from bilibili_api import Credential, user, search, video, aid2bvid
 from bilibili_api.exceptions import ApiException
 from async_lru import alru_cache
 
@@ -38,6 +38,101 @@ def _get_cookies(cred: Credential) -> str:
     if getattr(cred, "buvid3", None):
         cookie_parts.append(f"buvid3={cred.buvid3}")
     return "; ".join(cookie_parts)
+
+async def _get_video_subtitle_info(bvid: str, cred: Credential) -> Dict[str, Any]:
+    """获取视频的详细字幕信息（优化版）"""
+    try:
+        if not bvid:
+            return {"has_subtitle": False, "subtitle_count": 0, "subtitle_list": []}
+            
+        v = video.Video(bvid=bvid, credential=cred)
+        
+        subtitle_info = {
+            "has_subtitle": False,
+            "subtitle_count": 0,
+            "subtitle_list": [],
+            "subtitle_summary": "无字幕"  # 新增：字幕概要信息
+        }
+        
+        # 方法1：先尝试从视频基本信息获取
+        video_info = await v.get_info()
+        subtitles_from_info = video_info.get("subtitle", {}).get("list", [])
+        
+        # 方法2：如果方法1无数据，尝试使用get_subtitle方法
+        subtitles_data = None
+        if not subtitles_from_info:
+            try:
+                # 获取页面信息和cid
+                pages = await v.get_pages()
+                if pages:
+                    cid = pages[0].get('cid')
+                    if cid:
+                        # 使用get_subtitle方法
+                        subtitle_response = await v.get_subtitle(cid=cid)
+                        subtitles_data = subtitle_response.get("subtitles", [])
+                        logger.debug(f"Using get_subtitle method for video {bvid}, found {len(subtitles_data)} subtitles")
+            except Exception as e:
+                logger.debug(f"get_subtitle method failed for video {bvid}: {e}")
+        else:
+            subtitles_data = subtitles_from_info
+            logger.debug(f"Using video info method for video {bvid}, found {len(subtitles_data)} subtitles")
+        
+        # 处理字幕数据
+        if subtitles_data:
+            subtitle_info["has_subtitle"] = True
+            subtitle_info["subtitle_count"] = len(subtitles_data)
+            
+            logger.debug(f"Found {len(subtitles_data)} subtitle tracks for video {bvid}")
+            
+            # 收集语言信息用于概要
+            languages = []
+            
+            for sub in subtitles_data:
+                # 处理AI字幕的特殊情况
+                is_ai_generated = False
+                lan_code = sub.get("lan", "")
+                if lan_code.startswith("ai-") or sub.get("ai_type", 0) > 0 or sub.get("ai_status", 0) > 0:
+                    is_ai_generated = True
+                
+                subtitle_item = {
+                    "id": sub.get("id"),
+                    "lan": lan_code,
+                    "lan_doc": sub.get("lan_doc"),
+                    "is_lock": sub.get("is_lock", False),
+                    "author_mid": sub.get("author", {}).get("mid") if sub.get("author") else None,
+                    "author_name": sub.get("author", {}).get("name") if sub.get("author") else None,
+                    "subtitle_url": sub.get("subtitle_url"),
+                    "is_ai_generated": is_ai_generated,
+                    "ai_type": sub.get("ai_type", 0),
+                    "ai_status": sub.get("ai_status", 0)
+                }
+                subtitle_info["subtitle_list"].append(subtitle_item)
+                
+                # 收集语言信息
+                lang_desc = sub.get("lan_doc", sub.get("lan", "未知"))
+                if is_ai_generated:
+                    lang_desc += "(AI生成)"
+                languages.append(lang_desc)
+            
+            # 生成简洁的字幕概要
+            if languages:
+                subtitle_info["subtitle_summary"] = f"有{len(languages)}种字幕: " + ", ".join(languages)
+            
+            logger.debug(f"Video {bvid} subtitle summary: {subtitle_info['subtitle_summary']}")
+        else:
+            logger.debug(f"No subtitles found for video {bvid}")
+        
+        return subtitle_info
+        
+    except Exception as e:
+        logger.warning(f"Failed to get subtitle info for video {bvid}: {e}")
+        return {
+            "has_subtitle": False, 
+            "subtitle_count": 0, 
+            "subtitle_list": [], 
+            "subtitle_summary": "获取失败",
+            "error": str(e)
+        }
 
 def _parse_dynamic_item(item: dict) -> dict:
     """将单个动态的原始字典数据解析为干净的目标格式。"""
@@ -80,7 +175,9 @@ def _parse_dynamic_item(item: dict) -> dict:
             parsed['type'] = 'IMAGE_TEXT'
             item_data = card.get('item', {})
             parsed['text_content'] = item_data.get('description')
-            parsed['images'] = [p.get('img_src') for p in item_data.get('pictures', [])]
+            # 修复: 当 pictures 为 None 时提供默认空列表
+            pictures = item_data.get('pictures') or []
+            parsed['images'] = [p.get('img_src') for p in pictures if isinstance(p, dict)]
 
         # Type 4: Text-only
         elif dynamic_type == 4:
@@ -91,9 +188,23 @@ def _parse_dynamic_item(item: dict) -> dict:
         elif dynamic_type == 8:
             parsed['type'] = 'VIDEO'
             parsed['text_content'] = card.get('dynamic')
+            
+            # 修复视频bvid字段 - 如果为空则从aid转换生成
+            video_bvid = card.get('bvid')
+            video_aid = card.get('aid')
+            
+            if not video_bvid and video_aid:
+                try:
+                    video_bvid = aid2bvid(video_aid)
+                    logger.debug(f"Generated bvid {video_bvid} from aid {video_aid} in dynamic")
+                except Exception as e:
+                    logger.warning(f"Failed to convert aid {video_aid} to bvid in dynamic: {e}")
+                    video_bvid = None
+            
             parsed['video'] = {
                 "title": card.get('title'),
-                "bvid": card.get('bvid'),
+                "bvid": video_bvid,
+                "aid": video_aid,
                 "desc": card.get('desc'),
                 "pic": card.get('pic')
             }
@@ -108,21 +219,55 @@ def _parse_dynamic_item(item: dict) -> dict:
                 "covers": card.get('image_urls', [])
             }
         
-        # Type 2048: Charge/QA post (the one from our test)
+        # Type 2048: Charge/QA post (增强解析)
         elif dynamic_type == 2048:
             parsed['type'] = 'CHARGE_QA'
-            parsed['text_content'] = card.get('vest', {}).get('content')
-            if 'sketch' in card:
-                parsed['text_content'] += f" | {card['sketch'].get('title')}"
+            vest_content = card.get('vest', {}).get('content', '')
+            sketch_title = card.get('sketch', {}).get('title', '')
+            parsed['text_content'] = f"{vest_content} {sketch_title}".strip()
+            parsed['charge_info'] = {
+                "vest": card.get('vest', {}),
+                "sketch": card.get('sketch', {})
+            }
+        
+        # Type 512: Activity/番剧
+        elif dynamic_type == 512:
+            parsed['type'] = 'ACTIVITY'
+            parsed['text_content'] = card.get('title', '') or card.get('description', '')
+            parsed['activity_info'] = {
+                "title": card.get('title'),
+                "description": card.get('description'),
+                "cover": card.get('cover')
+            }
         
         else:
             parsed['type'] = f"UNKNOWN_{dynamic_type}"
-            parsed['text_content'] = '(内容无法解析)'
+            parsed['text_content'] = f'(未支持的动态类型 {dynamic_type})'
+            # 保留原始数据用于调试和后续支持
+            parsed['raw_card_keys'] = list(card.keys()) if card else []
+            parsed['debug_info'] = {
+                "type_id": dynamic_type,
+                "card_sample": {k: str(v)[:100] for k, v in (card or {}).items()}
+            }
 
         return parsed
     except Exception as e:
-        logger.error(f"Failed to parse dynamic item: {item.get('desc', {}).get('dynamic_id_str')}, error: {e}")
-        return {"error": "Failed to parse dynamic", "id": item.get('desc', {}).get('dynamic_id_str')}
+        dynamic_id = item.get('desc', {}).get('dynamic_id_str', 'unknown')
+        dynamic_type = item.get('desc', {}).get('type', 'unknown')
+        logger.error(f"Failed to parse dynamic item {dynamic_id} (type {dynamic_type}): {e}")
+        
+        # 增强的调试信息
+        debug_info = {
+            "error": f"Failed to parse dynamic: {str(e)}", 
+            "id": dynamic_id,
+            "type_id": dynamic_type,
+            "error_location": f"Type {dynamic_type} parsing",
+            "card_keys": list(item.get('card', {}).keys()) if item.get('card') else [],
+            "desc_keys": list(item.get('desc', {}).keys()) if item.get('desc') else [],
+            "raw_data_sample": str(item)[:300] + "..." if len(str(item)) > 300 else str(item)
+        }
+        
+        return debug_info
 
 @alru_cache(maxsize=128, ttl=3600)
 async def get_user_id_by_username(username: str) -> Optional[int]:
@@ -201,17 +346,36 @@ async def fetch_user_info(user_id: int, cred: Credential) -> Dict[str, Any]:
         return {"error": f"获取用户信息时发生未知错误: {str(e)}"}
 
 async def fetch_user_videos(user_id: int, page: int, limit: int, cred: Credential) -> Dict[str, Any]:
-    """获取用户的视频列表。'subtitle'字段包含字幕对象，其'subtitles'列表内含可用于文本分析的字幕URL。"""
+    """获取用户的视频列表。现在包含增强的字幕信息，包括字幕语言、作者和下载URL等详细信息。"""
     try:
         u = user.User(uid=user_id, credential=cred)
         video_list = await u.get_videos(pn=page, ps=limit)
         raw_videos = video_list.get("list", {}).get("vlist", [])
         processed_videos = []
+        
         for v_data in raw_videos:
+            # 修复 bvid 字段 - 如果为空则从 aid 转换生成
+            bvid = v_data.get("bvid")
+            aid = v_data.get("aid")
+            
+            if not bvid and aid:
+                try:
+                    bvid = aid2bvid(aid)
+                    logger.debug(f"Generated bvid {bvid} from aid {aid}")
+                except Exception as e:
+                    logger.warning(f"Failed to convert aid {aid} to bvid: {e}")
+                    bvid = None
+            
+            # 获取详细的字幕信息（只有当 bvid 存在时才获取）
+            if bvid:
+                subtitle_info = await _get_video_subtitle_info(bvid, cred)
+            else:
+                subtitle_info = {"has_subtitle": False, "subtitle_count": 0, "subtitle_list": [], "error": "No bvid available"}
+            
             processed_video = {
                 "mid": v_data.get("mid"),
-                "bvid": v_data.get("bvid"),
-                "aid": v_data.get("aid"),
+                "bvid": bvid,
+                "aid": aid,
                 "title": v_data.get("title"),
                 "description": v_data.get("description"),
                 "created": v_data.get("created"),
@@ -221,8 +385,8 @@ async def fetch_user_videos(user_id: int, page: int, limit: int, cred: Credentia
                 "favorites": v_data.get("favorites"),
                 "like": v_data.get("like"),
                 "pic": v_data.get("pic"),
-                "subtitle": v_data.get("subtitle"),
-                "url": f"https://www.bilibili.com/video/{v_data.get('bvid')}"
+                "subtitle": subtitle_info,  # 增强的字幕信息
+                "url": f"https://www.bilibili.com/video/{bvid}" if bvid else f"https://www.bilibili.com/video/av{aid}"
             }
             processed_videos.append(processed_video)
 
