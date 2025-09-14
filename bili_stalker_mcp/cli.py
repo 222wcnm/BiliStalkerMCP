@@ -100,7 +100,7 @@ async def get_user_info(user_id: Optional[int] = None, username: Optional[str] =
 
 @mcp.tool()
 @precheck
-async def get_user_video_updates(user_id: int, username: Optional[str] = None, page: int = 1, limit: int = 10) -> Dict[str, Any]:
+async def get_user_video_updates(user_id: Optional[int] = None, username: Optional[str] = None, page: int = 1, limit: int = 10) -> Dict[str, Any]:
     """
     根据Bilibili用户的UID或用户名，获取该用户最近发布的视频列表。
 
@@ -118,11 +118,13 @@ async def get_user_video_updates(user_id: int, username: Optional[str] = None, p
         return {"error": "Limit must be between 1 and 50."}
     # @precheck装饰器已经检查了cred，所以这里安全
     assert cred is not None
+    # @precheck装饰器确保user_id不为None
+    assert user_id is not None
     return await fetch_user_videos(user_id, page, limit, cred)
 
 @mcp.tool()
 @precheck
-async def get_user_dynamic_updates(user_id: int, username: Optional[str] = None, offset: int = 0, limit: int = 10, dynamic_type: str = "ALL") -> Dict[str, Any]:
+async def get_user_dynamic_updates(user_id: Optional[int] = None, username: Optional[str] = None, offset: int = 0, limit: int = 10, dynamic_type: str = "ALL") -> Dict[str, Any]:
     """
     根据Bilibili用户的UID或用户名，获取该用户最近发布的动态。
 
@@ -143,12 +145,14 @@ async def get_user_dynamic_updates(user_id: int, username: Optional[str] = None,
         return {"error": f"Invalid dynamic_type. Must be one of {DynamicType.VALID_TYPES}"}
     # @precheck装饰器已经检查了cred，所以这里安全
     assert cred is not None
+    # @precheck装饰器确保user_id不为None
+    assert user_id is not None
     return await fetch_user_dynamics(user_id, offset, limit, cred, dynamic_type)
 
 
 @mcp.tool()
 @precheck
-async def get_user_articles(user_id: int, username: Optional[str] = None, page: int = 1, limit: int = 10) -> Dict[str, Any]:
+async def get_user_articles(user_id: Optional[int] = None, username: Optional[str] = None, page: int = 1, limit: int = 10) -> Dict[str, Any]:
     """
     根据Bilibili用户的UID或用户名，获取该用户最近发布的专栏文章列表。
 
@@ -165,11 +169,13 @@ async def get_user_articles(user_id: int, username: Optional[str] = None, page: 
         return {"error": "Limit must be between 1 and 50."}
     # @precheck装饰器已经检查了cred，所以这里安全
     assert cred is not None
+    # @precheck装饰器确保user_id不为None
+    assert user_id is not None
     return await fetch_user_articles(user_id, page, limit, cred)
 
 @mcp.tool()
 @precheck
-async def get_user_followings(user_id: int, username: Optional[str] = None, page: int = 1, limit: int = 20) -> Dict[str, Any]:
+async def get_user_followings(user_id: Optional[int] = None, username: Optional[str] = None, page: int = 1, limit: int = 20) -> Dict[str, Any]:
     """
     根据Bilibili用户的UID或用户名，获取该用户的关注列表。
 
@@ -186,6 +192,8 @@ async def get_user_followings(user_id: int, username: Optional[str] = None, page
         return {"error": "Limit must be between 1 and 50."}
     # @precheck装饰器已经检查了cred，所以这里安全
     assert cred is not None
+    # @precheck装饰器确保user_id不为None
+    assert user_id is not None
     return await fetch_user_followings(user_id, page, limit, cred)
 
 
