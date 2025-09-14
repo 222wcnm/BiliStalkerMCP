@@ -40,45 +40,99 @@ def _get_cookies(cred: Credential) -> str:
     return "; ".join(cookie_parts)
 
 async def _get_video_subtitle_info(bvid: str, cred: Credential) -> Dict[str, Any]:
-    """获取视频的详细字幕信息"""
+    """获取视频的详细字幕信息（优化版）"""
     try:
         if not bvid:
             return {"has_subtitle": False, "subtitle_count": 0, "subtitle_list": []}
             
         v = video.Video(bvid=bvid, credential=cred)
-        # 获取视频详细信息，其中包含字幕数据
-        video_info = await v.get_info()
         
         subtitle_info = {
             "has_subtitle": False,
             "subtitle_count": 0,
-            "subtitle_list": []
+            "subtitle_list": [],
+            "subtitle_summary": "无字幕"  # 新增：字幕概要信息
         }
         
-        # 检查是否有字幕
-        subtitle_data = video_info.get("subtitle", {})
-        if subtitle_data and subtitle_data.get("subtitles"):
-            subtitles = subtitle_data.get("subtitles", [])
+        # 方法1：先尝试从视频基本信息获取
+        video_info = await v.get_info()
+        subtitles_from_info = video_info.get("subtitle", {}).get("list", [])
+        
+        # 方法2：如果方法1无数据，尝试使用get_subtitle方法
+        subtitles_data = None
+        if not subtitles_from_info:
+            try:
+                # 获取页面信息和cid
+                pages = await v.get_pages()
+                if pages:
+                    cid = pages[0].get('cid')
+                    if cid:
+                        # 使用get_subtitle方法
+                        subtitle_response = await v.get_subtitle(cid=cid)
+                        subtitles_data = subtitle_response.get("subtitles", [])
+                        logger.debug(f"Using get_subtitle method for video {bvid}, found {len(subtitles_data)} subtitles")
+            except Exception as e:
+                logger.debug(f"get_subtitle method failed for video {bvid}: {e}")
+        else:
+            subtitles_data = subtitles_from_info
+            logger.debug(f"Using video info method for video {bvid}, found {len(subtitles_data)} subtitles")
+        
+        # 处理字幕数据
+        if subtitles_data:
             subtitle_info["has_subtitle"] = True
-            subtitle_info["subtitle_count"] = len(subtitles)
+            subtitle_info["subtitle_count"] = len(subtitles_data)
             
-            for sub in subtitles:
+            logger.debug(f"Found {len(subtitles_data)} subtitle tracks for video {bvid}")
+            
+            # 收集语言信息用于概要
+            languages = []
+            
+            for sub in subtitles_data:
+                # 处理AI字幕的特殊情况
+                is_ai_generated = False
+                lan_code = sub.get("lan", "")
+                if lan_code.startswith("ai-") or sub.get("ai_type", 0) > 0 or sub.get("ai_status", 0) > 0:
+                    is_ai_generated = True
+                
                 subtitle_item = {
                     "id": sub.get("id"),
-                    "lan": sub.get("lan"),
+                    "lan": lan_code,
                     "lan_doc": sub.get("lan_doc"),
                     "is_lock": sub.get("is_lock", False),
                     "author_mid": sub.get("author", {}).get("mid") if sub.get("author") else None,
                     "author_name": sub.get("author", {}).get("name") if sub.get("author") else None,
-                    "subtitle_url": sub.get("subtitle_url")
+                    "subtitle_url": sub.get("subtitle_url"),
+                    "is_ai_generated": is_ai_generated,
+                    "ai_type": sub.get("ai_type", 0),
+                    "ai_status": sub.get("ai_status", 0)
                 }
                 subtitle_info["subtitle_list"].append(subtitle_item)
+                
+                # 收集语言信息
+                lang_desc = sub.get("lan_doc", sub.get("lan", "未知"))
+                if is_ai_generated:
+                    lang_desc += "(AI生成)"
+                languages.append(lang_desc)
+            
+            # 生成简洁的字幕概要
+            if languages:
+                subtitle_info["subtitle_summary"] = f"有{len(languages)}种字幕: " + ", ".join(languages)
+            
+            logger.debug(f"Video {bvid} subtitle summary: {subtitle_info['subtitle_summary']}")
+        else:
+            logger.debug(f"No subtitles found for video {bvid}")
         
         return subtitle_info
         
     except Exception as e:
         logger.warning(f"Failed to get subtitle info for video {bvid}: {e}")
-        return {"has_subtitle": False, "subtitle_count": 0, "subtitle_list": [], "error": str(e)}
+        return {
+            "has_subtitle": False, 
+            "subtitle_count": 0, 
+            "subtitle_list": [], 
+            "subtitle_summary": "获取失败",
+            "error": str(e)
+        }
 
 def _parse_dynamic_item(item: dict) -> dict:
     """将单个动态的原始字典数据解析为干净的目标格式。"""
@@ -134,9 +188,23 @@ def _parse_dynamic_item(item: dict) -> dict:
         elif dynamic_type == 8:
             parsed['type'] = 'VIDEO'
             parsed['text_content'] = card.get('dynamic')
+            
+            # 修复视频bvid字段 - 如果为空则从aid转换生成
+            video_bvid = card.get('bvid')
+            video_aid = card.get('aid')
+            
+            if not video_bvid and video_aid:
+                try:
+                    video_bvid = aid2bvid(video_aid)
+                    logger.debug(f"Generated bvid {video_bvid} from aid {video_aid} in dynamic")
+                except Exception as e:
+                    logger.warning(f"Failed to convert aid {video_aid} to bvid in dynamic: {e}")
+                    video_bvid = None
+            
             parsed['video'] = {
                 "title": card.get('title'),
-                "bvid": card.get('bvid'),
+                "bvid": video_bvid,
+                "aid": video_aid,
                 "desc": card.get('desc'),
                 "pic": card.get('pic')
             }

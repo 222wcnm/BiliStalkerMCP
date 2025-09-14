@@ -61,7 +61,7 @@ def precheck(func: Callable[..., Coroutine[Any, Any, Dict[str, Any]]]) -> Callab
             if not target_uid:
                 return {"error": f"User '{username or user_id}' not found. Please check the username or user ID."}
             
-            # 将解析后的UID传递给被装饰的函数
+            # 将解析后的UID传递给被装饰的函数，确保类型正确
             return await func(user_id=target_uid, **kwargs)
         except Exception as e:
             logger.error(f"An unexpected error in decorator for {func.__name__}: {e}")
@@ -100,7 +100,7 @@ async def get_user_info(user_id: Optional[int] = None, username: Optional[str] =
 
 @mcp.tool()
 @precheck
-async def get_user_video_updates(user_id: int, page: int = 1, limit: int = 10) -> Dict[str, Any]:
+async def get_user_video_updates(user_id: int, username: Optional[str] = None, page: int = 1, limit: int = 10) -> Dict[str, Any]:
     """
     根据Bilibili用户的UID或用户名，获取该用户最近发布的视频列表。
 
@@ -108,8 +108,8 @@ async def get_user_video_updates(user_id: int, page: int = 1, limit: int = 10) -
     字幕信息包含：是否有字幕、字幕数量、字幕语言列表和字幕下载URL等。
     您必须提供 user_id 或 username 中的一个。
 
-    :param user_id: 用户的Bilibili UID (通过@precheck装饰器自动解析)。
-    :param username: 用户的Bilibili昵称 (通过@precheck装饰器自动解析)。
+    :param user_id: 用户的Bilibili UID (可选)。
+    :param username: 用户的Bilibili昵称 (可选)。
     :param page: 页码，默认为1。
     :param limit: 每页数量，默认为10，最大为50。
     :return: 包含视频列表的JSON对象，每个视频包含详细的字幕信息。
@@ -122,7 +122,7 @@ async def get_user_video_updates(user_id: int, page: int = 1, limit: int = 10) -
 
 @mcp.tool()
 @precheck
-async def get_user_dynamic_updates(user_id: int, offset: int = 0, limit: int = 10, dynamic_type: str = "ALL") -> Dict[str, Any]:
+async def get_user_dynamic_updates(user_id: int, username: Optional[str] = None, offset: int = 0, limit: int = 10, dynamic_type: str = "ALL") -> Dict[str, Any]:
     """
     根据Bilibili用户的UID或用户名，获取该用户最近发布的动态。
 
@@ -148,7 +148,7 @@ async def get_user_dynamic_updates(user_id: int, offset: int = 0, limit: int = 1
 
 @mcp.tool()
 @precheck
-async def get_user_articles(user_id: int, page: int = 1, limit: int = 10) -> Dict[str, Any]:
+async def get_user_articles(user_id: int, username: Optional[str] = None, page: int = 1, limit: int = 10) -> Dict[str, Any]:
     """
     根据Bilibili用户的UID或用户名，获取该用户最近发布的专栏文章列表。
 
@@ -169,7 +169,7 @@ async def get_user_articles(user_id: int, page: int = 1, limit: int = 10) -> Dic
 
 @mcp.tool()
 @precheck
-async def get_user_followings(user_id: int, page: int = 1, limit: int = 20) -> Dict[str, Any]:
+async def get_user_followings(user_id: int, username: Optional[str] = None, page: int = 1, limit: int = 20) -> Dict[str, Any]:
     """
     根据Bilibili用户的UID或用户名，获取该用户的关注列表。
 
