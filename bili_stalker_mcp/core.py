@@ -285,7 +285,13 @@ async def get_user_id_by_username(username: str) -> Optional[int]:
             return None
         return result_list[0]['mid']
     except ApiException as e:
-        logger.error(f"Bilibili API error while searching for user '{username}': {e}")
+        error_code = getattr(e, 'code', None)
+        if error_code == -412:
+            logger.error(f"Search request blocked for '{username}': rate limit exceeded")
+        elif error_code == -509:
+            logger.error(f"Search request rate limited for '{username}': too frequent requests")
+        else:
+            logger.error(f"Bilibili API error while searching for user '{username}': {e}")
         return None
     except Exception as e:
         logger.error(f"Unexpected error while searching for user '{username}': {e}")
@@ -336,11 +342,18 @@ async def fetch_user_info(user_id: int, cred: Credential) -> Dict[str, Any]:
         return user_data
 
     except ApiException as e:
+        error_code = getattr(e, 'code', None)
+        if error_code == -404:
+            return {"error": f"用户 {user_id} 不存在或已注销"}
+        elif error_code == -412:
+            return {"error": "请求被拦截，可能是访问频率过高，请稍后重试"}
+        elif error_code == -509:
+            return {"error": "请求过于频繁，被系统限流，请逐渐减少请求频率"}
         logger.error(f"Bilibili API error for UID {user_id}: {e}")
-        return {"error": f"Bilibili API 错误: {str(e)}"}
+        return {"error": f"Bilibili API 错误（码: {error_code}）: {str(e)}"}
     except httpx.RequestError as e:
         logger.error(f"Network error for UID {user_id}: {e}")
-        return {"error": f"网络错误: {str(e)}"}
+        return {"error": f"网络错误: {str(e)}，请检查网络连接或稍后重试"}
     except Exception as e:
         logger.error(f"Failed to get user info for UID {user_id}: {e}")
         return {"error": f"获取用户信息时发生未知错误: {str(e)}"}
@@ -401,6 +414,9 @@ async def fetch_user_videos(user_id: int, page: int, limit: int, cred: Credentia
 async def fetch_user_dynamics(user_id: int, offset: int, limit: int, cred: Credential, dynamic_type: str = "ALL") -> Dict[str, Any]:
     """获取用户的动态列表。为保证数据可用性，返回JSON列表。会尝试解析不同类型的动态。"""
     try:
+        # 导入DynamicType配置
+        from .config import DynamicType
+        
         u = user.User(uid=user_id, credential=cred)
         raw_dynamics_data = await u.get_dynamics(offset=offset)
         
@@ -409,9 +425,27 @@ async def fetch_user_dynamics(user_id: int, offset: int, limit: int, cred: Crede
             for card in raw_dynamics_data["cards"]:
                 if len(processed_dynamics) >= limit:
                     break
-                processed_dynamics.append(_parse_dynamic_item(card))
+                    
+                parsed_item = _parse_dynamic_item(card)
+                
+                # 实现动态类型筛选
+                if dynamic_type != "ALL":
+                    # 检查动态类型是否匹配
+                    item_type_id = card.get('desc', {}).get('type')
+                    
+                    # 根据类型映射进行筛选
+                    if dynamic_type == "VIDEO" and item_type_id != 8:
+                        continue
+                    elif dynamic_type == "ARTICLE" and item_type_id != 64:
+                        continue
+                    elif dynamic_type == "ANIME" and item_type_id != 512:
+                        continue
+                    elif dynamic_type == "DRAW" and item_type_id != 2:
+                        continue
+                        
+                processed_dynamics.append(parsed_item)
 
-        return {"dynamics": processed_dynamics}
+        return {"dynamics": processed_dynamics, "total_fetched": len(processed_dynamics), "filter_type": dynamic_type}
     except ApiException as e:
         logger.error(f"Bilibili API error for dynamics of UID {user_id}: {e}")
         return {"error": f"Bilibili API 错误: {str(e)}"}
@@ -464,10 +498,19 @@ async def fetch_user_followings(user_id: int, page: int, limit: int, cred: Crede
             response = await client.get(api_url, params=params, headers=headers, timeout=httpx.Timeout(CONNECT_TIMEOUT, read=READ_TIMEOUT))
             response.raise_for_status()
             followings_data = response.json()
-            if followings_data.get('code') == 2207:
-                return {"error": "用户关注列表已设置为隐私"}
-            if followings_data.get('code') != 0:
-                raise ApiException(msg=followings_data.get('message', 'Failed to fetch followings from raw API.'))
+            
+            # 增强错误码处理
+            if followings_data.get('code') == -412:
+                return {"error": "请求被拦截，可能是访问频率过高，请稍后重试"}
+            elif followings_data.get('code') == -509:
+                return {"error": "请求过于频繁，被系统限流，请逐渐减少请求频率"}
+            elif followings_data.get('code') == 2207:
+                return {"error": "用户关注列表已设置为隐私，无法查看"}
+            elif followings_data.get('code') == -404:
+                return {"error": f"用户 {user_id} 不存在或已注销"}
+            elif followings_data.get('code') != 0:
+                error_msg = followings_data.get('message', 'Failed to fetch followings from raw API.')
+                return {"error": f"API返回错误（码: {followings_data.get('code')}）: {error_msg}"}
             followings_data = followings_data.get('data', {})
 
         raw_followings = followings_data.get("list", [])

@@ -37,7 +37,17 @@ class DynamicType:
     ARTICLE = "ARTICLE"
     ANIME = "ANIME"
     DRAW = "DRAW"
+    # 移除不支持的TEXT类型，更新为实际支持的类型
     VALID_TYPES = [ALL, VIDEO, ARTICLE, ANIME, DRAW]
+    
+    # 动态类型映射（用于API调用）
+    TYPE_MAPPINGS = {
+        ALL: "all",
+        VIDEO: "8",     # 视频动态
+        ARTICLE: "64",  # 专栏动态  
+        ANIME: "512",   # 番剧动态
+        DRAW: "2"       # 图文动态
+    }
 
 # 资源URI模板
 SCHEMAS_URI = "bili://schemas"

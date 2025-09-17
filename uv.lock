@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 2
 requires-python = ">=3.10"
 
 [[package]]
@@ -86,7 +86,7 @@ wheels = [
 
 [[package]]
 name = "bili-stalker-mcp"
-version = "2.1"
+version = "2.3"
 source = { editable = "." }
 dependencies = [
     { name = "async-lru" },
@@ -119,7 +119,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "async-lru", specifier = ">=2.0.4" },
-    { name = "bilibili-api-python", specifier = ">=16.0.0" },
+    { name = "bilibili-api-python", specifier = ">=17.1.4" },
     { name = "black", marker = "extra == 'dev'", specifier = ">=23.0.0" },
     { name = "fastmcp", specifier = ">=0.4.0" },
     { name = "flake8", marker = "extra == 'dev'", specifier = ">=6.0.0" },
