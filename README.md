@@ -42,14 +42,6 @@ Add to your MCP client settings:
 | `get_user_articles` | Article publications | `user_id`/`username`, `page`, `limit` |
 | `get_user_followings` | Following list | `user_id`/`username`, `page`, `limit` |
 
-## Documentation
-
-📚 **[Complete Project Documentation](./PROJECT_DOCS.md)** - Comprehensive guide including:
-- Feature specifications and data structures
-- Technical architecture and design principles  
-- Problem analysis and improvement roadmap
-- Development guidelines and best practices
-
 ## Development
 
 ```bash
