@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "bili_stalker_mcp"
-version = "2.2"
+version = "2.3"
 description = "MCP Server for getting Bilibili user video updates"
 authors = [
     {name = "222wcnm", email = "2328072813li@gmail.com"},
@@ -32,7 +32,7 @@ classifiers = [
     "Topic :: Communications",
 ]
 dependencies = [
-    "bilibili-api-python>=16.0.0",
+    "bilibili-api-python>=17.1.4",
     "fastmcp>=0.4.0",
     "mcp[cli]>=1.11.0",
     "httpx>=0.25.0",
