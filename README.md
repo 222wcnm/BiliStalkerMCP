@@ -2,17 +2,18 @@
 
 [![Python](https://img.shields.io/badge/Python-3.10+-blue?logo=python)](https://www.python.org/)
 [![MCP](https://img.shields.io/badge/MCP-Compatible-orange)](https://github.com/jlowin/fastmcp)
+[![Version](https://img.shields.io/badge/Version-2.3-green)](https://pypi.org/project/bili-stalker-mcp/)
 
-Model Context Protocol server for Bilibili user data acquisition.
+A Model Context Protocol (MCP) server for comprehensive Bilibili user data acquisition.
 
-## Installation
+## Quick Start
 
+### Installation
 ```bash
 uvx bili-stalker-mcp
 ```
 
-## Configuration
-
+### Configuration
 Add to your MCP client settings:
 
 ```json
@@ -31,20 +32,33 @@ Add to your MCP client settings:
 }
 ```
 
-## Tools
+## Available Tools
 
-- `get_user_info` - User profile data
-- `get_user_video_updates` - Video publications
-- `get_user_dynamic_updates` - User dynamics
-- `get_user_articles` - Article publications
-- `get_user_followings` - Following list
+| Tool | Description | Parameters |
+|------|-------------|------------|
+| `get_user_info` | User profile and stats | `user_id` or `username` |
+| `get_user_video_updates` | Video publications with subtitles | `user_id`/`username`, `page`, `limit` |
+| `get_user_dynamic_updates` | User dynamics with type filtering | `user_id`/`username`, `offset`, `limit`, `dynamic_type` |
+| `get_user_articles` | Article publications | `user_id`/`username`, `page`, `limit` |
+| `get_user_followings` | Following list | `user_id`/`username`, `page`, `limit` |
+
+## Documentation
+
+📚 **[Complete Project Documentation](./PROJECT_DOCS.md)** - Comprehensive guide including:
+- Feature specifications and data structures
+- Technical architecture and design principles  
+- Problem analysis and improvement roadmap
+- Development guidelines and best practices
 
 ## Development
 
 ```bash
+# Clone and setup
 git clone https://github.com/222wcnm/BiliStalkerMCP.git
 cd BiliStalkerMCP
 uv pip install -e .
+
+# Run tests
 python tests/test_suite.py -u <user_id_or_username>
 ```
 
