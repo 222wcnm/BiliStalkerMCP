@@ -35,7 +35,7 @@ class BiliStalkerConfig(BaseModel):
 @smithery.server(config_schema=BiliStalkerConfig)
 def create_server():
     """Create and configure the BiliStalkerMCP server for Smithery."""
-    
+
     logger = logging.getLogger(__name__)
     mcp = FastMCP("BiliStalkerMCP")
 
@@ -60,21 +60,29 @@ def create_server():
     # --- Precheck Decorator for Tools ---
     def precheck(func: Callable[..., Coroutine[Any, Any, Dict[str, Any]]]) -> Callable[..., Coroutine[Any, Any, Dict[str, Any]]]:
         @wraps(func)
-        async def wrapper(ctx: Context, user_id: Union[int, None] = None, username: Union[str, None] = None, **kwargs: Any) -> Dict[str, Any]:
+        async def wrapper(ctx: Context, user_id_or_username: str, **kwargs: Any) -> Dict[str, Any]:
             # Get credentials from session config provided by Smithery
             session_config = ctx.session_config  # type: ignore[attr-defined]
             cred = get_credential(session_config.sessdata, session_config.bili_jct, session_config.buvid3)
 
             if not cred or not cred.sessdata:
                 return {"error": "凭证未在会话中配置。请在 MCP 客户端或 Smithery UI 中提供。"}
-            if user_id is None and not username:
-                return {"error": "必须提供 user_id 或 username 中的一个。"}
+
+            # Try to parse as user ID first, then as username
+            try:
+                # Check if it's an integer user ID
+                user_id = int(user_id_or_username)
+                username = None
+            except ValueError:
+                # It's a username string
+                user_id = None
+                username = user_id_or_username
 
             try:
                 target_uid = await _resolve_user_id(user_id, username)
                 if not target_uid:
-                    return {"error": f"用户 '{username or user_id}' 未找到。"}
-                
+                    return {"error": f"用户 '{user_id_or_username}' 未找到。"}
+
                 # Pass credential and resolved UID to the actual tool function
                 return await func(ctx=ctx, cred=cred, user_id=target_uid, **kwargs)
             except Exception as e:
@@ -86,26 +94,60 @@ def create_server():
     @mcp.tool()
     @precheck
     async def get_user_info(ctx: Context, cred: Any, user_id: int) -> Dict[str, Any]:
+        """获取指定哔哩哔哩用户的详细信息
+
+        Args:
+            user_id_or_username: 用户ID（数字）或用户名
+        """
         return await fetch_user_info(user_id, cred)
 
     @mcp.tool()
     @precheck
     async def get_user_video_updates(ctx: Context, cred: Any, user_id: int, page: int = 1, limit: int = 10) -> Dict[str, Any]:
+        """获取用户的最新视频更新列表
+
+        Args:
+            user_id_or_username: 用户ID（数字）或用户名
+            page: 页码（从1开始），默认为1
+            limit: 每页视频数量（最大30），默认为10
+        """
         return await fetch_user_videos(user_id, page, limit, cred)
 
     @mcp.tool()
     @precheck
     async def get_user_dynamic_updates(ctx: Context, cred: Any, user_id: int, offset: int = 0, limit: int = 10, dynamic_type: str = "ALL") -> Dict[str, Any]:
+        """获取用户的动态更新
+
+        Args:
+            user_id_or_username: 用户ID（数字）或用户名
+            offset: 偏移量，从0开始
+            limit: 获取数量，默认为10
+            dynamic_type: 动态类型过滤（ALL, TEXT, IMAGE, VIDEO, ARTICLE）
+        """
         return await fetch_user_dynamics(user_id, offset, limit, cred, dynamic_type)
 
     @mcp.tool()
     @precheck
     async def get_user_articles(ctx: Context, cred: Any, user_id: int, page: int = 1, limit: int = 10) -> Dict[str, Any]:
+        """获取用户的专栏文章列表
+
+        Args:
+            user_id_or_username: 用户ID（数字）或用户名
+            page: 页码，从1开始，默认为1
+            limit: 每页文章数量，默认为10
+        """
         return await fetch_user_articles(user_id, page, limit, cred)
 
     @mcp.tool()
     @precheck
     async def get_user_followings(ctx: Context, cred: Any, user_id: int, page: int = 1, limit: int = 20) -> Dict[str, Any]:
+        """获取用户关注列表
+
+        Args:
+            user_id_or_username: 用户ID（数字）或用户名
+            page: 页码，从1开始，默认为1
+            limit: 每页关注者数量，默认为20
+        """
         return await fetch_user_followings(user_id, page, limit, cred)
 
 
