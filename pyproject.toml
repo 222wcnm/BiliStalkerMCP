@@ -13,7 +13,7 @@ maintainers = [
     {name = "222wcnm", email = "2328072813li@gmail.com"},
 ]
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.12"
 license = "MIT"
 keywords = ["mcp", "bilibili", "stalker", "video", "updates", "ai", "model-context-protocol"]
 classifiers = [
