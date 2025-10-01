@@ -1,4 +1,1 @@
 runtime: "python"
-startCommand:
-  type: "http"
-  command: ["uvicorn", "bili_stalker_mcp.server:mcp", "--host", "0.0.0.0", "--port", "$PORT"]
