@@ -1,6 +1,6 @@
 [build-system]
-requires = ["uv_build>=0.8.15,<0.9.0"]
-build-backend = "uv_build"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
 [project]
 name = "bili_stalker_mcp"
@@ -66,12 +66,8 @@ dev-dependencies = [
     "mypy>=1.0.0",
 ]
 
-[tool.setuptools]
+[tool.hatch.build.targets.wheel]
 packages = ["bili_stalker_mcp"]
-zip-safe = false
-
-[tool.setuptools.package-data]
-bili_stalker_mcp = ["py.typed"]
 
 [tool.black]
 line-length = 88
@@ -114,5 +110,5 @@ warn_unreachable = true
 strict_equality = true
 
 [tool.smithery]
-server = "bili_stalker_mcp.server:mcp"
+server = "bili_stalker_mcp.server:create_server"
 # Force cache invalidation for Smithery deployment
