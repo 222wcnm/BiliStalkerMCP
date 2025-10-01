@@ -4,7 +4,7 @@ BiliStalkerMCP package
 MCP Server for getting Bilibili user video updates
 """
 
-__version__ = "2.2"
+__version__ = "2.3"
 __author__ = "222wcnm"
 __email__ = "2328072813li@gmail.com"
 __license__ = "MIT"

@@ -1,24 +1,14 @@
-"""
-BiliStalkerMCP 服务器
-
-此模块定义 FastMCP 服务器，包含工具、资源和提示的完整定义。
-按照 FastMCP 官方文档的最佳实践进行组织。
-"""
 
 import os
 import logging
-import json
-from typing import Any, Dict, Optional, Callable, Coroutine, Union, Annotated
-from datetime import datetime, timezone
-from functools import wraps
+from typing import Any, Dict, Optional
 
-from fastmcp import FastMCP
-from mcp.types import TextContent
-from pydantic import Field
-from bilibili_api.exceptions import ApiException
+from fastmcp import FastMCP, Context
+from pydantic import Field, BaseModel
+from smithery.decorators import smithery
 
+from bilibili_api import Credential
 from .core import (
-    get_credential,
     get_user_id_by_username,
     fetch_user_info,
     fetch_user_videos,
@@ -30,404 +20,196 @@ from .config import (
     DynamicType,
 )
 
-# --- 初始化 ---
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
+# --- Smithery Configuration Schema ---
+class BiliStalkerConfig(BaseModel):
+    sessdata: str = Field(..., description="Bilibili SESSDATA cookie for basic authentication.")
+    bili_jct: Optional[str] = Field(None, description="Bilibili BILI_JCT cookie for enhanced authentication (optional).")
 
-mcp = FastMCP("BiliStalkerMCP")
+# --- Note: Using standard Context as smithery decorator handles config injection ---
 
-# 从环境变量获取凭证
-SESSDATA = os.environ.get("SESSDATA", "")
-BILI_JCT = os.environ.get("BILI_JCT", "")
-BUVID3 = os.environ.get("BUVID3", "")
-cred = get_credential(SESSDATA, BILI_JCT, BUVID3)
+# --- Smithery Server Definition ---
+@smithery.server(config_schema=BiliStalkerConfig)
+def create_server():
+    """Create and configure the BiliStalkerMCP server for Smithery."""
 
-# --- 内部辅助函数 ---
-def _format_timestamp(timestamp: Optional[int]) -> str:
-    """
-    统一的时间戳格式化函数，处理B站API返回的时间戳
-    
-    Args:
-        timestamp: Unix时间戳（秒），可能为None
-        
-    Returns:
-        格式化的时间字符串，如果timestamp无效则返回"未知时间"
-    """
-    if timestamp is None:
-        return "未知时间"
-    
-    try:
-        # B站API返回的时间戳通常是UTC时间戳
-        # 转换为本地时间显示
-        dt = datetime.fromtimestamp(timestamp)
-        return dt.strftime('%Y-%m-%d %H:%M')
-    except (ValueError, TypeError, OSError) as e:
-        logger.warning(f"时间戳转换失败: {timestamp}, 错误: {e}")
-        return f"时间戳错误({timestamp})"
+    logger = logging.getLogger(__name__)
+    mcp = FastMCP("BiliStalkerMCP")
 
-async def _resolve_user_id(user_id: Union[int, None], username: Union[str, None]) -> Union[int, None]:
-    """根据user_id或username解析最终的用户ID"""
-    if user_id is not None:
-        return user_id
-    if username:
-        return await get_user_id_by_username(username)
-    return None
+    # --- Internal Helper Functions ---
+    async def _resolve_user_id(user_id: int | None, username: str | None) -> int | None:
+        if user_id is not None:
+            return user_id
+        if username:
+            return await get_user_id_by_username(username)
+        return None
 
-# --- 用于预检的装饰器 ---
-def precheck(func: Callable[..., Coroutine[Any, Any, Dict[str, Any]]]) -> Callable[..., Coroutine[Any, Any, Dict[str, Any]]]:
-    """
-    处理凭证和用户ID解析的模板代码的装饰器。
-    """
-    @wraps(func)
-    async def wrapper(user_id: Union[int, None] = None, username: Union[str, None] = None, **kwargs: Any) -> Dict[str, Any]:
-        if not cred:
-            return {"error": "凭证未配置。请设置 SESSDATA、BILI_JCT 和 BUVID3 环境变量。"}
-        if user_id is None and not username:
-            return {"error": "必须提供 user_id 或 username 中的一个。"}
+    # --- MCP Tool Definitions ---
+    @mcp.tool()
+    async def get_user_info(ctx: Context, user_id_or_username: str) -> Dict[str, Any]:
+        """获取指定哔哩哔哩用户的详细信息
+
+        Args:
+            user_id_or_username: 用户ID（数字）或用户名
+        """
+        # Get credentials from the context config provided by Smithery
+        config = getattr(ctx, 'config', None)
+        if not config or not getattr(config, 'sessdata', None):
+            return {"error": "Missing SESSDATA configuration. Please provide SESSDATA in Smithery server config."}
+
+        cred = Credential(sessdata=config.sessdata, bili_jct=getattr(config, 'bili_jct', None))
+
+        # Try to parse as user ID first, then as username
+        try:
+            # Check if it's an integer user ID
+            user_id = int(user_id_or_username)
+            username = None
+        except ValueError:
+            # It's a username string
+            user_id = None
+            username = user_id_or_username
 
         try:
             target_uid = await _resolve_user_id(user_id, username)
             if not target_uid:
-                if username:
-                    return {"error": f"用户 '{username}' 未找到。请检查用户名拼写或稍后重试。"}
-                else:
-                    return {"error": f"用户 ID {user_id} 无效或不存在。请检查用户 ID 是否正确。"}
-            
-            # 将解析后的UID传递给被装饰的函数，确保类型正确
-            return await func(user_id=target_uid, **kwargs)
+                return {"error": f"用户 '{user_id_or_username}' 未找到。"}
+            return await fetch_user_info(target_uid, cred)
         except Exception as e:
-            logger.error(f"An unexpected error in decorator for {func.__name__}: {e}")
-            return {"error": f"预检查过程中发生未知错误: {str(e)}。"}
-            
-    return wrapper
+            logger.error(f"An error in get_user_info: {e}")
+            return {"error": f"获取用户信息时发生错误: {str(e)}。"}
 
-# --- MCP工具定义 ---
-@mcp.tool()
-@precheck
-async def get_user_info(
-    user_id: Annotated[Optional[int], Field(description="用户的Bilibili UID")] = None, 
-    username: Annotated[Optional[str], Field(description="用户的Bilibili昵称")] = None
-) -> Dict[str, Any]:
-    """
-    获取Bilibili用户的个人主页信息。
+    @mcp.tool()
+    async def get_user_video_updates(ctx: Context, user_id_or_username: str, page: int = 1, limit: int = 10) -> Dict[str, Any]:
+        """获取用户的最新视频更新列表
 
-    支持使用用户名或UID，两者效力相同。返回用户详细资料：昵称、签名、等级、粉丝数、关注数等。
-    
-    您必须提供 user_id 或 username 中的一个。
+        Args:
+            user_id_or_username: 用户ID（数字）或用户名
+            page: 页码（从1开始），默认为1
+            limit: 每页视频数量（最大30），默认为10
+        """
+        # Get credentials from the context config provided by Smithery
+        config = getattr(ctx, 'config', None)
+        if not config or not getattr(config, 'sessdata', None):
+            return {"error": "Missing SESSDATA configuration. Please provide SESSDATA in Smithery server config."}
 
-    :param user_id: 用户的Bilibili UID (可选)。
-    :param username: 用户的Bilibili昵称 (可选)。
-    :return: 包含用户详细信息的JSON对象。
-    """
-    # @precheck装饰器已经检查了cred，所以这里安全
-    assert cred is not None
-    # @precheck装饰器确保user_id不为None
-    assert user_id is not None
-    return await fetch_user_info(user_id, cred)
+        cred = Credential(sessdata=config.sessdata, bili_jct=getattr(config, 'bili_jct', None))
 
+        # Try to parse as user ID first, then as username
+        try:
+            user_id = int(user_id_or_username)
+            username = None
+        except ValueError:
+            user_id = None
+            username = user_id_or_username
 
-@mcp.tool()
-@precheck
-async def get_user_video_updates(
-    user_id: Annotated[Optional[int], Field(description="用户的Bilibili UID")] = None, 
-    username: Annotated[Optional[str], Field(description="用户的Bilibili昵称")] = None, 
-    page: Annotated[int, Field(description="页码，默认为1", ge=1)] = 1, 
-    limit: Annotated[int, Field(description="每页数量，默认为10，最大为50", ge=1, le=50)] = 10
-) -> Dict[str, Any]:
-    """
-    获取Bilibili用户最近发布的视频列表。
+        try:
+            target_uid = await _resolve_user_id(user_id, username)
+            if not target_uid:
+                return {"error": f"用户 '{user_id_or_username}' 未找到。"}
+            return await fetch_user_videos(target_uid, page, limit, cred)
+        except Exception as e:
+            logger.error(f"An error in get_user_video_updates: {e}")
+            return {"error": f"获取用户视频时发生错误: {str(e)}。"}
 
-    支持使用用户名或UID，两者效力相同。返回视频详细信息：标题、描述、播放量、弹幕数、封面图、字幕信息等。
-    字幕信息包含：是否有字幕、字幕数量、字幕语言列表和字幕下载URL。
-    
-    您必须提供 user_id 或 username 中的一个。
+    @mcp.tool()
+    async def get_user_dynamic_updates(ctx: Context, user_id_or_username: str, offset: int = 0, limit: int = 10, dynamic_type: str = "ALL") -> Dict[str, Any]:
+        """获取用户的动态更新
 
-    :param user_id: 用户的Bilibili UID (可选)。
-    :param username: 用户的Bilibili昵称 (可选)。
-    :param page: 页码，默认为1。
-    :param limit: 每页数量，默认为10，最大为50。
-    :return: 包含视频列表的JSON对象，每个视频包含详细的字幕信息。
-    """
-    if not (1 <= limit <= 50):
-        return {"error": "Limit must be between 1 and 50."}
-    # @precheck装饰器已经检查了cred，所以这里安全
-    assert cred is not None
-    # @precheck装饰器确保user_id不为None
-    assert user_id is not None
-    return await fetch_user_videos(user_id, page, limit, cred)
+        Args:
+            user_id_or_username: 用户ID（数字）或用户名
+            offset: 偏移量，从0开始
+            limit: 获取数量，默认为10
+            dynamic_type: 动态类型过滤（ALL, TEXT, IMAGE, VIDEO, ARTICLE）
+        """
+        # Get credentials from the context config provided by Smithery
+        config = getattr(ctx, 'config', None)
+        if not config or not getattr(config, 'sessdata', None):
+            return {"error": "Missing SESSDATA configuration. Please provide SESSDATA in Smithery server config."}
 
-@mcp.tool()
-@precheck
-async def get_user_dynamic_updates(
-    user_id: Annotated[Optional[int], Field(description="用户的Bilibili UID")] = None, 
-    username: Annotated[Optional[str], Field(description="用户的Bilibili昵称")] = None, 
-    offset: Annotated[int, Field(description="动态偏移量，用于分页，默认为0", ge=0)] = 0, 
-    limit: Annotated[int, Field(description="需要获取的动态数量，默认为10，最大为50", ge=1, le=50)] = 10, 
-    dynamic_type: Annotated[str, Field(description="动态类型，可以是 'ALL', 'VIDEO', 'ARTICLE', 'ANIME', 'DRAW'")] = "ALL"
-) -> Dict[str, Any]:
-    """
-    获取Bilibili用户最近发布的动态。
+        cred = Credential(sessdata=config.sessdata, bili_jct=getattr(config, 'bili_jct', None))
 
-    支持使用用户名或UID，两者效力相同。可指定动态类型（视频、专栏、图文等）和获取数量。
-    返回动态详细信息：类型、发布时间、文本内容、点赞/评论/转发数。
-    
-    您必须提供 user_id 或 username 中的一个。
+        # Try to parse as user ID first, then as username
+        try:
+            user_id = int(user_id_or_username)
+            username = None
+        except ValueError:
+            user_id = None
+            username = user_id_or_username
 
-    :param user_id: 用户的Bilibili UID (可选)。
-    :param username: 用户的Bilibili昵称 (可选)。
-    :param offset: 动态偏移量, 用于分页，默认为0。
-    :param limit: 需要获取的动态数量，默认为10，最大为50。
-    :param dynamic_type: 动态类型，可以是 "ALL", "VIDEO", "ARTICLE", "ANIME", "DRAW"。默认为 "ALL"。
-    :return: 包含动态列表的JSON对象。
-    """
-    if not (1 <= limit <= 50):
-        return {"error": "Limit must be between 1 and 50."}
-    if dynamic_type not in DynamicType.VALID_TYPES:
-        return {"error": f"Invalid dynamic_type. Must be one of {DynamicType.VALID_TYPES}"}
-    # @precheck装饰器已经检查了cred，所以这里安全
-    assert cred is not None
-    # @precheck装饰器确保user_id不为None
-    assert user_id is not None
-    return await fetch_user_dynamics(user_id, offset, limit, cred, dynamic_type)
+        try:
+            target_uid = await _resolve_user_id(user_id, username)
+            if not target_uid:
+                return {"error": f"用户 '{user_id_or_username}' 未找到。"}
+            return await fetch_user_dynamics(target_uid, offset, limit, cred, dynamic_type)
+        except Exception as e:
+            logger.error(f"An error in get_user_dynamic_updates: {e}")
+            return {"error": f"获取用户动态时发生错误: {str(e)}。"}
 
+    @mcp.tool()
+    async def get_user_articles(ctx: Context, user_id_or_username: str, page: int = 1, limit: int = 10) -> Dict[str, Any]:
+        """获取用户的专栏文章列表
 
-@mcp.tool()
-@precheck
-async def get_user_articles(
-    user_id: Annotated[Optional[int], Field(description="用户的Bilibili UID")] = None, 
-    username: Annotated[Optional[str], Field(description="用户的Bilibili昵称")] = None, 
-    page: Annotated[int, Field(description="页码，默认为1", ge=1)] = 1, 
-    limit: Annotated[int, Field(description="每页数量，默认为10，最大为50", ge=1, le=50)] = 10
-) -> Dict[str, Any]:
-    """
-    获取Bilibili用户最近发布的专栏文章列表。
+        Args:
+            user_id_or_username: 用户ID（数字）或用户名
+            page: 页码，从1开始，默认为1
+            limit: 每页文章数量，默认为10
+        """
+        # Get credentials from the context config provided by Smithery
+        config = getattr(ctx, 'config', None)
+        if not config or not getattr(config, 'sessdata', None):
+            return {"error": "Missing SESSDATA configuration. Please provide SESSDATA in Smithery server config."}
 
-    支持使用用户名或UID，两者效力相同。返回文章详细信息：标题、摘要、阅读量、封面图URL等。
-    
-    您必须提供 user_id 或 username 中的一个。
+        cred = Credential(sessdata=config.sessdata, bili_jct=getattr(config, 'bili_jct', None))
 
-    :param user_id: 用户的Bilibili UID (可选)。
-    :param username: 用户的Bilibili昵称 (可选)。
-    :param page: 页码，默认为1。
-    :param limit: 每页数量，默认为10，最大为50。
-    :return: 包含文章列表的JSON对象。
-    """
-    if not (1 <= limit <= 50):
-        return {"error": "Limit must be between 1 and 50."}
-    # @precheck装饰器已经检查了cred，所以这里安全
-    assert cred is not None
-    # @precheck装饰器确保user_id不为None
-    assert user_id is not None
-    return await fetch_user_articles(user_id, page, limit, cred)
+        # Try to parse as user ID first, then as username
+        try:
+            user_id = int(user_id_or_username)
+            username = None
+        except ValueError:
+            user_id = None
+            username = user_id_or_username
 
-@mcp.tool()
-@precheck
-async def get_user_followings(
-    user_id: Annotated[Optional[int], Field(description="用户的Bilibili UID")] = None, 
-    username: Annotated[Optional[str], Field(description="用户的Bilibili昵称")] = None, 
-    page: Annotated[int, Field(description="页码，默认为1", ge=1)] = 1, 
-    limit: Annotated[int, Field(description="每页数量，默认为20，最大为50", ge=1, le=50)] = 20
-) -> Dict[str, Any]:
-    """
-    获取Bilibili用户的关注列表。
+        try:
+            target_uid = await _resolve_user_id(user_id, username)
+            if not target_uid:
+                return {"error": f"用户 '{user_id_or_username}' 未找到。"}
+            return await fetch_user_articles(target_uid, page, limit, cred)
+        except Exception as e:
+            logger.error(f"An error in get_user_articles: {e}")
+            return {"error": f"获取用户文章时发生错误: {str(e)}。"}
 
-    支持使用用户名或UID，两者效力相同。返回关注用户详细信息：昵称、签名、头像等。
-    
-    您必须提供 user_id 或 username 中的一个。
+    @mcp.tool()
+    async def get_user_followings(ctx: Context, user_id_or_username: str, page: int = 1, limit: int = 20) -> Dict[str, Any]:
+        """获取用户关注列表
 
-    :param user_id: 用户的Bilibili UID (可选)。
-    :param username: 用户的Bilibili昵称 (可选)。
-    :param page: 页码，默认为1。
-    :param limit: 每页数量，默认为20，最大为50。
-    :return: 包含关注用户列表的JSON对象。
-    """
-    if not (1 <= limit <= 50):
-        return {"error": "Limit must be between 1 and 50."}
-    # @precheck装饰器已经检查了cred，所以这里安全
-    assert cred is not None
-    # @precheck装饰器确保user_id不为None
-    assert user_id is not None
-    return await fetch_user_followings(user_id, page, limit, cred)
+        Args:
+            user_id_or_username: 用户ID（数字）或用户名
+            page: 页码，从1开始，默认为1
+            limit: 每页关注者数量，默认为20
+        """
+        # Get credentials from the context config provided by Smithery
+        config = getattr(ctx, 'config', None)
+        if not config or not getattr(config, 'sessdata', None):
+            return {"error": "Missing SESSDATA configuration. Please provide SESSDATA in Smithery server config."}
 
-# --- 资源定义（按照 FastMCP 最佳实践添加） ---
-@mcp.resource("bili://user/{user_id}/info")
-async def get_user_info_resource(user_id: int) -> str:
-    """获取用户信息资源"""
-    if not cred:
-        return json.dumps({"error": "Credential not configured"}, ensure_ascii=False)
-    
-    try:
-        user_info = await fetch_user_info(user_id, cred)
-        return json.dumps(user_info, ensure_ascii=False, indent=2)
-    except Exception as e:
-        return json.dumps({"error": str(e)}, ensure_ascii=False)
+        cred = Credential(sessdata=config.sessdata, bili_jct=getattr(config, 'bili_jct', None))
 
-@mcp.resource("bili://user/{user_id}/videos")
-async def get_user_videos_resource(user_id: int) -> str:
-    """获取用户视频资源"""
-    if not cred:
-        return json.dumps({"error": "Credential not configured"}, ensure_ascii=False)
-    
-    try:
-        videos = await fetch_user_videos(user_id, 1, 10, cred)
-        return json.dumps(videos, ensure_ascii=False, indent=2)
-    except Exception as e:
-        return json.dumps({"error": str(e)}, ensure_ascii=False)
+        # Try to parse as user ID first, then as username
+        try:
+            user_id = int(user_id_or_username)
+            username = None
+        except ValueError:
+            user_id = None
+            username = user_id_or_username
 
-@mcp.resource("bili://user/{user_id}/dynamics")
-async def get_user_dynamics_resource(user_id: int) -> str:
-    """获取用户动态资源"""
-    if not cred:
-        return json.dumps({"error": "Credential not configured"}, ensure_ascii=False)
-    
-    try:
-        dynamics = await fetch_user_dynamics(user_id, 0, 10, cred)
-        return json.dumps(dynamics, ensure_ascii=False, indent=2)
-    except Exception as e:
-        return json.dumps({"error": str(e)}, ensure_ascii=False)
-
-# --- 提示预设 (用于规范模型输出格式) ---
-@mcp.prompt()
-def format_user_info_response(user_info_json: str) -> str:
-    """格式化用户个人信息为Markdown, 支持get_user_info工具的输出"""
-    try:
-        data = json.loads(user_info_json)
-        if not data or data.get("error"):
-            return f"获取用户信息失败: {data.get('error', '未知错误')}"
-
-        md = f"### {data.get('name', 'N/A')}\n\n"
-        if data.get('face'):
-            md += f"![头像]({data.get('face')})\n\n"
-        
-        if data.get('sign'):
-            md += f"> {data.get('sign')}\n\n"
-
-        md += f"- **等级**: LV.{data.get('level', 'N/A')}\n"
-        md += f"- **关注数**: {data.get('following', 'N/A')}\n"
-        md += f"- **粉丝数**: {data.get('follower', 'N/A')}\n"
-        md += f"- **性别**: {data.get('sex', 'N/A')}\n"
-        if data.get('birthday'):
-            md += f"- **生日**: {data.get('birthday')}\n"
-        
-        live_room = data.get('live_room')
-        if live_room and live_room.get('liveStatus') == 1:
-            md += "\n---\n\n"
-            md += "#### 直播间信息\n"
-            md += f"- **标题**: {live_room.get('title', 'N/A')}\n"
-            md += "- **状态**: 正在直播\n"
-            if live_room.get('url'):
-                md += f"- **链接**: [点击进入]({live_room.get('url')})\n"
-        
-        return md
-    except Exception as e:
-        return f"格式化用户信息时出错: {e}"
-
-@mcp.prompt()
-def format_video_response(videos_json: str) -> str:
-    """格式化视频数据为Markdown, 支持get_user_video_updates工具的输出，现在包含字幕信息"""
-    try:
-        data = json.loads(videos_json)
-        video_list = data.get("videos", [])
-        if not video_list:
-            return "用户最近没有发布新视频。"
-        
-        md = "### 最新视频\n\n"
-        for v in video_list:
-            md += f"#### [{v.get('title', '无标题')}]({v.get('url')})\n"
-            if v.get('pic'):
-                md += f"![cover]({v['pic']})\n\n"
-            
-            # 基本信息
-            md += f"- **播放**: {v.get('play', 0)} | **点赞**: {v.get('like', 0)} | **发布于**: {_format_timestamp(v.get('created'))}\n"
-            
-            # 字幕信息
-            subtitle = v.get('subtitle', {})
-            if subtitle.get('has_subtitle'):
-                subtitle_count = subtitle.get('subtitle_count', 0)
-                subtitle_langs = []
-                for sub in subtitle.get('subtitle_list', []):
-                    lang_doc = sub.get('lan_doc', sub.get('lan', '未知语言'))
-                    subtitle_langs.append(lang_doc)
-                
-                md += f"- **字幕**: 有 ({subtitle_count}种语言: {', '.join(subtitle_langs)})\n"
-            else:
-                md += f"- **字幕**: 无\n"
-            
-            md += "\n"
-        
-        return md
-    except Exception as e:
-        return f"格式化视频数据时出错: {e}"
+        try:
+            target_uid = await _resolve_user_id(user_id, username)
+            if not target_uid:
+                return {"error": f"用户 '{user_id_or_username}' 未找到。"}
+            return await fetch_user_followings(target_uid, page, limit, cred)
+        except Exception as e:
+            logger.error(f"An error in get_user_followings: {e}")
+            return {"error": f"获取用户关注时发生错误: {str(e)}。"}
 
 
-@mcp.prompt()
-def format_dynamic_response(dynamics_json: str) -> str:
-    """格式化动态数据为Markdown, 支持get_user_dynamic_updates工具的输出"""
-    try:
-        data = json.loads(dynamics_json)
-        dynamic_list = data.get("dynamics", [])
-        if not dynamic_list:
-            return "用户最近没有发布新动态。"
 
-        md = "### 最新动态\n\n"
-        for d in dynamic_list:
-            md += f"**类型**: {d.get('type')} | **发布于**: {_format_timestamp(d.get('timestamp'))}\n"
-            md += f"> {d.get('text_content', '')}\n\n"
-            if d.get('images'):
-                md += " ".join([f"![image]({img})" for img in d['images']]) + "\n\n"
-            md += "---\n"
-        return md
-    except Exception as e:
-        return f"格式化动态数据时出错: {e}"
-
-@mcp.prompt()
-def format_articles_response(articles_json: str) -> str:
-    """格式化专栏文章数据为Markdown, 支持get_user_articles工具的输出"""
-    try:
-        data = json.loads(articles_json)
-        article_list = data.get("articles", [])
-        if not article_list:
-            return "用户最近没有发布新专栏文章。"
-
-        md = "### 最新专栏文章\n\n"
-        for a in article_list:
-            md += f"#### [{a.get('title', '无标题')}]({a.get('url')})\n"
-            if a.get('banner_url'):
-                md += f"![banner]({a['banner_url']})\n\n"
-            md += f"- **阅读**: {a.get('stats', {}).get('view', 0)} | **发布于**: {_format_timestamp(a.get('publish_time'))}\n"
-            md += f"> {a.get('summary', '无摘要')}\n\n"
-        return md
-    except Exception as e:
-        return f"格式化专栏文章时出错: {e}"
-
-@mcp.prompt()
-def format_followings_response(followings_json: str) -> str:
-    """格式化关注列表数据为Markdown, 支持get_user_followings工具的输出"""
-    try:
-        data = json.loads(followings_json)
-        followings_list = data.get("followings", [])
-        if not followings_list:
-            return "用户没有关注任何人。"
-
-        md = "### 关注列表\n\n"
-        for f in followings_list:
-            md += f"#### {f.get('uname', '无昵称')}\n"
-            if f.get('face'):
-                md += f"![avatar]({f['face']})\n\n"
-            if f.get('sign'):
-                md += f"> {f.get('sign')}\n\n"
-            md += f"- **UID**: {f.get('mid')}\n"
-            if f.get('official_verify'):
-                md += f"- **认证**: {f.get('official_verify')}\n"
-            md += "---\n"
-        return md
-    except Exception as e:
-        return f"格式化关注列表数据时出错: {e}"
-
-def run():
-    """运行MCP服务器"""
-    logger.info("BiliStalkerMCP Server is starting...")
-    mcp.run(transport='stdio')
-
-if __name__ == "__main__":
-    run()
+    return mcp

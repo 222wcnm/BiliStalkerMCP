@@ -1,6 +1,6 @@
 [build-system]
-requires = ["setuptools>=61.0", "wheel"]
-build-backend = "setuptools.build_meta"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
 [project]
 name = "bili_stalker_mcp"
@@ -9,11 +9,8 @@ description = "MCP Server for getting Bilibili user video updates"
 authors = [
     {name = "222wcnm", email = "2328072813li@gmail.com"},
 ]
-maintainers = [
-    {name = "222wcnm", email = "2328072813li@gmail.com"},
-]
-readme = "README.md"
-requires-python = ">=3.10"
+readme = {file = "README.md", content-type = "text/markdown"}
+requires-python = ">=3.12"
 license = "MIT"
 keywords = ["mcp", "bilibili", "stalker", "video", "updates", "ai", "model-context-protocol"]
 classifiers = [
@@ -22,9 +19,6 @@ classifiers = [
     "Intended Audience :: Developers",
     "Intended Audience :: End Users/Desktop",
     "Operating System :: OS Independent",
-    "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Topic :: Internet :: WWW/HTTP :: Dynamic Content",
     "Topic :: Software Development :: Libraries :: Python Modules",
@@ -33,10 +27,13 @@ classifiers = [
 ]
 dependencies = [
     "bilibili-api-python>=17.1.4",
-    "fastmcp>=0.4.0",
-    "mcp[cli]>=1.11.0",
+    "fastmcp>=2.0.0",
     "httpx>=0.25.0",
     "async-lru>=2.0.4",
+    "smithery>=0.4.2",
+    "uvicorn[standard]>=0.29.0",
+    "fastapi>=0.104.0",
+    "aiohttp>=3.9.0",
 ]
 
 [project.optional-dependencies]
@@ -51,6 +48,8 @@ dev = [
 
 [project.scripts]
 bili-stalker-mcp = "bili_stalker_mcp.cli:main"
+dev = "smithery.cli.dev:main"
+playground = "smithery.cli.playground:main"
 
 [project.urls]
 Homepage = "https://github.com/222wcnm/BiliStalkerMCP"
@@ -69,17 +68,13 @@ dev-dependencies = [
     "mypy>=1.0.0",
 ]
 
-[tool.setuptools]
+[tool.hatch.build.targets.wheel]
 packages = ["bili_stalker_mcp"]
-zip-safe = false
-
-[tool.setuptools.package-data]
-bili_stalker_mcp = ["py.typed"]
 
 [tool.black]
 line-length = 88
 target-version = ['py310']
-include = '\.pyi?'
+include = '''\.pyi?'''
 
 extend-exclude = '''
 /(
@@ -115,3 +110,7 @@ warn_unused_ignores = true
 warn_no_return = true
 warn_unreachable = true
 strict_equality = true
+
+[tool.smithery]
+server = "bili_stalker_mcp.server:create_server"
+# Force cache invalidation for Smithery deployment

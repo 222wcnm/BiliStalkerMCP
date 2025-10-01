@@ -1,6 +1,5 @@
 import logging
 import os
-import asyncio
 import json
 from typing import Any, Dict, Optional
 
@@ -21,12 +20,28 @@ bilibili_api.request_settings.set('timeout', REQUEST_TIMEOUT)
 
 logger = logging.getLogger(__name__)
 
-def get_credential(sessdata: str, bili_jct: str, buvid3: str) -> Optional[Credential]:
-    """创建Bilibili API的凭证对象"""
+def get_credential() -> Optional[Credential]:
+    """从环境变量创建Bilibili API的凭证对象，避免使用FastMCP配置系统"""
+    sessdata = os.environ.get("SESSDATA")
+    bili_jct = os.environ.get("BILI_JCT")
+
     if not sessdata:
         logger.error("SESSDATA environment variable is not set or empty.")
         return None
-    return Credential(sessdata=sessdata, bili_jct=bili_jct, buvid3=buvid3)
+
+    # 智能认证级别
+    try:
+        # 推荐配置：SESSDATA + BILI_JCT
+        if bili_jct:
+            logger.debug("Using full authentication (SESSDATA + BILI_JCT)")
+            return Credential(sessdata=sessdata, bili_jct=bili_jct, buvid3="")
+        # 最低配置：仅SESSDATA（可能触发一些限制）
+        else:
+            logger.warning("Using minimal authentication (SESSDATA only) - some features may be limited")
+            return Credential(sessdata=sessdata, bili_jct="", buvid3="")
+    except Exception as e:
+        logger.error(f"Failed to create credential object: {e}")
+        return None
 
 def _get_cookies(cred: Credential) -> str:
     """获取用于请求的 Cookie 字符串。"""

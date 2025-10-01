@@ -160,30 +160,41 @@ def load_credentials():
         logger.error("凭证不完整 (SESSDATA, BILI_JCT, BUVID3 都需要)。请检查 BILI_COOKIE.txt 或环境变量。")
         return None
         
-    # 类型断言：这里我们已经确认了所有凭证都不为 None
-    assert sessdata is not None and bili_jct is not None and buvid3 is not None
-    return core.get_credential(sessdata, bili_jct, buvid3)
+    # Now use environment variables for credential loading
+    os.environ["SESSDATA"] = sessdata if sessdata is not None else ""
+    os.environ["BILI_JCT"] = bili_jct if bili_jct else ""
+    return core.get_credential()
 
 async def test_user_info(cred, user_id, username):
     """测试用户信息获取并验证字段"""
     logger.info("--- 测试: 获取用户信息 ---")
-    target_uid = user_id or await core.get_user_id_by_username(username)
-    if not target_uid:
-        logger.error(f"找不到用户 '{username or user_id}'")
+
+    # Use the target ID or username directly
+    user_identifier = str(user_id) if user_id else username
+    if not user_identifier:
+        logger.error("没有提供用户ID或用户名")
         return None
+
+    # First resolve the username to get user ID for validation
+    target_uid = user_id
+    if not target_uid and username:
+        target_uid = await core.get_user_id_by_username(username)
+        if not target_uid:
+            logger.error(f"找不到用户 '{username}'")
+            return None
 
     user_info = await core.fetch_user_info(target_uid, cred)
     if "error" in user_info:
         logger.error(f"获取用户信息失败: {user_info['error']}")
         return None
-    
+
     logger.info(f"成功获取用户 '{user_info['name']}' (ID: {user_info['mid']}) 的信息。")
     logger.info(f"  - 粉丝: {user_info.get('follower')}, 关注: {user_info.get('following')}")
-    
+
     # 验证字段完整性
     logger.info("验证用户信息字段...")
     validate_user_info_fields(user_info)
-    
+
     return target_uid
 
 async def test_videos(cred, user_id, limit):

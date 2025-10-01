@@ -1,0 +1,15 @@
+runtime: "container"
+startCommand:
+  type: "http"
+  configSchema:
+    type: "object"
+    required: ["sessdata"]
+    properties:
+      sessdata:
+        type: "string"
+        description: "Bilibili SESSDATA cookie for basic authentication"
+      bili_jct:
+        type: "string"
+        description: "Bilibili BILI_JCT cookie for enhanced authentication (optional)"
+env:
+  PYTHONPATH: "."
