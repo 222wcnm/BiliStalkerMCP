@@ -1,3 +1,20 @@
-runtime: "container"
-build:
-  dockerfile: "Dockerfile"
+runtime: "python"
+startCommand:
+  type: "http"
+  command: ["bili-stalker-mcp"]
+  configSchema:
+    type: object
+    required:
+      - sessdata
+      - bili_jct
+      - buvid3
+    properties:
+      sessdata:
+        type: string
+        description: Bilibili SESSDATA cookie for authentication.
+      bili_jct:
+        type: string
+        description: Bilibili BILI_JCT cookie for authentication.
+      buvid3a:
+        type: string
+        description: Bilibili BUVID3 cookie for authentication.
