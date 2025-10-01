@@ -1,15 +1,11 @@
 
 import os
 import logging
-import json
-from typing import Any, Dict, Optional, Callable, Coroutine, Union, Annotated
-from datetime import datetime, timezone
-from functools import wraps
+from typing import Any, Dict, Optional, Union
+from datetime import datetime
 
 from fastmcp import FastMCP, Context
-from mcp.types import TextContent
 from pydantic import Field, BaseModel
-from bilibili_api.exceptions import ApiException
 from smithery.decorators import smithery
 
 from .core import (
@@ -57,53 +53,42 @@ def create_server():
             return await get_user_id_by_username(username)
         return None
 
-    # --- Precheck Decorator for Tools ---
-    def precheck(func: Callable[..., Coroutine[Any, Any, Dict[str, Any]]]) -> Callable[..., Coroutine[Any, Any, Dict[str, Any]]]:
-        @wraps(func)
-        async def wrapper(ctx: Context, user_id_or_username: str, **kwargs: Any) -> Dict[str, Any]:
-            # Get credentials from session config provided by Smithery
-            session_config = ctx.session_config  # type: ignore[attr-defined]
-            cred = get_credential(session_config.sessdata, session_config.bili_jct, session_config.buvid3)
-
-            if not cred or not cred.sessdata:
-                return {"error": "凭证未在会话中配置。请在 MCP 客户端或 Smithery UI 中提供。"}
-
-            # Try to parse as user ID first, then as username
-            try:
-                # Check if it's an integer user ID
-                user_id = int(user_id_or_username)
-                username = None
-            except ValueError:
-                # It's a username string
-                user_id = None
-                username = user_id_or_username
-
-            try:
-                target_uid = await _resolve_user_id(user_id, username)
-                if not target_uid:
-                    return {"error": f"用户 '{user_id_or_username}' 未找到。"}
-
-                # Pass credential and resolved UID to the actual tool function
-                return await func(ctx=ctx, cred=cred, user_id=target_uid, **kwargs)
-            except Exception as e:
-                logger.error(f"An unexpected error in decorator for {func.__name__}: {e}")
-                return {"error": f"预检查过程中发生未知错误: {str(e)}。"}
-        return wrapper
-
     # --- MCP Tool Definitions ---
     @mcp.tool()
-    @precheck
-    async def get_user_info(ctx: Context, cred: Any, user_id: int) -> Dict[str, Any]:
+    async def get_user_info(ctx: Context, user_id_or_username: str) -> Dict[str, Any]:
         """获取指定哔哩哔哩用户的详细信息
 
         Args:
             user_id_or_username: 用户ID（数字）或用户名
         """
-        return await fetch_user_info(user_id, cred)
+        # Get credentials from session config provided by Smithery
+        session_config = ctx.session_config  # type: ignore[attr-defined]
+        cred = get_credential(session_config.sessdata, session_config.bili_jct, session_config.buvid3)
+
+        if not cred or not cred.sessdata:
+            return {"error": "凭证未在会话中配置。请在 MCP 客户端或 Smithery UI 中提供。"}
+
+        # Try to parse as user ID first, then as username
+        try:
+            # Check if it's an integer user ID
+            user_id = int(user_id_or_username)
+            username = None
+        except ValueError:
+            # It's a username string
+            user_id = None
+            username = user_id_or_username
+
+        try:
+            target_uid = await _resolve_user_id(user_id, username)
+            if not target_uid:
+                return {"error": f"用户 '{user_id_or_username}' 未找到。"}
+            return await fetch_user_info(target_uid, cred)
+        except Exception as e:
+            logger.error(f"An error in get_user_info: {e}")
+            return {"error": f"获取用户信息时发生错误: {str(e)}。"}
 
     @mcp.tool()
-    @precheck
-    async def get_user_video_updates(ctx: Context, cred: Any, user_id: int, page: int = 1, limit: int = 10) -> Dict[str, Any]:
+    async def get_user_video_updates(ctx: Context, user_id_or_username: str, page: int = 1, limit: int = 10) -> Dict[str, Any]:
         """获取用户的最新视频更新列表
 
         Args:
@@ -111,11 +96,32 @@ def create_server():
             page: 页码（从1开始），默认为1
             limit: 每页视频数量（最大30），默认为10
         """
-        return await fetch_user_videos(user_id, page, limit, cred)
+        # Get credentials from session config provided by Smithery
+        session_config = ctx.session_config  # type: ignore[attr-defined]
+        cred = get_credential(session_config.sessdata, session_config.bili_jct, session_config.buvid3)
+
+        if not cred or not cred.sessdata:
+            return {"error": "凭证未在会话中配置。请在 MCP 客户端或 Smithery UI 中提供。"}
+
+        # Try to parse as user ID first, then as username
+        try:
+            user_id = int(user_id_or_username)
+            username = None
+        except ValueError:
+            user_id = None
+            username = user_id_or_username
+
+        try:
+            target_uid = await _resolve_user_id(user_id, username)
+            if not target_uid:
+                return {"error": f"用户 '{user_id_or_username}' 未找到。"}
+            return await fetch_user_videos(target_uid, page, limit, cred)
+        except Exception as e:
+            logger.error(f"An error in get_user_video_updates: {e}")
+            return {"error": f"获取用户视频时发生错误: {str(e)}。"}
 
     @mcp.tool()
-    @precheck
-    async def get_user_dynamic_updates(ctx: Context, cred: Any, user_id: int, offset: int = 0, limit: int = 10, dynamic_type: str = "ALL") -> Dict[str, Any]:
+    async def get_user_dynamic_updates(ctx: Context, user_id_or_username: str, offset: int = 0, limit: int = 10, dynamic_type: str = "ALL") -> Dict[str, Any]:
         """获取用户的动态更新
 
         Args:
@@ -124,11 +130,32 @@ def create_server():
             limit: 获取数量，默认为10
             dynamic_type: 动态类型过滤（ALL, TEXT, IMAGE, VIDEO, ARTICLE）
         """
-        return await fetch_user_dynamics(user_id, offset, limit, cred, dynamic_type)
+        # Get credentials from session config provided by Smithery
+        session_config = ctx.session_config  # type: ignore[attr-defined]
+        cred = get_credential(session_config.sessdata, session_config.bili_jct, session_config.buvid3)
+
+        if not cred or not cred.sessdata:
+            return {"error": "凭证未在会话中配置。请在 MCP 客户端或 Smithery UI 中提供。"}
+
+        # Try to parse as user ID first, then as username
+        try:
+            user_id = int(user_id_or_username)
+            username = None
+        except ValueError:
+            user_id = None
+            username = user_id_or_username
+
+        try:
+            target_uid = await _resolve_user_id(user_id, username)
+            if not target_uid:
+                return {"error": f"用户 '{user_id_or_username}' 未找到。"}
+            return await fetch_user_dynamics(target_uid, offset, limit, cred, dynamic_type)
+        except Exception as e:
+            logger.error(f"An error in get_user_dynamic_updates: {e}")
+            return {"error": f"获取用户动态时发生错误: {str(e)}。"}
 
     @mcp.tool()
-    @precheck
-    async def get_user_articles(ctx: Context, cred: Any, user_id: int, page: int = 1, limit: int = 10) -> Dict[str, Any]:
+    async def get_user_articles(ctx: Context, user_id_or_username: str, page: int = 1, limit: int = 10) -> Dict[str, Any]:
         """获取用户的专栏文章列表
 
         Args:
@@ -136,11 +163,32 @@ def create_server():
             page: 页码，从1开始，默认为1
             limit: 每页文章数量，默认为10
         """
-        return await fetch_user_articles(user_id, page, limit, cred)
+        # Get credentials from session config provided by Smithery
+        session_config = ctx.session_config  # type: ignore[attr-defined]
+        cred = get_credential(session_config.sessdata, session_config.bili_jct, session_config.buvid3)
+
+        if not cred or not cred.sessdata:
+            return {"error": "凭证未在会话中配置。请在 MCP 客户端或 Smithery UI 中提供。"}
+
+        # Try to parse as user ID first, then as username
+        try:
+            user_id = int(user_id_or_username)
+            username = None
+        except ValueError:
+            user_id = None
+            username = user_id_or_username
+
+        try:
+            target_uid = await _resolve_user_id(user_id, username)
+            if not target_uid:
+                return {"error": f"用户 '{user_id_or_username}' 未找到。"}
+            return await fetch_user_articles(target_uid, page, limit, cred)
+        except Exception as e:
+            logger.error(f"An error in get_user_articles: {e}")
+            return {"error": f"获取用户文章时发生错误: {str(e)}。"}
 
     @mcp.tool()
-    @precheck
-    async def get_user_followings(ctx: Context, cred: Any, user_id: int, page: int = 1, limit: int = 20) -> Dict[str, Any]:
+    async def get_user_followings(ctx: Context, user_id_or_username: str, page: int = 1, limit: int = 20) -> Dict[str, Any]:
         """获取用户关注列表
 
         Args:
@@ -148,7 +196,29 @@ def create_server():
             page: 页码，从1开始，默认为1
             limit: 每页关注者数量，默认为20
         """
-        return await fetch_user_followings(user_id, page, limit, cred)
+        # Get credentials from session config provided by Smithery
+        session_config = ctx.session_config  # type: ignore[attr-defined]
+        cred = get_credential(session_config.sessdata, session_config.bili_jct, session_config.buvid3)
+
+        if not cred or not cred.sessdata:
+            return {"error": "凭证未在会话中配置。请在 MCP 客户端或 Smithery UI 中提供。"}
+
+        # Try to parse as user ID first, then as username
+        try:
+            user_id = int(user_id_or_username)
+            username = None
+        except ValueError:
+            user_id = None
+            username = user_id_or_username
+
+        try:
+            target_uid = await _resolve_user_id(user_id, username)
+            if not target_uid:
+                return {"error": f"用户 '{user_id_or_username}' 未找到。"}
+            return await fetch_user_followings(target_uid, page, limit, cred)
+        except Exception as e:
+            logger.error(f"An error in get_user_followings: {e}")
+            return {"error": f"获取用户关注时发生错误: {str(e)}。"}
 
 
 
