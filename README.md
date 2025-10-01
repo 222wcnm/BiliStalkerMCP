@@ -3,10 +3,19 @@
 [![Python](https://img.shields.io/badge/Python-3.10+-blue?logo=python)](https://www.python.org/)
 [![MCP](https://img.shields.io/badge/MCP-Compatible-orange)](https://github.com/jlowin/fastmcp)
 [![Version](https://img.shields.io/badge/Version-2.3-green)](https://pypi.org/project/bili-stalker-mcp/)
+[![smithery badge](https://smithery.ai/badge/@222wcnm/bili_stalkermcp)](https://smithery.ai/server/@222wcnm/bili_stalkermcp)
 
 A Model Context Protocol (MCP) server for comprehensive Bilibili user data acquisition.
 
 ## Quick Start
+
+### Installing via Smithery
+
+To install bili_stalkermcp automatically via [Smithery](https://smithery.ai/server/@222wcnm/bili_stalkermcp):
+
+```bash
+npx -y @smithery/cli install @222wcnm/bili_stalkermcp
+```
 
 ### Installation
 ```bash
