@@ -62,7 +62,7 @@ def create_server():
         @wraps(func)
         async def wrapper(ctx: Context, user_id: Union[int, None] = None, username: Union[str, None] = None, **kwargs: Any) -> Dict[str, Any]:
             # Get credentials from session config provided by Smithery
-            session_config = ctx.session_config
+            session_config = ctx.session_config  # type: ignore[attr-defined]
             cred = get_credential(session_config.sessdata, session_config.bili_jct, session_config.buvid3)
 
             if not cred or not cred.sessdata:
@@ -108,13 +108,7 @@ def create_server():
     async def get_user_followings(ctx: Context, cred: Any, user_id: int, page: int = 1, limit: int = 20) -> Dict[str, Any]:
         return await fetch_user_followings(user_id, page, limit, cred)
 
-    # --- Prompts (unchanged) ---
-    @mcp.prompt()
-    def format_user_info_response(user_info_json: str) -> str:
-        # ... (implementation is the same)
-        pass
 
-    # ... (other prompts)
 
     return mcp
 
@@ -132,4 +126,3 @@ def run_local():
     # ... (This would require duplicating all tool definitions outside the create_server function)
     # For simplicity, we will adjust cli.py to use a different approach.
     logger.info("Local run mode has changed. Please use 'uv run dev' or 'uv run playground' as per Smithery docs.")
-
