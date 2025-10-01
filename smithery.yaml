@@ -1,4 +1,4 @@
-runtime: "process"
+runtime: "python"
 startCommand:
   type: "http"
   command: ["uvx", "bili-stalker-mcp"]
