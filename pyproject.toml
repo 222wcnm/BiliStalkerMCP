@@ -116,5 +116,3 @@ warn_no_return = true
 warn_unreachable = true
 strict_equality = true
 
-[tool.smithery]
-server = "bili_stalker_mcp.server:mcp"
