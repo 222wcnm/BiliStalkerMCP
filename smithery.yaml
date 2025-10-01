@@ -1,37 +1,4 @@
-# Smithery configuration file: https://smithery.ai/docs/build/project-config
-
+runtime: "python"
 startCommand:
-  type: stdio
-  commandFunction:
-    # A JS function that produces the CLI command based on the given config to start the MCP on stdio.
-    |_
-    (config) => ({ 
-        command: 'bili-stalker-mcp', 
-        args: [], 
-        env: { 
-            SESSDATA: config.sessdata,
-            BILI_JCT: config.bili_jct,
-            BUVID3: config.buvid3
-        } 
-    })
-  configSchema:
-    # JSON Schema defining the configuration options for the MCP.
-    type: object
-    required:
-      - sessdata
-      - bili_jct
-      - buvid3
-    properties:
-      sessdata:
-        type: string
-        description: Bilibili SESSDATA cookie for authentication.
-      bili_jct:
-        type: string
-        description: Bilibili BILI_JCT cookie for authentication.
-      buvid3:
-        type: string
-        description: Bilibili BUVID3 cookie for authentication.
-  exampleConfig:
-    sessdata: your_valid_sessdata_here
-    bili_jct: your_valid_bili_jct_here
-    buvid3: your_valid_buvid3_here
+  type: "http"
+  command: ["python", "-m", "uvicorn", "bili_stalker_mcp.server:mcp", "--host", "0.0.0.0", "--port", "$PORT"]
