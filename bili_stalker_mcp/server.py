@@ -426,8 +426,24 @@ def format_followings_response(followings_json: str) -> str:
 
 def run():
     """运行MCP服务器"""
-    logger.info("BiliStalkerMCP Server is starting...")
-    mcp.run(transport='stdio')
+    # Smithery and other platforms provide the port via this env var.
+    port = int(os.environ.get("PORT", 8080))
+    
+    # Re-check credentials at runtime, in case they are provided by the deployment environment
+    sessdata = os.environ.get("SESSDATA", SESSDATA)
+    bili_jct = os.environ.get("BILI_JCT", BILI_JCT)
+    buvid3 = os.environ.get("BUVID3", BUVID3)
+    
+    global cred
+    cred = get_credential(sessdata, bili_jct, buvid3)
+
+    if not cred or not cred.sessdata:
+        logger.warning("Bilibili credential 'SESSDATA' is not set. Some tools may not work correctly.")
+        # Depending on strictness, you might want to raise an exception here
+        # raise ValueError("SESSDATA environment variable must be set for the server to run.")
+
+    logger.info(f"BiliStalkerMCP Server is starting on port {port}...")
+    mcp.run(port=port)
 
 if __name__ == "__main__":
     run()
