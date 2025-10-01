@@ -1,0 +1,4 @@
+runtime: "process"
+startCommand:
+  type: "http"
+  command: ["uvx", "bili-stalker-mcp"]
