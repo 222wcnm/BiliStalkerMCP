@@ -117,3 +117,4 @@ warn_no_return = true
 warn_unreachable = true
 strict_equality = true
 
+# Force cache invalidation for Smithery deployment
