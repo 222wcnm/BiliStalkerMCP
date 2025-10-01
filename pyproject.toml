@@ -1,15 +1,12 @@
 [build-system]
-requires = ["setuptools>=61.0", "wheel"]
-build-backend = "setuptools.build_meta"
+requires = ["uv_build>=0.8.15,<0.9.0"]
+build-backend = "uv_build"
 
 [project]
 name = "bili_stalker_mcp"
 version = "2.3"
 description = "MCP Server for getting Bilibili user video updates"
 authors = [
-    {name = "222wcnm", email = "2328072813li@gmail.com"},
-]
-maintainers = [
     {name = "222wcnm", email = "2328072813li@gmail.com"},
 ]
 readme = "README.md"
@@ -22,9 +19,6 @@ classifiers = [
     "Intended Audience :: Developers",
     "Intended Audience :: End Users/Desktop",
     "Operating System :: OS Independent",
-    "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Topic :: Internet :: WWW/HTTP :: Dynamic Content",
     "Topic :: Software Development :: Libraries :: Python Modules",
@@ -33,11 +27,11 @@ classifiers = [
 ]
 dependencies = [
     "bilibili-api-python>=17.1.4",
-    "fastmcp>=0.4.0",
-    "mcp[cli]>=1.11.0",
+    "fastmcp>=2.0.0",
+    "mcp>=1.15.0",
     "httpx>=0.25.0",
     "async-lru>=2.0.4",
-    "smithery",
+    "smithery>=0.4.2",
 ]
 
 [project.optional-dependencies]
@@ -52,6 +46,8 @@ dev = [
 
 [project.scripts]
 bili-stalker-mcp = "bili_stalker_mcp.cli:main"
+dev = "smithery.cli.dev:main"
+playground = "smithery.cli.playground:main"
 
 [project.urls]
 Homepage = "https://github.com/222wcnm/BiliStalkerMCP"
@@ -80,7 +76,7 @@ bili_stalker_mcp = ["py.typed"]
 [tool.black]
 line-length = 88
 target-version = ['py310']
-include = '\.pyi?'
+include = '''\.pyi?'''
 
 extend-exclude = '''
 /(

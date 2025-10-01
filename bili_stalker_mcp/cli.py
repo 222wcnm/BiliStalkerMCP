@@ -1,18 +1,14 @@
-"""
-BiliStalkerMCP 命令行入口
-
-此模块提供命令行接口来启动 BiliStalkerMCP 服务器。
-"""
 
 import logging
-from .server import run
 
 logger = logging.getLogger(__name__)
 
 def main():
-    """启动 BiliStalkerMCP 服务器的命令行入口"""
-    logger.info("Starting BiliStalkerMCP via CLI...")
-    run()
+    """Provides guidance on how to run the server in the new Smithery framework."""
+    print("Server startup has been refactored to comply with the Smithery framework.")
+    print("Please use one of the following commands:")
+    print("  - To run a local development server: uv run dev")
+    print("  - To test with the Smithery Playground: uv run playground")
 
 if __name__ == "__main__":
     main()
