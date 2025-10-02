@@ -1,1 +1,10 @@
 runtime: "python"
+config_schema:
+  type: object
+  properties:
+    sessdata:
+      type: string
+      description: "Bilibili SESSDATA cookie for basic authentication"
+    bili_jct:
+      type: string
+      description: "Bilibili BILI_JCT cookie for enhanced authentication (optional)"

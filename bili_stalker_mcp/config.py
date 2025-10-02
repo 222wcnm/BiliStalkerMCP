@@ -19,15 +19,30 @@ REQUEST_TIMEOUT = 60.0
 CONNECT_TIMEOUT = 15.0
 READ_TIMEOUT = 45.0
 
-# 默认请求头 - 模拟真实浏览器请求（参考成功参考项目）
+# 默认请求头 - 模拟真实浏览器请求（参考成功项目，使用Chrome/91）
 DEFAULT_HEADERS = {
-    'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36',
+    'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.114 Safari/537.36',
     'Referer': 'https://www.bilibili.com/',
     'Accept': 'application/json, text/plain, */*',
     'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6',
     'Accept-Encoding': 'gzip, deflate, br',
     'Cache-Control': 'no-cache',
     'Pragma': 'no-cache',
+}
+
+# 请求流控配置
+REQUEST_CONFIG = {
+    'min_delay': 1.0,    # 最小请求间隔(秒)
+    'max_delay': 3.0,    # 最大请求间隔(秒)
+    'max_retries': 3,    # 最大重试次数
+    'backoff_factor': 2.0,  # 重试退避系数
+}
+
+# 认证配置 - 多级支持，便于降级
+AUTH_CONFIG = {
+    'min_credentials': ['sessdata'],  # 最低要求
+    'recommended_credentials': ['sessdata', 'bili_jct'],  # 推荐配置
+    'full_credentials': ['sessdata', 'bili_jct', 'buvid3']  # 完整配置
 }
 
 # 动态类型常量

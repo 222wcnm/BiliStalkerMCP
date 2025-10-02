@@ -23,9 +23,8 @@ from .config import (
 
 # --- Smithery Configuration Schema ---
 class BiliStalkerConfig(BaseModel):
-    sessdata: str = Field(..., description="Bilibili SESSDATA cookie for authentication.")
-    bili_jct: str = Field(..., description="Bilibili BILI_JCT cookie for authentication.")
-    buvid3: str = Field(..., description="Bilibili BUVID3 cookie for authentication.")
+    sessdata: str = Field(..., description="Bilibili SESSDATA cookie for basic authentication.")
+    bili_jct: Optional[str] = Field(None, description="Bilibili BILI_JCT cookie for enhanced authentication (optional).")
 
 # --- Smithery Server Definition ---
 @smithery.server(config_schema=BiliStalkerConfig)
@@ -63,10 +62,10 @@ def create_server():
         """
         # Get credentials from session config provided by Smithery
         session_config = ctx.session_config  # type: ignore[attr-defined]
-        cred = get_credential(session_config.sessdata, session_config.bili_jct, session_config.buvid3)
+        cred = get_credential(session_config.sessdata, getattr(session_config, 'bili_jct', None), getattr(session_config, 'buvid3', None))
 
         if not cred or not cred.sessdata:
-            return {"error": "凭证未在会话中配置。请在 MCP 客户端或 Smithery UI 中提供。"}
+            return {"error": "凭证未在会话中配置。请在 MCP 客户端或 Smithery UI 中提供至少 sessdata。"}
 
         # Try to parse as user ID first, then as username
         try:
@@ -98,10 +97,10 @@ def create_server():
         """
         # Get credentials from session config provided by Smithery
         session_config = ctx.session_config  # type: ignore[attr-defined]
-        cred = get_credential(session_config.sessdata, session_config.bili_jct, session_config.buvid3)
+        cred = get_credential(session_config.sessdata, getattr(session_config, 'bili_jct', None), getattr(session_config, 'buvid3', None))
 
         if not cred or not cred.sessdata:
-            return {"error": "凭证未在会话中配置。请在 MCP 客户端或 Smithery UI 中提供。"}
+            return {"error": "凭证未在会话中配置。请在 MCP 客户端或 Smithery UI 中提供至少 sessdata。"}
 
         # Try to parse as user ID first, then as username
         try:
@@ -132,10 +131,10 @@ def create_server():
         """
         # Get credentials from session config provided by Smithery
         session_config = ctx.session_config  # type: ignore[attr-defined]
-        cred = get_credential(session_config.sessdata, session_config.bili_jct, session_config.buvid3)
+        cred = get_credential(session_config.sessdata, getattr(session_config, 'bili_jct', None), getattr(session_config, 'buvid3', None))
 
         if not cred or not cred.sessdata:
-            return {"error": "凭证未在会话中配置。请在 MCP 客户端或 Smithery UI 中提供。"}
+            return {"error": "凭证未在会话中配置。请在 MCP 客户端或 Smithery UI 中提供至少 sessdata。"}
 
         # Try to parse as user ID first, then as username
         try:
@@ -165,10 +164,10 @@ def create_server():
         """
         # Get credentials from session config provided by Smithery
         session_config = ctx.session_config  # type: ignore[attr-defined]
-        cred = get_credential(session_config.sessdata, session_config.bili_jct, session_config.buvid3)
+        cred = get_credential(session_config.sessdata, getattr(session_config, 'bili_jct', None), getattr(session_config, 'buvid3', None))
 
         if not cred or not cred.sessdata:
-            return {"error": "凭证未在会话中配置。请在 MCP 客户端或 Smithery UI 中提供。"}
+            return {"error": "凭证未在会话中配置。请在 MCP 客户端或 Smithery UI 中提供至少 sessdata。"}
 
         # Try to parse as user ID first, then as username
         try:
@@ -198,10 +197,10 @@ def create_server():
         """
         # Get credentials from session config provided by Smithery
         session_config = ctx.session_config  # type: ignore[attr-defined]
-        cred = get_credential(session_config.sessdata, session_config.bili_jct, session_config.buvid3)
+        cred = get_credential(session_config.sessdata, getattr(session_config, 'bili_jct', None), getattr(session_config, 'buvid3', None))
 
         if not cred or not cred.sessdata:
-            return {"error": "凭证未在会话中配置。请在 MCP 客户端或 Smithery UI 中提供。"}
+            return {"error": "凭证未在会话中配置。请在 MCP 客户端或 Smithery UI 中提供至少 sessdata。"}
 
         # Try to parse as user ID first, then as username
         try:
