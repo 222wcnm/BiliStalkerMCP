@@ -54,7 +54,7 @@ def create_server():
         # Get credentials from the context config provided by Smithery
         config = getattr(ctx, 'config', None)
         if not config or not getattr(config, 'sessdata', None):
-            return {"error": "Missing SESSDATA configuration. Please provide SESSDATA in Smithery server config."}
+            raise ValueError("Missing SESSDATA configuration. Please provide SESSDATA in Smithery server config.")
 
         cred = Credential(sessdata=config.sessdata, bili_jct=getattr(config, 'bili_jct', None))
 
@@ -89,7 +89,7 @@ def create_server():
         # Get credentials from the context config provided by Smithery
         config = getattr(ctx, 'config', None)
         if not config or not getattr(config, 'sessdata', None):
-            return {"error": "Missing SESSDATA configuration. Please provide SESSDATA in Smithery server config."}
+            raise ValueError("Missing SESSDATA configuration. Please provide SESSDATA in Smithery server config.")
 
         cred = Credential(sessdata=config.sessdata, bili_jct=getattr(config, 'bili_jct', None))
 
@@ -123,7 +123,7 @@ def create_server():
         # Get credentials from the context config provided by Smithery
         config = getattr(ctx, 'config', None)
         if not config or not getattr(config, 'sessdata', None):
-            return {"error": "Missing SESSDATA configuration. Please provide SESSDATA in Smithery server config."}
+            raise ValueError("Missing SESSDATA configuration. Please provide SESSDATA in Smithery server config.")
 
         cred = Credential(sessdata=config.sessdata, bili_jct=getattr(config, 'bili_jct', None))
 
@@ -156,7 +156,7 @@ def create_server():
         # Get credentials from the context config provided by Smithery
         config = getattr(ctx, 'config', None)
         if not config or not getattr(config, 'sessdata', None):
-            return {"error": "Missing SESSDATA configuration. Please provide SESSDATA in Smithery server config."}
+            raise ValueError("Missing SESSDATA configuration. Please provide SESSDATA in Smithery server config.")
 
         cred = Credential(sessdata=config.sessdata, bili_jct=getattr(config, 'bili_jct', None))
 
@@ -189,7 +189,7 @@ def create_server():
         # Get credentials from the context config provided by Smithery
         config = getattr(ctx, 'config', None)
         if not config or not getattr(config, 'sessdata', None):
-            return {"error": "Missing SESSDATA configuration. Please provide SESSDATA in Smithery server config."}
+            raise ValueError("Missing SESSDATA configuration. Please provide SESSDATA in Smithery server config.")
 
         cred = Credential(sessdata=config.sessdata, bili_jct=getattr(config, 'bili_jct', None))
 
