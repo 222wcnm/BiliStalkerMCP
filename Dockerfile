@@ -9,8 +9,8 @@ WORKDIR /app
 # Create a virtual environment
 RUN uv venv
 
-# Copy dependency definitions
-COPY pyproject.toml uv.lock ./
+# Copy dependency definitions and README
+COPY pyproject.toml uv.lock README.md ./
 
 # Install dependencies into the virtual environment
 # This includes the 'smithery' CLI
