@@ -35,5 +35,5 @@ ENV PATH="/app/.venv/bin:$PATH"
 EXPOSE 8080
 ENV PORT=8080
 
-# The command to run the application using the Smithery CLI
-CMD ["smithery", "serve", "--host", "0.0.0.0", "--port", "$PORT"]
+# The command to run the application using our HTTP server script
+CMD ["python", "-m", "bili_stalker_mcp.start_http"]

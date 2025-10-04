@@ -31,6 +31,7 @@ dependencies = [
     "httpx>=0.25.0",
     "async-lru>=2.0.4",
     "smithery>=0.4.2",
+    "uvicorn[standard]>=0.29.0",
 ]
 
 [project.optional-dependencies]
