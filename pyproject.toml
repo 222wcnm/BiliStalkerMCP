@@ -32,6 +32,8 @@ dependencies = [
     "async-lru>=2.0.4",
     "smithery>=0.4.2",
     "uvicorn[standard]>=0.29.0",
+    "fastapi>=0.104.0",
+    "aiohttp>=3.9.0",
 ]
 
 [project.optional-dependencies]
