@@ -161,7 +161,7 @@ def load_credentials():
         return None
         
     # Now use environment variables for credential loading
-    os.environ["SESSDATA"] = sessdata
+    os.environ["SESSDATA"] = sessdata if sessdata is not None else ""
     os.environ["BILI_JCT"] = bili_jct if bili_jct else ""
     return core.get_credential()
 
