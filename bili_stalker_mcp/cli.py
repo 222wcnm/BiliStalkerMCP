@@ -1,5 +1,7 @@
 
 import logging
+import os
+import sys
 
 logger = logging.getLogger(__name__)
 
@@ -8,8 +10,16 @@ def main():
     try:
         from bili_stalker_mcp.server import create_server
 
-        print("🚀 Starting BiliStalkerMCP server...", flush=True)
-        logger.info("BiliStalkerMCP server starting up...")
+        # 获取并设置日志级别环境变量（默认为WARNING，避免过多输出）
+        log_level = getattr(logging, os.environ.get("BILI_LOG_LEVEL", "WARNING").upper())
+        logging.basicConfig(
+            level=log_level,
+            format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+            stream=sys.stderr,  # 确保日志输出到stderr，不干扰stdout（用于MCP协议）
+        )
+
+        logger.info("🚀 Starting BiliStalkerMCP server...")
+        logger.info("Note: Server startup logs will only appear here in debug mode (set BILI_LOG_LEVEL=INFO)")
 
         mcp = create_server()
         mcp.run(transport="stdio")

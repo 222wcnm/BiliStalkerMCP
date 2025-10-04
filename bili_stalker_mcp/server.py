@@ -1,8 +1,7 @@
 
 import os
 import logging
-from typing import Any, Dict, Optional, Union
-from datetime import datetime
+from typing import Any, Dict, Optional
 
 from fastmcp import FastMCP, Context
 from pydantic import Field, BaseModel
@@ -35,17 +34,7 @@ def create_server():
     mcp = FastMCP("BiliStalkerMCP")
 
     # --- Internal Helper Functions ---
-    def _format_timestamp(timestamp: Optional[int]) -> str:
-        if timestamp is None:
-            return "未知时间"
-        try:
-            dt = datetime.fromtimestamp(timestamp)
-            return dt.strftime('%Y-%m-%d %H:%M')
-        except (ValueError, TypeError, OSError) as e:
-            logger.warning(f"时间戳转换失败: {timestamp}, 错误: {e}")
-            return f"时间戳错误({timestamp})"
-
-    async def _resolve_user_id(user_id: Union[int, None], username: Union[str, None]) -> Union[int, None]:
+    async def _resolve_user_id(user_id: int | None, username: str | None) -> int | None:
         if user_id is not None:
             return user_id
         if username:
@@ -60,12 +49,11 @@ def create_server():
         Args:
             user_id_or_username: 用户ID（数字）或用户名
         """
-        # Get credentials from session config provided by Smithery
-        session_config = ctx.session_config  # type: ignore[attr-defined]
-        cred = get_credential(session_config.sessdata, getattr(session_config, 'bili_jct', None), getattr(session_config, 'buvid3', None))
+        # Get credentials from environment variables (avoiding FastMCP config system)
+        cred = get_credential()
 
-        if not cred or not cred.sessdata:
-            return {"error": "凭证未在会话中配置。请在 MCP 客户端或 Smithery UI 中提供至少 sessdata。"}
+        if not cred:
+            return {"error": "凭证未在环境变量中配置。请通过环境变量提供至少 SESSDATA。"}
 
         # Try to parse as user ID first, then as username
         try:
@@ -95,12 +83,11 @@ def create_server():
             page: 页码（从1开始），默认为1
             limit: 每页视频数量（最大30），默认为10
         """
-        # Get credentials from session config provided by Smithery
-        session_config = ctx.session_config  # type: ignore[attr-defined]
-        cred = get_credential(session_config.sessdata, getattr(session_config, 'bili_jct', None), getattr(session_config, 'buvid3', None))
+        # Get credentials from environment variables (avoiding FastMCP config system)
+        cred = get_credential()
 
-        if not cred or not cred.sessdata:
-            return {"error": "凭证未在会话中配置。请在 MCP 客户端或 Smithery UI 中提供至少 sessdata。"}
+        if not cred:
+            return {"error": "凭证未在环境变量中配置。请通过环境变量提供至少 SESSDATA。"}
 
         # Try to parse as user ID first, then as username
         try:
@@ -129,12 +116,11 @@ def create_server():
             limit: 获取数量，默认为10
             dynamic_type: 动态类型过滤（ALL, TEXT, IMAGE, VIDEO, ARTICLE）
         """
-        # Get credentials from session config provided by Smithery
-        session_config = ctx.session_config  # type: ignore[attr-defined]
-        cred = get_credential(session_config.sessdata, getattr(session_config, 'bili_jct', None), getattr(session_config, 'buvid3', None))
+        # Get credentials from environment variables (avoiding FastMCP config system)
+        cred = get_credential()
 
-        if not cred or not cred.sessdata:
-            return {"error": "凭证未在会话中配置。请在 MCP 客户端或 Smithery UI 中提供至少 sessdata。"}
+        if not cred:
+            return {"error": "凭证未在环境变量中配置。请通过环境变量提供至少 SESSDATA。"}
 
         # Try to parse as user ID first, then as username
         try:
@@ -162,12 +148,11 @@ def create_server():
             page: 页码，从1开始，默认为1
             limit: 每页文章数量，默认为10
         """
-        # Get credentials from session config provided by Smithery
-        session_config = ctx.session_config  # type: ignore[attr-defined]
-        cred = get_credential(session_config.sessdata, getattr(session_config, 'bili_jct', None), getattr(session_config, 'buvid3', None))
+        # Get credentials from environment variables (avoiding FastMCP config system)
+        cred = get_credential()
 
-        if not cred or not cred.sessdata:
-            return {"error": "凭证未在会话中配置。请在 MCP 客户端或 Smithery UI 中提供至少 sessdata。"}
+        if not cred:
+            return {"error": "凭证未在环境变量中配置。请通过环境变量提供至少 SESSDATA。"}
 
         # Try to parse as user ID first, then as username
         try:
@@ -195,12 +180,11 @@ def create_server():
             page: 页码，从1开始，默认为1
             limit: 每页关注者数量，默认为20
         """
-        # Get credentials from session config provided by Smithery
-        session_config = ctx.session_config  # type: ignore[attr-defined]
-        cred = get_credential(session_config.sessdata, getattr(session_config, 'bili_jct', None), getattr(session_config, 'buvid3', None))
+        # Get credentials from environment variables (avoiding FastMCP config system)
+        cred = get_credential()
 
-        if not cred or not cred.sessdata:
-            return {"error": "凭证未在会话中配置。请在 MCP 客户端或 Smithery UI 中提供至少 sessdata。"}
+        if not cred:
+            return {"error": "凭证未在环境变量中配置。请通过环境变量提供至少 SESSDATA。"}
 
         # Try to parse as user ID first, then as username
         try:
@@ -222,18 +206,3 @@ def create_server():
 
 
     return mcp
-
-# --- Local Development Entry Point (for cli.py) ---
-def run_local():
-    """Runs the server locally using environment variables, bypassing Smithery decorator."""
-    logger = logging.getLogger(__name__)
-    mcp = FastMCP("BiliStalkerMCP")
-
-    SESSDATA = os.environ.get("SESSDATA", "")
-    BILI_JCT = os.environ.get("BILI_JCT", "")
-    BUVID3 = os.environ.get("BUVID3", "")
-    cred = get_credential(SESSDATA, BILI_JCT, BUVID3)
-
-    # ... (This would require duplicating all tool definitions outside the create_server function)
-    # For simplicity, we will adjust cli.py to use a different approach.
-    logger.info("Local run mode has changed. Please use 'uv run dev' or 'uv run playground' as per Smithery docs.")

@@ -1,3 +1,4 @@
+startCommand: type: stdio commandFunction: |- (config) => ({ command: 'bilibili-stalker-mcp', args: ['stdio'], env: { SESSDATA: config.sessdata, BILI_JCT: config.bili_jct || '' } })
 runtime: "python"
 config_schema:
   type: object

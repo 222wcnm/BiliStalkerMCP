@@ -160,9 +160,10 @@ def load_credentials():
         logger.error("凭证不完整 (SESSDATA, BILI_JCT, BUVID3 都需要)。请检查 BILI_COOKIE.txt 或环境变量。")
         return None
         
-    # 类型断言：这里我们已经确认了所有凭证都不为 None
-    assert sessdata is not None and bili_jct is not None and buvid3 is not None
-    return core.get_credential(sessdata, bili_jct, buvid3)
+    # Now use environment variables for credential loading
+    os.environ["SESSDATA"] = sessdata
+    os.environ["BILI_JCT"] = bili_jct if bili_jct else ""
+    return core.get_credential()
 
 async def test_user_info(cred, user_id, username):
     """测试用户信息获取并验证字段"""

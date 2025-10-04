@@ -28,7 +28,6 @@ classifiers = [
 dependencies = [
     "bilibili-api-python>=17.1.4",
     "fastmcp>=2.0.0",
-    "mcp>=1.15.0",
     "httpx>=0.25.0",
     "async-lru>=2.0.4",
     "smithery>=0.4.2",
