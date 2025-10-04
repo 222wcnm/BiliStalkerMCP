@@ -7,8 +7,8 @@ from fastmcp import FastMCP, Context
 from pydantic import Field, BaseModel
 from smithery.decorators import smithery
 
+from bilibili_api import Credential
 from .core import (
-    get_credential,
     get_user_id_by_username,
     fetch_user_info,
     fetch_user_videos,
@@ -24,6 +24,10 @@ from .config import (
 class BiliStalkerConfig(BaseModel):
     sessdata: str = Field(..., description="Bilibili SESSDATA cookie for basic authentication.")
     bili_jct: Optional[str] = Field(None, description="Bilibili BILI_JCT cookie for enhanced authentication (optional).")
+
+# --- Custom Context with Type Hinting for Smithery Config ---
+class BiliStalkerContext(Context):
+    config: BiliStalkerConfig
 
 # --- Smithery Server Definition ---
 @smithery.server(config_schema=BiliStalkerConfig)
@@ -43,17 +47,17 @@ def create_server():
 
     # --- MCP Tool Definitions ---
     @mcp.tool()
-    async def get_user_info(ctx: Context, user_id_or_username: str) -> Dict[str, Any]:
+    async def get_user_info(ctx: BiliStalkerContext, user_id_or_username: str) -> Dict[str, Any]:
         """获取指定哔哩哔哩用户的详细信息
 
         Args:
             user_id_or_username: 用户ID（数字）或用户名
         """
-        # Get credentials from environment variables (avoiding FastMCP config system)
-        cred = get_credential()
-
-        if not cred:
-            return {"error": "凭证未在环境变量中配置。请通过环境变量提供至少 SESSDATA。"}
+        # Get credentials from the context config provided by Smithery
+        if not ctx.config or not ctx.config.sessdata:
+            return {"error": "凭证未在配置中提供。请提供 SESSDATA。"}
+        
+        cred = Credential(sessdata=ctx.config.sessdata, bili_jct=ctx.config.bili_jct)
 
         # Try to parse as user ID first, then as username
         try:
@@ -75,7 +79,7 @@ def create_server():
             return {"error": f"获取用户信息时发生错误: {str(e)}。"}
 
     @mcp.tool()
-    async def get_user_video_updates(ctx: Context, user_id_or_username: str, page: int = 1, limit: int = 10) -> Dict[str, Any]:
+    async def get_user_video_updates(ctx: BiliStalkerContext, user_id_or_username: str, page: int = 1, limit: int = 10) -> Dict[str, Any]:
         """获取用户的最新视频更新列表
 
         Args:
@@ -83,11 +87,11 @@ def create_server():
             page: 页码（从1开始），默认为1
             limit: 每页视频数量（最大30），默认为10
         """
-        # Get credentials from environment variables (avoiding FastMCP config system)
-        cred = get_credential()
-
-        if not cred:
-            return {"error": "凭证未在环境变量中配置。请通过环境变量提供至少 SESSDATA。"}
+        # Get credentials from the context config provided by Smithery
+        if not ctx.config or not ctx.config.sessdata:
+            return {"error": "凭证未在配置中提供。请提供 SESSDATA。"}
+        
+        cred = Credential(sessdata=ctx.config.sessdata, bili_jct=ctx.config.bili_jct)
 
         # Try to parse as user ID first, then as username
         try:
@@ -107,7 +111,7 @@ def create_server():
             return {"error": f"获取用户视频时发生错误: {str(e)}。"}
 
     @mcp.tool()
-    async def get_user_dynamic_updates(ctx: Context, user_id_or_username: str, offset: int = 0, limit: int = 10, dynamic_type: str = "ALL") -> Dict[str, Any]:
+    async def get_user_dynamic_updates(ctx: BiliStalkerContext, user_id_or_username: str, offset: int = 0, limit: int = 10, dynamic_type: str = "ALL") -> Dict[str, Any]:
         """获取用户的动态更新
 
         Args:
@@ -116,11 +120,11 @@ def create_server():
             limit: 获取数量，默认为10
             dynamic_type: 动态类型过滤（ALL, TEXT, IMAGE, VIDEO, ARTICLE）
         """
-        # Get credentials from environment variables (avoiding FastMCP config system)
-        cred = get_credential()
-
-        if not cred:
-            return {"error": "凭证未在环境变量中配置。请通过环境变量提供至少 SESSDATA。"}
+        # Get credentials from the context config provided by Smithery
+        if not ctx.config or not ctx.config.sessdata:
+            return {"error": "凭证未在配置中提供。请提供 SESSDATA。"}
+        
+        cred = Credential(sessdata=ctx.config.sessdata, bili_jct=ctx.config.bili_jct)
 
         # Try to parse as user ID first, then as username
         try:
@@ -140,7 +144,7 @@ def create_server():
             return {"error": f"获取用户动态时发生错误: {str(e)}。"}
 
     @mcp.tool()
-    async def get_user_articles(ctx: Context, user_id_or_username: str, page: int = 1, limit: int = 10) -> Dict[str, Any]:
+    async def get_user_articles(ctx: BiliStalkerContext, user_id_or_username: str, page: int = 1, limit: int = 10) -> Dict[str, Any]:
         """获取用户的专栏文章列表
 
         Args:
@@ -148,11 +152,11 @@ def create_server():
             page: 页码，从1开始，默认为1
             limit: 每页文章数量，默认为10
         """
-        # Get credentials from environment variables (avoiding FastMCP config system)
-        cred = get_credential()
-
-        if not cred:
-            return {"error": "凭证未在环境变量中配置。请通过环境变量提供至少 SESSDATA。"}
+        # Get credentials from the context config provided by Smithery
+        if not ctx.config or not ctx.config.sessdata:
+            return {"error": "凭证未在配置中提供。请提供 SESSDATA。"}
+        
+        cred = Credential(sessdata=ctx.config.sessdata, bili_jct=ctx.config.bili_jct)
 
         # Try to parse as user ID first, then as username
         try:
@@ -172,7 +176,7 @@ def create_server():
             return {"error": f"获取用户文章时发生错误: {str(e)}。"}
 
     @mcp.tool()
-    async def get_user_followings(ctx: Context, user_id_or_username: str, page: int = 1, limit: int = 20) -> Dict[str, Any]:
+    async def get_user_followings(ctx: BiliStalkerContext, user_id_or_username: str, page: int = 1, limit: int = 20) -> Dict[str, Any]:
         """获取用户关注列表
 
         Args:
@@ -180,11 +184,11 @@ def create_server():
             page: 页码，从1开始，默认为1
             limit: 每页关注者数量，默认为20
         """
-        # Get credentials from environment variables (avoiding FastMCP config system)
-        cred = get_credential()
-
-        if not cred:
-            return {"error": "凭证未在环境变量中配置。请通过环境变量提供至少 SESSDATA。"}
+        # Get credentials from the context config provided by Smithery
+        if not ctx.config or not ctx.config.sessdata:
+            return {"error": "凭证未在配置中提供。请提供 SESSDATA。"}
+        
+        cred = Credential(sessdata=ctx.config.sessdata, bili_jct=ctx.config.bili_jct)
 
         # Try to parse as user ID first, then as username
         try:
