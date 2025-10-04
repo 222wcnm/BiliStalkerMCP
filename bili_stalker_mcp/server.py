@@ -55,8 +55,8 @@ def create_server():
         """
         # Get credentials from the context config provided by Smithery
         if not ctx.config or not ctx.config.sessdata:
-            return {"error": "凭证未在配置中提供。请提供 SESSDATA。"}
-        
+            return {"error": "Missing SESSDATA configuration. Please provide SESSDATA in Smithery server config."}
+
         cred = Credential(sessdata=ctx.config.sessdata, bili_jct=ctx.config.bili_jct)
 
         # Try to parse as user ID first, then as username
@@ -89,7 +89,7 @@ def create_server():
         """
         # Get credentials from the context config provided by Smithery
         if not ctx.config or not ctx.config.sessdata:
-            return {"error": "凭证未在配置中提供。请提供 SESSDATA。"}
+            return {"error": "Missing SESSDATA configuration. Please provide SESSDATA in Smithery server config."}
         
         cred = Credential(sessdata=ctx.config.sessdata, bili_jct=ctx.config.bili_jct)
 
@@ -122,7 +122,7 @@ def create_server():
         """
         # Get credentials from the context config provided by Smithery
         if not ctx.config or not ctx.config.sessdata:
-            return {"error": "凭证未在配置中提供。请提供 SESSDATA。"}
+            return {"error": "Missing SESSDATA configuration. Please provide SESSDATA in Smithery server config."}
         
         cred = Credential(sessdata=ctx.config.sessdata, bili_jct=ctx.config.bili_jct)
 
@@ -154,7 +154,7 @@ def create_server():
         """
         # Get credentials from the context config provided by Smithery
         if not ctx.config or not ctx.config.sessdata:
-            return {"error": "凭证未在配置中提供。请提供 SESSDATA。"}
+            return {"error": "Missing SESSDATA configuration. Please provide SESSDATA in Smithery server config."}
         
         cred = Credential(sessdata=ctx.config.sessdata, bili_jct=ctx.config.bili_jct)
 
@@ -186,7 +186,7 @@ def create_server():
         """
         # Get credentials from the context config provided by Smithery
         if not ctx.config or not ctx.config.sessdata:
-            return {"error": "凭证未在配置中提供。请提供 SESSDATA。"}
+            return {"error": "Missing SESSDATA configuration. Please provide SESSDATA in Smithery server config."}
         
         cred = Credential(sessdata=ctx.config.sessdata, bili_jct=ctx.config.bili_jct)
 
