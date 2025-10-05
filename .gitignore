@@ -144,5 +144,6 @@ BILI_COOKIE.txt
 *.tmp
 *.temp
 OPTIMIZATION_REPORT.md
+GEMINI.md
 test_*.py
 !tests/
