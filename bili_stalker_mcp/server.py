@@ -55,13 +55,14 @@ def create_server():
         config = getattr(ctx, 'config', None)
         sessdata = getattr(config, 'sessdata', None) if config else None
         bili_jct = getattr(config, 'bili_jct', None) if config else None
+        buvid3 = getattr(config, 'buvid3', None) if config else None
 
         # Fallback to environment variables if Smithery config is not available
         from .core import get_credential
         cred = get_credential()
         if not cred and sessdata:
             # Manually create credential from Smithery config
-            cred = Credential(sessdata=sessdata, bili_jct=bili_jct or "")
+            cred = Credential(sessdata=sessdata, bili_jct=bili_jct or "", buvid3=buvid3 or "")
 
         if not cred:
             raise ValueError("Missing SESSDATA configuration. Please provide SESSDATA in Smithery server config or environment variables.")
@@ -98,13 +99,14 @@ def create_server():
         config = getattr(ctx, 'config', None)
         sessdata = getattr(config, 'sessdata', None) if config else None
         bili_jct = getattr(config, 'bili_jct', None) if config else None
+        buvid3 = getattr(config, 'buvid3', None) if config else None
 
         # Fallback to environment variables if Smithery config is not available
         from .core import get_credential
         cred = get_credential()
         if not cred and sessdata:
             # Manually create credential from Smithery config
-            cred = Credential(sessdata=sessdata, bili_jct=bili_jct or "")
+            cred = Credential(sessdata=sessdata, bili_jct=bili_jct or "", buvid3=buvid3 or "")
 
         if not cred:
             raise ValueError("Missing SESSDATA configuration. Please provide SESSDATA in Smithery server config or environment variables.")
@@ -140,13 +142,14 @@ def create_server():
         config = getattr(ctx, 'config', None)
         sessdata = getattr(config, 'sessdata', None) if config else None
         bili_jct = getattr(config, 'bili_jct', None) if config else None
+        buvid3 = getattr(config, 'buvid3', None) if config else None
 
         # Fallback to environment variables if Smithery config is not available
         from .core import get_credential
         cred = get_credential()
         if not cred and sessdata:
             # Manually create credential from Smithery config
-            cred = Credential(sessdata=sessdata, bili_jct=bili_jct or "")
+            cred = Credential(sessdata=sessdata, bili_jct=bili_jct or "", buvid3=buvid3 or "")
 
         if not cred:
             raise ValueError("Missing SESSDATA configuration. Please provide SESSDATA in Smithery server config or environment variables.")

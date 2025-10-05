@@ -11,5 +11,8 @@ startCommand:
       bili_jct:
         type: "string"
         description: "Bilibili BILI_JCT cookie for enhanced authentication (optional)"
+      buvid3:
+        type: "string"
+        description: "Bilibili BUVID3 cookie for device verification"
 env:
   PYTHONPATH: "."

@@ -19,15 +19,18 @@ REQUEST_TIMEOUT = 60.0
 CONNECT_TIMEOUT = 15.0
 READ_TIMEOUT = 45.0
 
-# 默认请求头 - 模拟真实浏览器请求（参考成功项目，使用Chrome/91）
+# 默认请求头 - 模拟真实浏览器请求（更新到最新版Chrome以绕过反爬虫）
 DEFAULT_HEADERS = {
-    'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.114 Safari/537.36',
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36',
     'Referer': 'https://www.bilibili.com/',
     'Accept': 'application/json, text/plain, */*',
     'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6',
     'Accept-Encoding': 'gzip, deflate, br',
     'Cache-Control': 'no-cache',
     'Pragma': 'no-cache',
+    'sec-ch-ua': '"Google Chrome";v="129", "Not=A?Brand";v="8", "Chromium";v="129"',
+    'sec-ch-ua-mobile': '?0',
+    'sec-ch-ua-platform': '"Windows"',
 }
 
 # 请求流控配置
