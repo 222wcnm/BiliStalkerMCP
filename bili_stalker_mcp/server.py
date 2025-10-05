@@ -53,10 +53,18 @@ def create_server():
         """
         # Get credentials from the context config provided by Smithery
         config = getattr(ctx, 'config', None)
-        if not config or not getattr(config, 'sessdata', None):
-            raise ValueError("Missing SESSDATA configuration. Please provide SESSDATA in Smithery server config.")
+        sessdata = getattr(config, 'sessdata', None) if config else None
+        bili_jct = getattr(config, 'bili_jct', None) if config else None
 
-        cred = Credential(sessdata=config.sessdata, bili_jct=getattr(config, 'bili_jct', None))
+        # Fallback to environment variables if Smithery config is not available
+        from .core import get_credential
+        cred = get_credential()
+        if not cred and sessdata:
+            # Manually create credential from Smithery config
+            cred = Credential(sessdata=sessdata, bili_jct=bili_jct or "")
+
+        if not cred:
+            raise ValueError("Missing SESSDATA configuration. Please provide SESSDATA in Smithery server config or environment variables.")
 
         # Try to parse as user ID first, then as username
         try:
@@ -88,10 +96,18 @@ def create_server():
         """
         # Get credentials from the context config provided by Smithery
         config = getattr(ctx, 'config', None)
-        if not config or not getattr(config, 'sessdata', None):
-            raise ValueError("Missing SESSDATA configuration. Please provide SESSDATA in Smithery server config.")
+        sessdata = getattr(config, 'sessdata', None) if config else None
+        bili_jct = getattr(config, 'bili_jct', None) if config else None
 
-        cred = Credential(sessdata=config.sessdata, bili_jct=getattr(config, 'bili_jct', None))
+        # Fallback to environment variables if Smithery config is not available
+        from .core import get_credential
+        cred = get_credential()
+        if not cred and sessdata:
+            # Manually create credential from Smithery config
+            cred = Credential(sessdata=sessdata, bili_jct=bili_jct or "")
+
+        if not cred:
+            raise ValueError("Missing SESSDATA configuration. Please provide SESSDATA in Smithery server config or environment variables.")
 
         # Try to parse as user ID first, then as username
         try:
@@ -122,10 +138,18 @@ def create_server():
         """
         # Get credentials from the context config provided by Smithery
         config = getattr(ctx, 'config', None)
-        if not config or not getattr(config, 'sessdata', None):
-            raise ValueError("Missing SESSDATA configuration. Please provide SESSDATA in Smithery server config.")
+        sessdata = getattr(config, 'sessdata', None) if config else None
+        bili_jct = getattr(config, 'bili_jct', None) if config else None
 
-        cred = Credential(sessdata=config.sessdata, bili_jct=getattr(config, 'bili_jct', None))
+        # Fallback to environment variables if Smithery config is not available
+        from .core import get_credential
+        cred = get_credential()
+        if not cred and sessdata:
+            # Manually create credential from Smithery config
+            cred = Credential(sessdata=sessdata, bili_jct=bili_jct or "")
+
+        if not cred:
+            raise ValueError("Missing SESSDATA configuration. Please provide SESSDATA in Smithery server config or environment variables.")
 
         # Try to parse as user ID first, then as username
         try:
@@ -155,10 +179,18 @@ def create_server():
         """
         # Get credentials from the context config provided by Smithery
         config = getattr(ctx, 'config', None)
-        if not config or not getattr(config, 'sessdata', None):
-            raise ValueError("Missing SESSDATA configuration. Please provide SESSDATA in Smithery server config.")
+        sessdata = getattr(config, 'sessdata', None) if config else None
+        bili_jct = getattr(config, 'bili_jct', None) if config else None
 
-        cred = Credential(sessdata=config.sessdata, bili_jct=getattr(config, 'bili_jct', None))
+        # Fallback to environment variables if Smithery config is not available
+        from .core import get_credential
+        cred = get_credential()
+        if not cred and sessdata:
+            # Manually create credential from Smithery config
+            cred = Credential(sessdata=sessdata, bili_jct=bili_jct or "")
+
+        if not cred:
+            raise ValueError("Missing SESSDATA configuration. Please provide SESSDATA in Smithery server config or environment variables.")
 
         # Try to parse as user ID first, then as username
         try:
@@ -188,10 +220,18 @@ def create_server():
         """
         # Get credentials from the context config provided by Smithery
         config = getattr(ctx, 'config', None)
-        if not config or not getattr(config, 'sessdata', None):
-            raise ValueError("Missing SESSDATA configuration. Please provide SESSDATA in Smithery server config.")
+        sessdata = getattr(config, 'sessdata', None) if config else None
+        bili_jct = getattr(config, 'bili_jct', None) if config else None
 
-        cred = Credential(sessdata=config.sessdata, bili_jct=getattr(config, 'bili_jct', None))
+        # Fallback to environment variables if Smithery config is not available
+        from .core import get_credential
+        cred = get_credential()
+        if not cred and sessdata:
+            # Manually create credential from Smithery config
+            cred = Credential(sessdata=sessdata, bili_jct=bili_jct or "")
+
+        if not cred:
+            raise ValueError("Missing SESSDATA configuration. Please provide SESSDATA in Smithery server config or environment variables.")
 
         # Try to parse as user ID first, then as username
         try:
