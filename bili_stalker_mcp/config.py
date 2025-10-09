@@ -3,22 +3,6 @@
 # B站动态API URL
 BILIBILI_DYNAMIC_API_URL = "https://api.bilibili.com/x/polymer/web-dynamic/v1/feed/space"
 
-# 请求间隔时间（秒），用于避免API请求过于频繁
-REQUEST_DELAY_MIN = 0.5  # 最小的延迟时间
-REQUEST_DELAY_MAX = 1.5  # 最大的延迟时间（随机延迟范围）
-REQUEST_DELAY = 1.5      # 默认延迟时间
-
-# 代理配置 - 支持环境变量配置
-PROXY_CONFIG = {
-    'http': None,  # 可通过环境变量 HTTP_PROXY 设置
-    'https': None,  # 可通过环境变量 HTTPS_PROXY 设置
-}
-
-# 网络超时配置
-REQUEST_TIMEOUT = 60.0
-CONNECT_TIMEOUT = 15.0
-READ_TIMEOUT = 45.0
-
 # 默认请求头 - 模拟真实浏览器请求（更新到最新版Chrome以绕过反爬虫）
 DEFAULT_HEADERS = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36',
@@ -31,7 +15,28 @@ DEFAULT_HEADERS = {
     'sec-ch-ua': '"Google Chrome";v="129", "Not=A?Brand";v="8", "Chromium";v="129"',
     'sec-ch-ua-mobile': '?0',
     'sec-ch-ua-platform': '"Windows"',
+    'Upgrade-Insecure-Requests': '1',
+    'Accept-Encoding': 'gzip, deflate, br',
+    'Connection': 'keep-alive',
+    'DNT': '1',
+    'TE': 'Trailers',
 }
+
+# 请求间隔时间（秒），用于避免API请求过于频繁
+REQUEST_DELAY_MIN = 2.0  # 增加最小延迟时间
+REQUEST_DELAY_MAX = 5.0  # 增加最大延迟时间（随机延迟范围）
+REQUEST_DELAY = 3.0      # 增加默认延迟时间
+
+# 代理配置 - 支持环境变量配置
+PROXY_CONFIG = {
+    'http': None,  # 可通过环境变量 HTTP_PROXY 设置
+    'https': None,  # 可通过环境变量 HTTPS_PROXY 设置
+}
+
+# 网络超时配置
+REQUEST_TIMEOUT = 60.0
+CONNECT_TIMEOUT = 15.0
+READ_TIMEOUT = 45.0
 
 # 请求流控配置
 REQUEST_CONFIG = {
