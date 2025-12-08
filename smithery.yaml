@@ -1,18 +1,31 @@
 runtime: "container"
 startCommand:
   type: "http"
+  commandFunction: |
+    (config) => ({
+      command: "python",
+      args: ["-m", "bili_stalker_mcp.start_http"],
+      env: {
+        SESSDATA: config.sessdata || "",
+        BILI_JCT: config.bili_jct || "",
+        BUVID3: config.buvid3 || ""
+      }
+    })
   configSchema:
     type: "object"
-    required: ["sessdata"]
+    required: []
     properties:
       sessdata:
         type: "string"
-        description: "Bilibili SESSDATA cookie for basic authentication"
+        title: "SESSDATA Cookie"
+        description: "Bilibili SESSDATA cookie for authentication. Required for most features."
       bili_jct:
         type: "string"
-        description: "Bilibili BILI_JCT cookie for enhanced authentication (optional)"
+        title: "BILI_JCT Cookie"
+        description: "Bilibili BILI_JCT cookie for enhanced authentication (optional)."
       buvid3:
         type: "string"
-        description: "Bilibili BUVID3 cookie for device verification"
+        title: "BUVID3 Cookie"
+        description: "Bilibili BUVID3 cookie for device verification (optional)."
 env:
   PYTHONPATH: "."

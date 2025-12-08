@@ -144,13 +144,10 @@ async def _get_video_subtitle_info(bvid: str, cred: Credential) -> Dict[str, Any
                     "id": sub.get("id"),
                     "lan": lan_code,
                     "lan_doc": sub.get("lan_doc"),
-                    "is_lock": sub.get("is_lock", False),
                     "author_mid": sub.get("author", {}).get("mid") if sub.get("author") else None,
                     "author_name": sub.get("author", {}).get("name") if sub.get("author") else None,
                     "subtitle_url": sub.get("subtitle_url"),
-                    "is_ai_generated": is_ai_generated,
-                    "ai_type": sub.get("ai_type", 0),
-                    "ai_status": sub.get("ai_status", 0)
+                    "is_ai_generated": is_ai_generated
                 }
                 subtitle_info["subtitle_list"].append(subtitle_item)
                 
@@ -189,7 +186,6 @@ def _parse_dynamic_item(item: dict) -> dict:
         # Base structure from 'desc'
         parsed = {
             "dynamic_id": desc.get('dynamic_id_str'),
-            "type_id": desc.get('type'),
             "author_mid": desc.get('uid'),
             "timestamp": desc.get('timestamp'),
             "stats": {
@@ -289,12 +285,6 @@ def _parse_dynamic_item(item: dict) -> dict:
         else:
             parsed['type'] = f"UNKNOWN_{dynamic_type}"
             parsed['text_content'] = f'(未支持的动态类型 {dynamic_type})'
-            # 保留原始数据用于调试和后续支持
-            parsed['raw_card_keys'] = list(card.keys()) if card else []
-            parsed['debug_info'] = {
-                "type_id": dynamic_type,
-                "card_sample": {k: str(v)[:100] for k, v in (card or {}).items()}
-            }
 
         return parsed
     except Exception as e:
@@ -364,7 +354,6 @@ async def fetch_user_info(user_id: int, cred: Credential) -> Dict[str, Any]:
                 "level": info.get("level"),
                 "birthday": info.get("birthday"),
                 "sex": info.get("sex"),
-                "top_photo": info.get("top_photo"),
                 "live_room": info.get("live_room"),
                 "following": None,
                 "follower": None
@@ -466,7 +455,6 @@ async def fetch_user_videos(user_id: int, page: int, limit: int, cred: Credentia
                     subtitle_info = {"has_subtitle": False, "subtitle_count": 0, "subtitle_list": [], "error": "No bvid available"}
                 
                 processed_video = {
-                    "mid": v_data.get("mid"),
                     "bvid": bvid,
                     "aid": aid,
                     "title": v_data.get("title"),
@@ -478,7 +466,7 @@ async def fetch_user_videos(user_id: int, page: int, limit: int, cred: Credentia
                     "favorites": v_data.get("favorites"),
                     "like": v_data.get("like"),
                     "pic": v_data.get("pic"),
-                    "subtitle": subtitle_info,  # 增强的字幕信息
+                    "subtitle": subtitle_info,
                     "url": f"https://www.bilibili.com/video/{bvid}" if bvid else f"https://www.bilibili.com/video/av{aid}"
                 }
                 processed_videos.append(processed_video)
@@ -634,8 +622,7 @@ async def fetch_user_followings(user_id: int, page: int, limit: int, cred: Crede
                     "uname": f_data.get("uname"),
                     "face": f_data.get("face"),
                     "sign": f_data.get("sign"),
-                    "official_verify": f_data.get("official_verify", {}).get("desc"),
-                    "vip_type": f_data.get("vip", {}).get("vipType")
+                    "official_verify": f_data.get("official_verify", {}).get("desc")
                 }
                 processed_followings.append(processed_following)
 

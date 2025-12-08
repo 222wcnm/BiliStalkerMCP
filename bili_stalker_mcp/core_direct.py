@@ -24,13 +24,27 @@ class DirectBilibiliClient:
         self.buvid3 = buvid3 or self._generate_buvid3()
         self.base_headers = DEFAULT_HEADERS.copy()
 
-        # 扩展User-Agent列表，增加更多真实浏览器标识
+        # 扩展User-Agent列表，增加更多真实浏览器标识和版本变化
         user_agents = [
+            # Chrome variants with different versions
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36",
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-            "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:129.0) Gecko/20100101 Firefox/129.0",
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15",
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+            # macOS variants
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.6 Safari/605.1.15",
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Safari/605.1.15",
+            # Linux variants
+            "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+            "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:132.0) Gecko/20100101 Firefox/132.0",
+            # Firefox variants
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:132.0) Gecko/20100101 Firefox/132.0",
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:131.0) Gecko/20100101 Firefox/131.0",
+            # Edge variants
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 Edg/131.0.0.0",
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36 Edg/130.0.0.0",
         ]
         # 使用更随机的方式选择User-Agent
         self.base_headers['User-Agent'] = random.choice(user_agents)
@@ -60,12 +74,33 @@ class DirectBilibiliClient:
     async def _make_request(self, url: str, params: Optional[Dict[str, Any]] = None,
                           method: str = "GET") -> Tuple[bool, Dict[str, Any]]:
         """Make HTTP request with comprehensive error handling."""
-        max_retries = 3
+        max_retries = 5  # 增加重试次数
         for attempt in range(max_retries):
             try:
                 headers = self.base_headers.copy()
                 headers['Cookie'] = self._get_cookies()
                 headers['X-Requested-With'] = 'XMLHttpRequest'  # Mark as AJAX request
+
+                # 每次请求都重新随机User-Agent
+                user_agents = [
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+                    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+                    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:132.0) Gecko/20100101 Firefox/132.0",
+                    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.6 Safari/605.1.15",
+                ]
+                headers['User-Agent'] = random.choice(user_agents)
+
+                # 添加更真实的请求头
+                headers['Sec-Fetch-Dest'] = 'empty'
+                headers['Sec-Fetch-Mode'] = 'cors'
+                headers['Sec-Fetch-Site'] = 'same-origin'
+                headers['sec-gpc'] = '1'
+
+                # 增加请求间随机延迟，避免模式化请求
+                if attempt > 0:
+                    delay = random.uniform(2, 8)  # 重试时增加更长的随机延迟
+                    await asyncio.sleep(delay)
 
                 async with httpx.AsyncClient(timeout=httpx.Timeout(CONNECT_TIMEOUT, read=READ_TIMEOUT)) as client:
                     if method.upper() == "GET":
@@ -86,15 +121,19 @@ class DirectBilibiliClient:
                         # Handle specific error codes
                         if error_code == -412:
                             if attempt < max_retries - 1:
-                                # 增加延迟并重试
-                                wait_time = (2 ** attempt) + random.uniform(0, 1)
-                                logger.warning(f"Request blocked by anti-crawler system (412). Retrying in {wait_time:.2f} seconds...")
+                                # 指数退避 + 随机化 + 切换身份标识
+                                wait_time = (2 ** attempt) + random.uniform(3, 10)
+                                logger.warning(f"Request blocked by anti-crawler system (412). Retrying in {wait_time:.2f} seconds (attempt {attempt + 1}/{max_retries})...")
                                 await asyncio.sleep(wait_time)
+
+                                # 重新生成buvid3来切换设备指纹
+                                self.buvid3 = self._generate_buvid3()
                                 continue
                             else:
                                 return False, {
-                                    "error": "Request blocked by anti-crawler system (412). "
-                                    "Try updating cookies or use different User-Agent."
+                                    "error": "Request blocked by anti-crawler system after all retries. "
+                                    "This may indicate IP-based restrictions or invalid credentials. "
+                                    "Try using a different network or fresh cookies."
                                 }
                         elif error_code == -509:
                             return False, {"error": "Request rate limited (509)"}
