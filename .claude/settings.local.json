@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -m py_compile bili_stalker_mcp/server.py)",
+      "Bash(uv --version)",
+      "Bash(uv run --help:*)",
+      "Bash(uv run bili-stalker-mcp --help)",
+      "Bash(uv run dev --help:*)",
+      "Bash(uv run dev)",
+      "Bash(uv run dev --transport stdio)",
+      "Bash(uv run playground)",
+      "Bash(python -m py_compile bili_stalker_mcp/core_direct.py)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
