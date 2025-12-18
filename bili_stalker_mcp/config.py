@@ -1,8 +1,5 @@
 # Bilibili API and other configurations
 
-# B站动态API URL
-BILIBILI_DYNAMIC_API_URL = "https://api.bilibili.com/x/polymer/web-dynamic/v1/feed/space"
-
 # 默认请求头 - 模拟真实浏览器请求（针对云环境优化反爬策略）
 DEFAULT_HEADERS = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
