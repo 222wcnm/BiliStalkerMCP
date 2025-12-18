@@ -177,12 +177,7 @@ class DirectBilibiliClient:
 
         return {
             "mid": data.get("mid"),
-            "name": data.get("name"),
-            "face": data.get("face"),
-            "sign": data.get("sign"),
-            "level": data.get("level"),
-            "birthday": data.get("birthday", ""),
-            "sex": data.get("sex", "")
+            "name": data.get("name")
         }
 
     async def get_user_videos(self, uid: int, page: int = 1, limit: int = 10) -> Dict[str, Any]:
@@ -204,16 +199,11 @@ class DirectBilibiliClient:
         videos = []
         for item in data.get("list", {}).get("vlist", []):
             videos.append({
-                "mid": item.get("mid"),
                 "bvid": item.get("bvid"),
-                "aid": item.get("aid"),
                 "title": item.get("title"),
                 "description": item.get("description", ""),
                 "created": item.get("created"),
-                "length": item.get("length"),
-                "play": item.get("play"),
-                "comment": item.get("comment"),
-                "pic": item.get("pic", "")
+                "play": item.get("play")
             })
 
         return {"videos": videos}
