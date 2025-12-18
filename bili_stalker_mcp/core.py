@@ -265,7 +265,10 @@ def _parse_dynamic_item(item: dict) -> dict:
 
 @alru_cache(maxsize=128, ttl=3600)
 async def get_user_id_by_username(username: str) -> Optional[int]:
-    """通过用户名搜索并获取用户ID"""
+    """通过用户名搜索并获取用户ID
+    
+    优先返回用户名精确匹配的结果，找不到时返回搜索排名第一的结果。
+    """
     if not username:
         return None
     try:
@@ -277,6 +280,17 @@ async def get_user_id_by_username(username: str) -> Optional[int]:
         if not isinstance(result_list, list) or not result_list:
             logger.warning(f"User '{username}' not found in search results.")
             return None
+        
+        # 优先寻找用户名精确匹配的结果（忽略大小写）
+        username_lower = username.lower()
+        for user_item in result_list:
+            uname = user_item.get('uname', '')
+            if uname.lower() == username_lower:
+                logger.debug(f"Found exact match for '{username}': UID {user_item['mid']}")
+                return user_item['mid']
+        
+        # 找不到精确匹配，返回第一个结果并警告
+        logger.warning(f"No exact match for '{username}', using first result: {result_list[0].get('uname')}")
         return result_list[0]['mid']
     except ApiException as e:
         error_code = getattr(e, 'code', None)
