@@ -159,13 +159,7 @@ def _parse_dynamic_item(item: dict) -> dict:
         # Base structure from 'desc'
         parsed = {
             "dynamic_id": desc.get('dynamic_id_str'),
-            "author_mid": desc.get('uid'),
-            "timestamp": desc.get('timestamp'),
-            "stats": {
-                "like": desc.get('like'),
-                "comment": desc.get('comment'),
-                "forward": desc.get('repost'),
-            }
+            "timestamp": desc.get('timestamp')
         }
 
         # --- Content Extraction ---
@@ -175,24 +169,12 @@ def _parse_dynamic_item(item: dict) -> dict:
         if dynamic_type == 1:
             parsed['type'] = 'REPOST'
             parsed['text_content'] = card.get('item', {}).get('content')
-            if 'origin' in card:
-                try:
-                    # Origin is a JSON string inside the card dict
-                    origin_card = json.loads(card['origin'])
-                    origin_item = origin_card.get('item', {})
-                    parsed['origin_user'] = origin_card.get('user', {}).get('uname')
-                    parsed['origin_content'] = origin_item.get('content') or origin_item.get('description')
-                except Exception:
-                    parsed['origin_content'] = "(转发内容解析失败)"
 
         # Type 2: Image-text
         elif dynamic_type == 2:
             parsed['type'] = 'IMAGE_TEXT'
             item_data = card.get('item', {})
             parsed['text_content'] = item_data.get('description')
-            # 修复: 当 pictures 为 None 时提供默认空列表
-            pictures = item_data.get('pictures') or []
-            parsed['images'] = [p.get('img_src') for p in pictures if isinstance(p, dict)]
 
         # Type 4: Text-only
         elif dynamic_type == 4:
@@ -322,12 +304,6 @@ async def fetch_user_info(user_id: int, cred: Credential) -> Dict[str, Any]:
             user_data = {
                 "mid": info.get("mid"),
                 "name": info.get("name"),
-                "face": info.get("face"),
-                "sign": info.get("sign"),
-                "level": info.get("level"),
-                "birthday": info.get("birthday"),
-                "sex": info.get("sex"),
-                "live_room": info.get("live_room"),
                 "following": None,
                 "follower": None
             }
@@ -429,18 +405,15 @@ async def fetch_user_videos(user_id: int, page: int, limit: int, cred: Credentia
                 
                 processed_video = {
                     "bvid": bvid,
-                    "aid": aid,
                     "title": v_data.get("title"),
                     "description": v_data.get("description"),
                     "created": v_data.get("created"),
-                    "length": v_data.get("length"),
                     "play": v_data.get("play"),
-                    "comment": v_data.get("comment"),
-                    "favorites": v_data.get("favorites"),
                     "like": v_data.get("like"),
-                    "pic": v_data.get("pic"),
-                    "subtitle": subtitle_info,
-                    "url": f"https://www.bilibili.com/video/{bvid}" if bvid else f"https://www.bilibili.com/video/av{aid}"
+                    "subtitle": {
+                        "has_subtitle": subtitle_info.get("has_subtitle", False),
+                        "subtitle_summary": subtitle_info.get("subtitle_summary", "无字幕")
+                    }
                 }
                 processed_videos.append(processed_video)
 
@@ -529,15 +502,11 @@ async def fetch_user_articles(user_id: int, page: int, limit: int, cred: Credent
                 break
 
             processed_article = {
-                "mid": article_data.get("author", {}).get("mid"),
                 "id": article_data.get("id"),
                 "title": article_data.get("title"),
                 "summary": article_data.get("summary"),
-                "banner_url": article_data.get("banner_url"),
                 "publish_time": article_data.get("publish_time"),
-                "stats": article_data.get("stats"),
-                "words": article_data.get("words"),
-                "url": f"https://www.bilibili.com/read/cv{article_data.get('id')}"
+                "stats": article_data.get("stats")
             }
             processed_articles.append(processed_article)
             
@@ -593,9 +562,7 @@ async def fetch_user_followings(user_id: int, page: int, limit: int, cred: Crede
                 processed_following = {
                     "mid": f_data.get("mid"),
                     "uname": f_data.get("uname"),
-                    "face": f_data.get("face"),
-                    "sign": f_data.get("sign"),
-                    "official_verify": f_data.get("official_verify", {}).get("desc")
+                    "sign": f_data.get("sign")
                 }
                 processed_followings.append(processed_following)
 
