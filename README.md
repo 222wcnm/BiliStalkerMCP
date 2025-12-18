@@ -2,7 +2,7 @@
 
 [![Python](https://img.shields.io/badge/Python-3.10+-blue?logo=python)](https://www.python.org/)
 [![MCP](https://img.shields.io/badge/MCP-Compatible-orange)](https://github.com/jlowin/fastmcp)
-[![Version](https://img.shields.io/badge/Version-2.3-green)](https://pypi.org/project/bili-stalker-mcp/)
+[![Version](https://img.shields.io/badge/Version-2.4-green)](https://pypi.org/project/bili-stalker-mcp/)
 [![smithery badge](https://smithery.ai/badge/@222wcnm/bilistalkermcp)](https://smithery.ai/server/@222wcnm/bilistalkermcp)
 
 A Model Context Protocol (MCP) server for comprehensive Bilibili user data acquisition.
@@ -52,6 +52,25 @@ Add to your MCP client settings:
 | `get_user_dynamic_updates` | User dynamics with type filtering | `user_id`/`username`, `offset`, `limit`, `dynamic_type` |
 | `get_user_articles` | Article publications | `user_id`/`username`, `page`, `limit` |
 | `get_user_followings` | Following list | `user_id`/`username`, `page`, `limit` |
+
+### Dynamic Type Filtering
+
+The `get_user_dynamic_updates` tool supports filtering by type:
+
+| `dynamic_type` | Description |
+|----------------|-------------|
+| `ALL` (default) | TEXT, IMAGE_TEXT, REPOST only (analysis-focused) |
+| `ALL_RAW` | All types including VIDEO, ARTICLE |
+| `VIDEO` | Video dynamics only |
+| `ARTICLE` | Article dynamics only |
+| `DRAW` | Image-text dynamics only |
+| `TEXT` | Text-only dynamics |
+
+### Return Data Features
+
+- **Human-readable timestamps**: All time fields include formatted strings (e.g., `created_time`, `publish_time`)
+- **Image URLs**: Video covers (`pic`) and dynamic images (`images`) can be rendered with `![](url)`
+- **Repost origin**: REPOST dynamics include full `origin` object with original content details
 
 ## Development
 
