@@ -28,36 +28,13 @@ DEFAULT_HEADERS = {
     'sec-gpc': '1',
 }
 
-# 请求间隔时间（秒），用于避免API请求过于频繁（针对云环境优化）
-REQUEST_DELAY_MIN = 1.5  # 降低最小延迟，配合随机化
-REQUEST_DELAY_MAX = 8.0  # 增加最大延迟时间，提高随机性
-REQUEST_DELAY = 3.0      # 保持默认延迟时间
-
-# 代理配置 - 支持环境变量配置
-PROXY_CONFIG = {
-    'http': None,  # 可通过环境变量 HTTP_PROXY 设置
-    'https': None,  # 可通过环境变量 HTTPS_PROXY 设置
-}
+# 请求间隔时间（秒），用于避免API请求过于频繁
+REQUEST_DELAY = 3.0
 
 # 网络超时配置
 REQUEST_TIMEOUT = 60.0
 CONNECT_TIMEOUT = 15.0
 READ_TIMEOUT = 45.0
-
-# 请求流控配置
-REQUEST_CONFIG = {
-    'min_delay': 1.0,    # 最小请求间隔(秒)
-    'max_delay': 3.0,    # 最大请求间隔(秒)
-    'max_retries': 3,    # 最大重试次数
-    'backoff_factor': 2.0,  # 重试退避系数
-}
-
-# 认证配置 - 多级支持，便于降级
-AUTH_CONFIG = {
-    'min_credentials': ['sessdata'],  # 最低要求
-    'recommended_credentials': ['sessdata', 'bili_jct'],  # 推荐配置
-    'full_credentials': ['sessdata', 'bili_jct', 'buvid3']  # 完整配置
-}
 
 # 动态类型常量
 class DynamicType:
@@ -66,7 +43,6 @@ class DynamicType:
     ARTICLE = "ARTICLE"
     ANIME = "ANIME"
     DRAW = "DRAW"
-    # 移除不支持的TEXT类型，更新为实际支持的类型
     VALID_TYPES = [ALL, VIDEO, ARTICLE, ANIME, DRAW]
     
     # 动态类型映射（用于API调用）
@@ -78,5 +54,3 @@ class DynamicType:
         DRAW: "2"       # 图文动态
     }
 
-# 资源URI模板
-SCHEMAS_URI = "bili://schemas"

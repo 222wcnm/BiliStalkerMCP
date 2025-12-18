@@ -59,7 +59,7 @@ except ImportError as e:
 def validate_user_info_fields(user_info: Dict[str, Any]) -> bool:
     """验证用户信息字段的完整性"""
     required_fields = ['mid', 'name', 'face', 'sign', 'level']
-    optional_fields = ['birthday', 'sex', 'top_photo', 'live_room', 'following', 'follower']
+    optional_fields = ['birthday', 'sex', 'live_room', 'following', 'follower']
     
     missing_required = [field for field in required_fields if field not in user_info]
     if missing_required:
@@ -129,40 +129,19 @@ def validate_dynamic_fields(dynamic: Dict[str, Any]) -> bool:
     return True
 
 def load_credentials():
-    """
-    从 BILI_COOKIE.txt 或环境变量加载凭证。
-    文件优先。
-    """
-    cookie_file_path = project_root / 'BILI_COOKIE.txt'
-    
-    try:
-        with open(cookie_file_path, 'r', encoding='utf-8') as f:
-            content = f.read().strip()
-        
-        import re
-        cookie_pairs = re.findall(r'([^=;]+)=([^;]*)', content)
-        for key, value in cookie_pairs:
-            key_upper = key.strip().upper()
-            if key_upper in ['SESSDATA', 'BILI_JCT', 'BUVID3']:
-                os.environ[key_upper] = value.strip()
-                logger.info(f"从文件加载凭证: {key_upper}")
-        
-    except FileNotFoundError:
-        logger.warning(f"未找到 {cookie_file_path}，将尝试从环境变量加载。")
-    except Exception as e:
-        logger.error(f"读取凭证文件时出错: {e}")
-
+    """从环境变量加载凭证。"""
     sessdata = os.environ.get("SESSDATA")
     bili_jct = os.environ.get("BILI_JCT")
     buvid3 = os.environ.get("BUVID3")
 
-    if not all([sessdata, bili_jct, buvid3]):
-        logger.error("凭证不完整 (SESSDATA, BILI_JCT, BUVID3 都需要)。请检查 BILI_COOKIE.txt 或环境变量。")
+    if not sessdata:
+        logger.error("缺少 SESSDATA 环境变量。请设置环境变量后运行测试。")
+        logger.info("示例: $env:SESSDATA='your_sessdata'; $env:BILI_JCT='your_bili_jct'; $env:BUVID3='your_buvid3'")
         return None
+    
+    if not bili_jct or not buvid3:
+        logger.warning("BILI_JCT 或 BUVID3 未设置，部分功能可能受限。")
         
-    # Now use environment variables for credential loading
-    os.environ["SESSDATA"] = sessdata if sessdata is not None else ""
-    os.environ["BILI_JCT"] = bili_jct if bili_jct else ""
     return core.get_credential()
 
 async def test_user_info(cred, user_id, username):
@@ -239,11 +218,10 @@ async def test_dynamics(cred, user_id, limit):
         validate_dynamic_fields(dynamic_item)
         
         dynamic_type = dynamic_item.get('type', 'UNKNOWN')
-        type_id = dynamic_item.get('type_id', 'N/A')
         text = dynamic_item.get('text_content', '(无文本)')
         text_preview = text.replace('\n', ' ').strip()[:30] + "..." if text != '(无文本)' else "(无文本)"
         
-        logger.info(f"  - [动态] 类型: {dynamic_type} (ID: {type_id}), 内容: {text_preview}")
+        logger.info(f"  - [动态] 类型: {dynamic_type}, 内容: {text_preview}")
         
         # 显示特殊字段
         if 'images' in dynamic_item:

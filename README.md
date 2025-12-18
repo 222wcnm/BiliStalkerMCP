@@ -68,3 +68,8 @@ python tests/test_suite.py -u <user_id_or_username>
 ## License
 
 MIT
+
+---
+
+*This project was entirely created and maintained by AI.*
+
