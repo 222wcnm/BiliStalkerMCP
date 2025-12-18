@@ -12,6 +12,9 @@ from typing import Dict, Any, Optional
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
+from dotenv import load_dotenv
+
+
 # --- 配置日志 ---
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger("BiliStalkerTestSuite")
@@ -58,57 +61,52 @@ except ImportError as e:
 
 def validate_user_info_fields(user_info: Dict[str, Any]) -> bool:
     """验证用户信息字段的完整性"""
-    required_fields = ['mid', 'name', 'face', 'sign', 'level']
-    optional_fields = ['birthday', 'sex', 'live_room', 'following', 'follower']
+    required_fields = ['mid', 'name']
+    # optional_fields 已大部分移除，仅保留 following/follower (虽然返回时设为了None，但也保留检查key是否存在)
+    optional_fields = ['following', 'follower']
     
     missing_required = [field for field in required_fields if field not in user_info]
     if missing_required:
         logger.warning(f"缺少必需字段: {missing_required}")
         return False
     
-    present_optional = [field for field in optional_fields if field in user_info and user_info[field] is not None]
-    logger.info(f"存在的可选字段: {present_optional}")
+    present_optional = [field for field in optional_fields if field in user_info]
+    logger.info(f"同时存在的字段: {present_optional}")
     
     # 验证关键字段类型
     if not isinstance(user_info.get('mid'), int):
         logger.warning(f"mid 字段类型错误: {type(user_info.get('mid'))}")
-    if not isinstance(user_info.get('level'), int):
-        logger.warning(f"level 字段类型错误: {type(user_info.get('level'))}")
     
     return True
 
 def validate_video_fields(video: Dict[str, Any]) -> bool:
     """验证视频字段的完整性"""
-    required_fields = ['title', 'bvid', 'aid', 'created', 'play', 'url']
-    subtitle_fields = ['subtitle']
+    # aid, url, pic 已移除
+    required_fields = ['title', 'bvid', 'created', 'play']
     
     missing_required = [field for field in required_fields if field not in video]
     if missing_required:
         logger.warning(f"视频缺少必需字段: {missing_required}")
         return False
     
-    # 验证字幕信息
+    # 验证字幕信息 (结构已简化)
     if 'subtitle' in video:
         subtitle = video['subtitle']
         if isinstance(subtitle, dict):
-            subtitle_keys = ['has_subtitle', 'subtitle_count', 'subtitle_list']
-            present_subtitle_keys = [key for key in subtitle_keys if key in subtitle]
-            logger.info(f"字幕信息字段: {present_subtitle_keys}")
+            subtitle_keys = ['has_subtitle', 'subtitle_summary']
+            missing_sub_keys = [key for key in subtitle_keys if key not in subtitle]
+            if missing_sub_keys:
+                 logger.warning(f"字幕信息缺少字段: {missing_sub_keys}")
             
-            if subtitle.get('has_subtitle') and subtitle.get('subtitle_count', 0) > 0:
-                subtitle_list = subtitle.get('subtitle_list', [])
-                if subtitle_list and isinstance(subtitle_list, list):
-                    first_sub = subtitle_list[0]
-                    sub_fields = ['id', 'lan', 'lan_doc', 'subtitle_url']
-                    present_sub_fields = [field for field in sub_fields if field in first_sub]
-                    logger.info(f"第一个字幕项字段: {present_sub_fields}")
+            logger.info(f"字幕概览: {subtitle.get('subtitle_summary')}")
     
     return True
 
 def validate_dynamic_fields(dynamic: Dict[str, Any]) -> bool:
     """验证动态字段的完整性"""
+    # author_mid, stats, images, origin_* 已移除
     required_fields = ['dynamic_id', 'type', 'timestamp']
-    optional_fields = ['text_content', 'images', 'video', 'article', 'stats']
+    optional_fields = ['text_content', 'video', 'article']
     
     missing_required = [field for field in required_fields if field not in dynamic]
     if missing_required:
@@ -119,17 +117,20 @@ def validate_dynamic_fields(dynamic: Dict[str, Any]) -> bool:
     if present_optional:
         logger.info(f"动态存在的可选字段: {present_optional}")
     
-    # 验证统计信息
-    if 'stats' in dynamic and isinstance(dynamic['stats'], dict):
-        stats = dynamic['stats']
-        stats_fields = ['like', 'comment', 'forward']
-        present_stats = [field for field in stats_fields if field in stats]
-        logger.info(f"动态统计字段: {present_stats}")
-    
     return True
 
 def load_credentials():
-    """从环境变量加载凭证。"""
+    """从环境变量加载凭证。支持 .env 文件。"""
+    # 加载 .env 文件
+    env_path = project_root / '.env'
+    if env_path.exists():
+        logger.info(f"正在加载环境变量: {env_path}")
+        load_dotenv(dotenv_path=env_path)
+    else:
+        logger.info(".env 文件不存在，将使用系统环境变量")
+        # 尝试默认加载
+        load_dotenv()
+
     sessdata = os.environ.get("SESSDATA")
     bili_jct = os.environ.get("BILI_JCT")
     buvid3 = os.environ.get("BUVID3")
@@ -168,7 +169,8 @@ async def test_user_info(cred, user_id, username):
         return None
 
     logger.info(f"成功获取用户 '{user_info['name']}' (ID: {user_info['mid']}) 的信息。")
-    logger.info(f"  - 粉丝: {user_info.get('follower')}, 关注: {user_info.get('following')}")
+    # follower/following 现为 None，不展示具体数值
+    logger.info(f"  - 用户ID: {user_info['mid']}")
 
     # 验证字段完整性
     logger.info("验证用户信息字段...")
@@ -192,15 +194,13 @@ async def test_videos(cred, user_id, limit):
         validate_video_fields(video)
         
         bvid = video.get('bvid', 'None')
-        aid = video.get('aid', 'None')
         subtitle_info = video.get('subtitle', {})
         has_subtitle = subtitle_info.get('has_subtitle', False)
-        subtitle_count = subtitle_info.get('subtitle_count', 0)
+        subtitle_summary = subtitle_info.get('subtitle_summary', '无')
         
         logger.info(f"  - [视频] {video['title']}")
-        logger.info(f"    BVID: {bvid}, AID: {aid}")
-        logger.info(f"    字幕: {has_subtitle} (数量: {subtitle_count})")
-        logger.info(f"    URL: {video.get('url', 'None')}")
+        logger.info(f"    BVID: {bvid}")
+        logger.info(f"    字幕: {has_subtitle} ({subtitle_summary})")
 
 async def test_dynamics(cred, user_id, limit):
     """测试动态获取和解析并验证字段"""
@@ -224,9 +224,7 @@ async def test_dynamics(cred, user_id, limit):
         logger.info(f"  - [动态] 类型: {dynamic_type}, 内容: {text_preview}")
         
         # 显示特殊字段
-        if 'images' in dynamic_item:
-            images_count = len(dynamic_item['images'])
-            logger.info(f"    图片数量: {images_count}")
+        # images 已移除，不显示
         if 'video' in dynamic_item:
             video_info = dynamic_item['video']
             logger.info(f"    视频: {video_info.get('title', 'N/A')} (BVID: {video_info.get('bvid', 'N/A')})")

@@ -1,6 +1,6 @@
 
 import logging
-from typing import Any, Dict, Optional, Tuple
+from typing import Annotated, Any, Dict, Optional, Tuple
 
 from fastmcp import FastMCP, Context
 from pydantic import Field, BaseModel
@@ -157,13 +157,9 @@ def create_server():
     )
     async def get_user_info(
         ctx: Context,
-        user_id_or_username: str
+        user_id_or_username: Annotated[str, Field(description="用户ID（数字）或用户名")]
     ) -> Dict[str, Any]:
-        """获取指定哔哩哔哩用户的详细信息
-
-        Args:
-            user_id_or_username: 用户ID（数字）或用户名。可以是数字ID（如 123456789）或用户名（如 "username"）
-        """
+        """获取指定哔哩哔哩用户的详细信息"""
         cred, error = _get_credential_from_context(ctx)
         if error:
             return error
@@ -188,17 +184,11 @@ def create_server():
     )
     async def get_user_video_updates(
         ctx: Context,
-        user_id_or_username: str,
-        page: int = 1,
-        limit: int = 10
+        user_id_or_username: Annotated[str, Field(description="用户ID（数字）或用户名")],
+        page: Annotated[int, Field(description="页码，从1开始")] = 1,
+        limit: Annotated[int, Field(description="每页视频数量，最大30")] = 10
     ) -> Dict[str, Any]:
-        """获取用户的最新视频更新列表
-
-        Args:
-            user_id_or_username: 用户ID（数字）或用户名。可以是数字ID（如 123456789）或用户名（如 "username"）
-            page: 页码（从1开始），默认为1，用于分页获取视频
-            limit: 每页视频数量（最大30），默认为10，控制返回的视频数量
-        """
+        """获取用户的最新视频更新列表"""
         cred, error = _get_credential_from_context(ctx)
         if error:
             return error
@@ -223,19 +213,12 @@ def create_server():
     )
     async def get_user_dynamic_updates(
         ctx: Context,
-        user_id_or_username: str,
-        offset: int = 0,
-        limit: int = 10,
-        dynamic_type: str = "ALL"
+        user_id_or_username: Annotated[str, Field(description="用户ID（数字）或用户名")],
+        offset: Annotated[int, Field(description="偏移量，从0开始")] = 0,
+        limit: Annotated[int, Field(description="获取数量")] = 10,
+        dynamic_type: Annotated[str, Field(description="动态类型过滤：ALL, VIDEO, ARTICLE, ANIME, DRAW")] = "ALL"
     ) -> Dict[str, Any]:
-        """获取用户的动态更新
-
-        Args:
-            user_id_or_username: 用户ID（数字）或用户名。可以是数字ID（如 123456789）或用户名（如 "username"）
-            offset: 偏移量，从0开始，用于跳过指定数量的动态
-            limit: 获取数量，默认为10，控制返回的动态数量
-            dynamic_type: 动态类型过滤，可选值：ALL, VIDEO, ARTICLE, ANIME, DRAW，默认为"ALL"
-        """
+        """获取用户的动态更新"""
         cred, error = _get_credential_from_context(ctx)
         if error:
             return error
@@ -260,17 +243,11 @@ def create_server():
     )
     async def get_user_articles(
         ctx: Context,
-        user_id_or_username: str,
-        page: int = 1,
-        limit: int = 10
+        user_id_or_username: Annotated[str, Field(description="用户ID（数字）或用户名")],
+        page: Annotated[int, Field(description="页码，从1开始")] = 1,
+        limit: Annotated[int, Field(description="每页文章数量")] = 10
     ) -> Dict[str, Any]:
-        """获取用户的专栏文章列表
-
-        Args:
-            user_id_or_username: 用户ID（数字）或用户名。可以是数字ID（如 123456789）或用户名（如 "username"）
-            page: 页码，从1开始，默认为1，用于分页获取文章
-            limit: 每页文章数量，默认为10，控制返回的文章数量
-        """
+        """获取用户的专栏文章列表"""
         cred, error = _get_credential_from_context(ctx)
         if error:
             return error
@@ -295,17 +272,11 @@ def create_server():
     )
     async def get_user_followings(
         ctx: Context,
-        user_id_or_username: str,
-        page: int = 1,
-        limit: int = 20
+        user_id_or_username: Annotated[str, Field(description="用户ID（数字）或用户名")],
+        page: Annotated[int, Field(description="页码，从1开始")] = 1,
+        limit: Annotated[int, Field(description="每页关注者数量")] = 20
     ) -> Dict[str, Any]:
-        """获取用户关注列表
-
-        Args:
-            user_id_or_username: 用户ID（数字）或用户名。可以是数字ID（如 123456789）或用户名（如 "username"）
-            page: 页码，从1开始，默认为1，用于分页获取关注列表
-            limit: 每页关注者数量，默认为20，控制返回的关注者数量
-        """
+        """获取用户关注列表"""
         cred, error = _get_credential_from_context(ctx)
         if error:
             return error
