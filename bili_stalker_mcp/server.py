@@ -1,7 +1,6 @@
 
-import os
 import logging
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 
 from fastmcp import FastMCP, Context
 from pydantic import Field, BaseModel
@@ -15,6 +14,7 @@ from .core import (
     fetch_user_dynamics,
     fetch_user_articles,
     fetch_user_followings,
+    get_credential,
 )
 from .config import (
     DynamicType,
@@ -26,7 +26,41 @@ class BiliStalkerConfig(BaseModel):
     bili_jct: Optional[str] = Field(None, description="Bilibili BILI_JCT cookie for enhanced authentication (optional).")
     buvid3: Optional[str] = Field(None, description="Bilibili BUVID3 cookie for anti-crawler protection (optional).")
 
-# --- Note: Using standard Context as smithery decorator handles config injection ---
+# --- Common Helper Functions ---
+def _get_credential_from_context(ctx: Context) -> Tuple[Optional[Credential], Optional[Dict[str, Any]]]:
+    """从 Context 配置或环境变量获取凭证
+    
+    Returns:
+        (Credential, None) 如果成功
+        (None, error_dict) 如果失败
+    """
+    config = getattr(ctx, 'config', None)
+    sessdata = getattr(config, 'sessdata', None) if config else None
+    bili_jct = getattr(config, 'bili_jct', None) if config else None
+    buvid3 = getattr(config, 'buvid3', None) if config else None
+
+    # 优先从环境变量获取
+    cred = get_credential()
+    if not cred and sessdata:
+        # 从 Smithery 配置创建凭证
+        cred = Credential(sessdata=sessdata, bili_jct=bili_jct or "", buvid3=buvid3 or "")
+
+    if not cred:
+        return None, {"error": "Missing SESSDATA configuration. Please provide SESSDATA in Smithery server config or environment variables."}
+    
+    return cred, None
+
+def _parse_user_identifier(user_id_or_username: str) -> Tuple[Optional[int], Optional[str]]:
+    """解析用户标识符
+    
+    Returns:
+        (user_id, None) 如果是数字ID
+        (None, username) 如果是用户名
+    """
+    try:
+        return int(user_id_or_username), None
+    except ValueError:
+        return None, user_id_or_username
 
 # --- Smithery Server Definition ---
 @smithery.server(config_schema=BiliStalkerConfig)
@@ -115,117 +149,6 @@ def create_server():
 请提供目标用户ID，开始全面分析。
         """
 
-    # --- MCP Resources ---
-    @mcp.resource("bili://user/{user_id}/info")
-    def get_user_info_resource(user_id: str) -> str:
-        """获取B站用户基本信息的资源"""
-        return f"""B站用户基本信息资源
-
-用户ID: {user_id}
-
-使用方法:
-1. 调用 get_user_info 工具，传入用户ID或用户名
-2. 获取用户的详细资料，包括：
-   - 用户名和头像
-   - 粉丝数和关注数
-   - 等级和认证信息
-   - 个人简介
-   - 账号状态
-
-示例: get_user_info("{user_id}")
-"""
-
-    @mcp.resource("bili://user/{user_id}/videos")
-    def get_user_videos_resource(user_id: str) -> str:
-        """获取B站用户视频资源的资源"""
-        return f"""B站用户视频资源
-
-用户ID: {user_id}
-
-使用方法:
-1. 调用 get_user_video_updates 工具，传入用户ID或用户名
-2. 可选参数:
-   - page: 页码（从1开始）
-   - limit: 每页视频数量（最大30）
-
-获取内容包括:
-- 视频标题和封面
-- 发布时间
-- 播放量、点赞数、收藏数
-- 视频简介和标签
-- BV号和播放链接
-
-示例: get_user_video_updates("{user_id}", page=1, limit=10)
-"""
-
-    @mcp.resource("bili://user/{user_id}/dynamics")
-    def get_user_dynamics_resource(user_id: str) -> str:
-        """获取B站用户动态资源的资源"""
-        return f"""B站用户动态资源
-
-用户ID: {user_id}
-
-使用方法:
-1. 调用 get_user_dynamic_updates 工具，传入用户ID或用户名
-2. 可选参数:
-   - offset: 偏移量（从0开始）
-   - limit: 获取数量
-   - dynamic_type: 动态类型（ALL, VIDEO, ARTICLE, ANIME, DRAW）
-
-动态类型说明:
-- ALL: 所有动态
-- VIDEO: 视频动态
-- ARTICLE: 专栏动态
-- ANIME: 番剧动态
-- DRAW: 图文动态
-
-示例: get_user_dynamic_updates("{user_id}", offset=0, limit=10, dynamic_type="ALL")
-"""
-
-    @mcp.resource("bili://user/{user_id}/articles")
-    def get_user_articles_resource(user_id: str) -> str:
-        """获取B站用户专栏文章资源的资源"""
-        return f"""B站用户专栏文章资源
-
-用户ID: {user_id}
-
-使用方法:
-1. 调用 get_user_articles 工具，传入用户ID或用户名
-2. 可选参数:
-   - page: 页码（从1开始）
-   - limit: 每页文章数量
-
-获取内容包括:
-- 文章标题和封面
-- 发布时间
-- 阅读量、点赞数、收藏数
-- 文章摘要
-- 文章链接
-
-示例: get_user_articles("{user_id}", page=1, limit=10)
-"""
-
-    @mcp.resource("bili://user/{user_id}/followings")
-    def get_user_followings_resource(user_id: str) -> str:
-        """获取B站用户关注列表资源的资源"""
-        return f"""B站用户关注列表资源
-
-用户ID: {user_id}
-
-使用方法:
-1. 调用 get_user_followings 工具，传入用户ID或用户名
-2. 可选参数:
-   - page: 页码（从1开始）
-   - limit: 每页关注数量
-
-获取内容包括:
-- 关注用户的ID和用户名
-- 头像和简介
-- 关注时间
-- 认证信息
-
-示例: get_user_followings("{user_id}", page=1, limit=20)
-"""
 
     # --- MCP Tool Definitions ---
     @mcp.tool(
@@ -244,32 +167,12 @@ def create_server():
         Args:
             user_id_or_username: 用户ID（数字）或用户名。可以是数字ID（如 123456789）或用户名（如 "username"）
         """
-        # Get credentials from the context config provided by Smithery
-        config = getattr(ctx, 'config', None)
-        sessdata = getattr(config, 'sessdata', None) if config else None
-        bili_jct = getattr(config, 'bili_jct', None) if config else None
-        buvid3 = getattr(config, 'buvid3', None) if config else None
-
-        # Fallback to environment variables if Smithery config is not available
-        from .core import get_credential
-        cred = get_credential()
-        if not cred and sessdata:
-            # Manually create credential from Smithery config
-            cred = Credential(sessdata=sessdata, bili_jct=bili_jct or "", buvid3=buvid3 or "")
-
-        if not cred:
-            return {"error": "Missing SESSDATA configuration. Please provide SESSDATA in Smithery server config or environment variables. Some features may not work without authentication."}
-
-        # Try to parse as user ID first, then as username
-        try:
-            # Check if it's an integer user ID
-            user_id = int(user_id_or_username)
-            username = None
-        except ValueError:
-            # It's a username string
-            user_id = None
-            username = user_id_or_username
-
+        cred, error = _get_credential_from_context(ctx)
+        if error:
+            return error
+        
+        user_id, username = _parse_user_identifier(user_id_or_username)
+        
         try:
             target_uid = await _resolve_user_id(user_id, username)
             if not target_uid:
@@ -299,30 +202,12 @@ def create_server():
             page: 页码（从1开始），默认为1，用于分页获取视频
             limit: 每页视频数量（最大30），默认为10，控制返回的视频数量
         """
-        # Get credentials from the context config provided by Smithery
-        config = getattr(ctx, 'config', None)
-        sessdata = getattr(config, 'sessdata', None) if config else None
-        bili_jct = getattr(config, 'bili_jct', None) if config else None
-        buvid3 = getattr(config, 'buvid3', None) if config else None
-
-        # Fallback to environment variables if Smithery config is not available
-        from .core import get_credential
-        cred = get_credential()
-        if not cred and sessdata:
-            # Manually create credential from Smithery config
-            cred = Credential(sessdata=sessdata, bili_jct=bili_jct or "", buvid3=buvid3 or "")
-
-        if not cred:
-            return {"error": "Missing SESSDATA configuration. Please provide SESSDATA in Smithery server config or environment variables. Some features may not work without authentication."}
-
-        # Try to parse as user ID first, then as username
-        try:
-            user_id = int(user_id_or_username)
-            username = None
-        except ValueError:
-            user_id = None
-            username = user_id_or_username
-
+        cred, error = _get_credential_from_context(ctx)
+        if error:
+            return error
+        
+        user_id, username = _parse_user_identifier(user_id_or_username)
+        
         try:
             target_uid = await _resolve_user_id(user_id, username)
             if not target_uid:
@@ -354,30 +239,12 @@ def create_server():
             limit: 获取数量，默认为10，控制返回的动态数量
             dynamic_type: 动态类型过滤，可选值：ALL, VIDEO, ARTICLE, ANIME, DRAW，默认为"ALL"
         """
-        # Get credentials from the context config provided by Smithery
-        config = getattr(ctx, 'config', None)
-        sessdata = getattr(config, 'sessdata', None) if config else None
-        bili_jct = getattr(config, 'bili_jct', None) if config else None
-        buvid3 = getattr(config, 'buvid3', None) if config else None
-
-        # Fallback to environment variables if Smithery config is not available
-        from .core import get_credential
-        cred = get_credential()
-        if not cred and sessdata:
-            # Manually create credential from Smithery config
-            cred = Credential(sessdata=sessdata, bili_jct=bili_jct or "", buvid3=buvid3 or "")
-
-        if not cred:
-            return {"error": "Missing SESSDATA configuration. Please provide SESSDATA in Smithery server config or environment variables. Some features may not work without authentication."}
-
-        # Try to parse as user ID first, then as username
-        try:
-            user_id = int(user_id_or_username)
-            username = None
-        except ValueError:
-            user_id = None
-            username = user_id_or_username
-
+        cred, error = _get_credential_from_context(ctx)
+        if error:
+            return error
+        
+        user_id, username = _parse_user_identifier(user_id_or_username)
+        
         try:
             target_uid = await _resolve_user_id(user_id, username)
             if not target_uid:
@@ -407,29 +274,12 @@ def create_server():
             page: 页码，从1开始，默认为1，用于分页获取文章
             limit: 每页文章数量，默认为10，控制返回的文章数量
         """
-        # Get credentials from the context config provided by Smithery
-        config = getattr(ctx, 'config', None)
-        sessdata = getattr(config, 'sessdata', None) if config else None
-        bili_jct = getattr(config, 'bili_jct', None) if config else None
-
-        # Fallback to environment variables if Smithery config is not available
-        from .core import get_credential
-        cred = get_credential()
-        if not cred and sessdata:
-            # Manually create credential from Smithery config
-            cred = Credential(sessdata=sessdata, bili_jct=bili_jct or "")
-
-        if not cred:
-            return {"error": "Missing SESSDATA configuration. Please provide SESSDATA in Smithery server config or environment variables. Some features may not work without authentication."}
-
-        # Try to parse as user ID first, then as username
-        try:
-            user_id = int(user_id_or_username)
-            username = None
-        except ValueError:
-            user_id = None
-            username = user_id_or_username
-
+        cred, error = _get_credential_from_context(ctx)
+        if error:
+            return error
+        
+        user_id, username = _parse_user_identifier(user_id_or_username)
+        
         try:
             target_uid = await _resolve_user_id(user_id, username)
             if not target_uid:
@@ -459,29 +309,12 @@ def create_server():
             page: 页码，从1开始，默认为1，用于分页获取关注列表
             limit: 每页关注者数量，默认为20，控制返回的关注者数量
         """
-        # Get credentials from the context config provided by Smithery
-        config = getattr(ctx, 'config', None)
-        sessdata = getattr(config, 'sessdata', None) if config else None
-        bili_jct = getattr(config, 'bili_jct', None) if config else None
-
-        # Fallback to environment variables if Smithery config is not available
-        from .core import get_credential
-        cred = get_credential()
-        if not cred and sessdata:
-            # Manually create credential from Smithery config
-            cred = Credential(sessdata=sessdata, bili_jct=bili_jct or "")
-
-        if not cred:
-            return {"error": "Missing SESSDATA configuration. Please provide SESSDATA in Smithery server config or environment variables. Some features may not work without authentication."}
-
-        # Try to parse as user ID first, then as username
-        try:
-            user_id = int(user_id_or_username)
-            username = None
-        except ValueError:
-            user_id = None
-            username = user_id_or_username
-
+        cred, error = _get_credential_from_context(ctx)
+        if error:
+            return error
+        
+        user_id, username = _parse_user_identifier(user_id_or_username)
+        
         try:
             target_uid = await _resolve_user_id(user_id, username)
             if not target_uid:
@@ -491,6 +324,5 @@ def create_server():
             logger.error(f"An error in get_user_followings: {e}")
             return {"error": f"获取用户关注时发生错误: {str(e)}。"}
 
-
-
     return mcp
+

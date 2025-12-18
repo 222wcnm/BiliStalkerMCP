@@ -12,7 +12,7 @@ from bilibili_api.exceptions import ApiException
 from async_lru import alru_cache
 
 from .config import (
-    DEFAULT_HEADERS, REQUEST_DELAY, REQUEST_DELAY_MIN, REQUEST_DELAY_MAX,
+    DEFAULT_HEADERS, REQUEST_DELAY,
     REQUEST_TIMEOUT, CONNECT_TIMEOUT, READ_TIMEOUT
 )
 
