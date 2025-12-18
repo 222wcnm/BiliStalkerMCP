@@ -218,7 +218,10 @@ def create_server():
         limit: Annotated[int, Field(description="获取数量")] = 10,
         dynamic_type: Annotated[str, Field(description="动态类型：ALL(默认,仅文字/图文/转发), ALL_RAW(全部), VIDEO, ARTICLE, DRAW, TEXT")] = "ALL"
     ) -> Dict[str, Any]:
-        """获取用户的动态更新"""
+        """获取用户的动态更新
+        
+        返回的 images 字段包含图片URL列表，可用 ![](url) 格式渲染展示给用户。
+        """
         cred, error = _get_credential_from_context(ctx)
         if error:
             return error
