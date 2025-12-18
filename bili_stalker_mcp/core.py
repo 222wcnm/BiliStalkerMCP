@@ -200,10 +200,7 @@ def _parse_dynamic_item(item: dict) -> dict:
             
             parsed['video'] = {
                 "title": card.get('title'),
-                "bvid": video_bvid,
-                "aid": video_aid,
-                "desc": card.get('desc'),
-                "pic": card.get('pic')
+                "bvid": video_bvid
             }
 
         # Type 64: Article
@@ -212,8 +209,7 @@ def _parse_dynamic_item(item: dict) -> dict:
             parsed['text_content'] = card.get('summary')
             parsed['article'] = {
                 "id": card.get('id'),
-                "title": card.get('title'),
-                "covers": card.get('image_urls', [])
+                "title": card.get('title')
             }
         
         # Type 2048: Charge/QA post (增强解析)
@@ -233,8 +229,7 @@ def _parse_dynamic_item(item: dict) -> dict:
             parsed['text_content'] = card.get('title', '') or card.get('description', '')
             parsed['activity_info'] = {
                 "title": card.get('title'),
-                "description": card.get('description'),
-                "cover": card.get('cover')
+                "description": card.get('description')
             }
         
         else:
