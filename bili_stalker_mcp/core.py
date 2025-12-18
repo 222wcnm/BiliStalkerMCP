@@ -463,19 +463,27 @@ async def fetch_user_dynamics(user_id: int, offset: int, limit: int, cred: Crede
                 parsed_item = _parse_dynamic_item(card)
                 
                 # 实现动态类型筛选
-                if dynamic_type != "ALL":
-                    # 检查动态类型是否匹配
-                    item_type_id = card.get('desc', {}).get('type')
-                    
-                    # 根据类型映射进行筛选
-                    if dynamic_type == "VIDEO" and item_type_id != 8:
+                item_type_id = card.get('desc', {}).get('type')
+                
+                # 默认只返回有分析价值的类型: TEXT(4), IMAGE_TEXT(2), REPOST(1)
+                # 过滤掉 VIDEO(8) 和 ARTICLE(64) 因为有专门的工具获取
+                valuable_types = [1, 2, 4]  # REPOST, IMAGE_TEXT, TEXT
+                
+                if dynamic_type == "ALL":
+                    # 默认只返回有分析价值的类型
+                    if item_type_id not in valuable_types:
                         continue
-                    elif dynamic_type == "ARTICLE" and item_type_id != 64:
-                        continue
-                    elif dynamic_type == "ANIME" and item_type_id != 512:
-                        continue
-                    elif dynamic_type == "DRAW" and item_type_id != 2:
-                        continue
+                elif dynamic_type == "ALL_RAW":
+                    # 返回所有类型（包括 VIDEO/ARTICLE）
+                    pass
+                elif dynamic_type == "VIDEO" and item_type_id != 8:
+                    continue
+                elif dynamic_type == "ARTICLE" and item_type_id != 64:
+                    continue
+                elif dynamic_type == "DRAW" and item_type_id != 2:
+                    continue
+                elif dynamic_type == "TEXT" and item_type_id != 4:
+                    continue
                         
                 processed_dynamics.append(parsed_item)
 

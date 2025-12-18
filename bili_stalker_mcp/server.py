@@ -216,7 +216,7 @@ def create_server():
         user_id_or_username: Annotated[str, Field(description="用户ID（数字）或用户名")],
         offset: Annotated[int, Field(description="偏移量，从0开始")] = 0,
         limit: Annotated[int, Field(description="获取数量")] = 10,
-        dynamic_type: Annotated[str, Field(description="动态类型过滤：ALL, VIDEO, ARTICLE, ANIME, DRAW")] = "ALL"
+        dynamic_type: Annotated[str, Field(description="动态类型：ALL(默认,仅文字/图文/转发), ALL_RAW(全部), VIDEO, ARTICLE, DRAW, TEXT")] = "ALL"
     ) -> Dict[str, Any]:
         """获取用户的动态更新"""
         cred, error = _get_credential_from_context(ctx)
