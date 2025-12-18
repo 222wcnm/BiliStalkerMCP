@@ -170,14 +170,19 @@ def _parse_dynamic_item(item: dict) -> dict:
             parsed['type'] = 'REPOST'
             parsed['text_content'] = card.get('item', {}).get('content')
 
-        # Type 2: Image-text
+        # Type 2: Image-text (或无图时视为纯文字)
         elif dynamic_type == 2:
-            parsed['type'] = 'IMAGE_TEXT'
             item_data = card.get('item', {})
             parsed['text_content'] = item_data.get('description')
-            # 保留图片URL列表，客户端可通过markdown渲染
+            # 检查是否有图片
             pictures = item_data.get('pictures') or []
-            parsed['images'] = [p.get('img_src') for p in pictures if isinstance(p, dict)]
+            image_urls = [p.get('img_src') for p in pictures if isinstance(p, dict)]
+            if image_urls:
+                parsed['type'] = 'IMAGE_TEXT'
+                parsed['images'] = image_urls
+            else:
+                # 没有图片时视为纯文字动态
+                parsed['type'] = 'TEXT'
 
         # Type 4: Text-only
         elif dynamic_type == 4:
