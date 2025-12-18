@@ -175,6 +175,9 @@ def _parse_dynamic_item(item: dict) -> dict:
             parsed['type'] = 'IMAGE_TEXT'
             item_data = card.get('item', {})
             parsed['text_content'] = item_data.get('description')
+            # 保留图片URL列表，客户端可通过markdown渲染
+            pictures = item_data.get('pictures') or []
+            parsed['images'] = [p.get('img_src') for p in pictures if isinstance(p, dict)]
 
         # Type 4: Text-only
         elif dynamic_type == 4:
