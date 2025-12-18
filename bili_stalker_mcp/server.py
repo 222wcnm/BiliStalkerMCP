@@ -16,9 +16,6 @@ from .core import (
     fetch_user_followings,
     get_credential,
 )
-from .config import (
-    DynamicType,
-)
 
 # --- Smithery Configuration Schema ---
 class BiliStalkerConfig(BaseModel):

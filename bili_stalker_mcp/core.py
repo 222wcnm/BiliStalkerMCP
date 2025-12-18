@@ -23,50 +23,23 @@ bilibili_api.request_settings.set('timeout', REQUEST_TIMEOUT)
 logger = logging.getLogger(__name__)
 
 def get_credential() -> Optional[Credential]:
-    """从环境变量或文件创建Bilibili API的凭证对象，避免使用FastMCP配置系统"""
+    """从环境变量创建Bilibili API的凭证对象"""
     sessdata = os.environ.get("SESSDATA")
     bili_jct = os.environ.get("BILI_JCT")
     buvid3 = os.environ.get("BUVID3")
 
-    # 如果环境变量中没有凭证，则尝试从文件中读取
     if not sessdata:
-        try:
-            cookie_file_path = os.path.join(os.path.dirname(__file__), "..", "BILI_COOKIE.txt")
-            if os.path.exists(cookie_file_path):
-                with open(cookie_file_path, "r", encoding="utf-8") as f:
-                    cookie_content = f.read().strip()
-                    
-                # 解析cookie字符串
-                cookies = {}
-                for cookie in cookie_content.split(";"):
-                    if "=" in cookie:
-                        key, value = cookie.strip().split("=", 1)
-                        cookies[key] = value
-                
-                sessdata = cookies.get("SESSDATA")
-                bili_jct = cookies.get("bili_jct")
-                buvid3 = cookies.get("buvid3")
-                
-                if sessdata:
-                    logger.info("Successfully loaded credentials from BILI_COOKIE.txt")
-        except Exception as e:
-            logger.warning(f"Failed to load credentials from BILI_COOKIE.txt: {e}")
-
-    if not sessdata:
-        logger.error("SESSDATA is not set in environment variables or BILI_COOKIE.txt.")
+        logger.error("SESSDATA is not set in environment variables.")
         return None
 
     # 智能认证级别
     try:
-        # 推荐配置：SESSDATA + BILI_JCT + BUVID3
         if bili_jct and buvid3:
             logger.debug("Using full authentication (SESSDATA + BILI_JCT + BUVID3)")
             return Credential(sessdata=sessdata, bili_jct=bili_jct, buvid3=buvid3)
-        # 推荐配置：SESSDATA + BILI_JCT
         elif bili_jct:
-            logger.debug("Using full authentication (SESSDATA + BILI_JCT)")
+            logger.debug("Using partial authentication (SESSDATA + BILI_JCT)")
             return Credential(sessdata=sessdata, bili_jct=bili_jct, buvid3="")
-        # 最低配置：仅SESSDATA（可能触发一些限制）
         else:
             logger.warning("Using minimal authentication (SESSDATA only) - some features may be limited")
             return Credential(sessdata=sessdata, bili_jct="", buvid3="")
