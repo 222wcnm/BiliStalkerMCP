@@ -3,6 +3,7 @@ import os
 import json
 import random
 import asyncio
+from datetime import datetime
 from typing import Any, Dict, Optional
 
 import httpx
@@ -45,6 +46,15 @@ def get_credential() -> Optional[Credential]:
             return Credential(sessdata=sessdata, bili_jct="", buvid3="")
     except Exception as e:
         logger.error(f"Failed to create credential object: {e}")
+        return None
+
+def _format_timestamp(ts: int | None) -> str | None:
+    """将时间戳转换为可读的日期时间格式"""
+    if ts is None:
+        return None
+    try:
+        return datetime.fromtimestamp(ts).strftime("%Y-%m-%d %H:%M")
+    except (ValueError, OSError):
         return None
 
 def _get_cookies(cred: Credential) -> str:
@@ -157,9 +167,11 @@ def _parse_dynamic_item(item: dict) -> dict:
         card = item.get('card', {}) # It's a dict now, not a string.
 
         # Base structure from 'desc'
+        timestamp = desc.get('timestamp')
         parsed = {
             "dynamic_id": desc.get('dynamic_id_str'),
-            "timestamp": desc.get('timestamp')
+            "timestamp": timestamp,
+            "publish_time": _format_timestamp(timestamp)
         }
 
         # --- Content Extraction ---
@@ -169,6 +181,58 @@ def _parse_dynamic_item(item: dict) -> dict:
         if dynamic_type == 1:
             parsed['type'] = 'REPOST'
             parsed['text_content'] = card.get('item', {}).get('content')
+            
+            # 解析被转发的原始内容
+            origin_card = card.get('origin')
+            origin_type = desc.get('origin', {}).get('type')
+            origin_user = card.get('origin_user', {}).get('info', {})
+            
+            if origin_card and isinstance(origin_card, dict):
+                origin_info = {
+                    "user_name": origin_user.get('uname'),
+                    "user_id": origin_user.get('uid')
+                }
+                
+                # 常见类型完整解析
+                if origin_type == 8:  # VIDEO
+                    origin_info["type"] = "VIDEO"
+                    origin_info["text_content"] = origin_card.get('dynamic')
+                    origin_info["video"] = {
+                        "title": origin_card.get('title'),
+                        "bvid": origin_card.get('bvid') or (aid2bvid(origin_card.get('aid')) if origin_card.get('aid') else None),
+                        "pic": origin_card.get('pic')
+                    }
+                elif origin_type == 2:  # IMAGE_TEXT
+                    origin_item = origin_card.get('item', {})
+                    pictures = origin_item.get('pictures') or []
+                    image_urls = [p.get('img_src') for p in pictures if isinstance(p, dict)]
+                    origin_info["type"] = "IMAGE_TEXT" if image_urls else "TEXT"
+                    origin_info["text_content"] = origin_item.get('description')
+                    if image_urls:
+                        origin_info["images"] = image_urls
+                elif origin_type == 4:  # TEXT
+                    origin_info["type"] = "TEXT"
+                    origin_info["text_content"] = origin_card.get('item', {}).get('content')
+                elif origin_type == 64:  # ARTICLE
+                    origin_info["type"] = "ARTICLE"
+                    origin_info["text_content"] = origin_card.get('summary')
+                    origin_info["article"] = {
+                        "id": origin_card.get('id'),
+                        "title": origin_card.get('title')
+                    }
+                else:
+                    # 非常见类型：只提取文字摘要
+                    origin_info["type"] = f"OTHER_{origin_type}"
+                    origin_info["text_content"] = (
+                        origin_card.get('title') or 
+                        origin_card.get('description') or 
+                        origin_card.get('content') or 
+                        origin_card.get('summary') or
+                        origin_card.get('vest', {}).get('content') or
+                        "(无文字内容)"
+                    )
+                
+                parsed['origin'] = origin_info
 
         # Type 2: Image-text (或无图时视为纯文字)
         elif dynamic_type == 2:
@@ -321,6 +385,7 @@ async def fetch_user_info(user_id: int, cred: Credential) -> Dict[str, Any]:
             user_data = {
                 "mid": info.get("mid"),
                 "name": info.get("name"),
+                "sign": info.get("sign"),
                 "following": None,
                 "follower": None
             }
@@ -423,8 +488,10 @@ async def fetch_user_videos(user_id: int, page: int, limit: int, cred: Credentia
                 processed_video = {
                     "bvid": bvid,
                     "title": v_data.get("title"),
+                    "pic": v_data.get("pic"),
                     "description": v_data.get("description"),
                     "created": v_data.get("created"),
+                    "created_time": _format_timestamp(v_data.get("created")),
                     "play": v_data.get("play"),
                     "like": v_data.get("like"),
                     "subtitle": {
@@ -531,6 +598,7 @@ async def fetch_user_articles(user_id: int, page: int, limit: int, cred: Credent
                 "title": article_data.get("title"),
                 "summary": article_data.get("summary"),
                 "publish_time": article_data.get("publish_time"),
+                "publish_time_str": _format_timestamp(article_data.get("publish_time")),
                 "stats": article_data.get("stats")
             }
             processed_articles.append(processed_article)

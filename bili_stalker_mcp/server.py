@@ -159,7 +159,15 @@ def create_server():
         ctx: Context,
         user_id_or_username: Annotated[str, Field(description="用户ID（数字）或用户名")]
     ) -> Dict[str, Any]:
-        """获取指定哔哩哔哩用户的详细信息"""
+        """获取指定哔哩哔哩用户的详细信息
+        
+        返回字段:
+        - mid: 用户ID
+        - name: 用户昵称
+        - sign: 个性签名
+        - following: 关注数
+        - follower: 粉丝数
+        """
         cred, error = _get_credential_from_context(ctx)
         if error:
             return error
@@ -188,7 +196,21 @@ def create_server():
         page: Annotated[int, Field(description="页码，从1开始")] = 1,
         limit: Annotated[int, Field(description="每页视频数量，最大30")] = 10
     ) -> Dict[str, Any]:
-        """获取用户的最新视频更新列表"""
+        """获取用户的最新视频更新列表
+        
+        返回字段:
+        - videos: 视频列表，每个视频包含:
+          - bvid: BV号，可拼接链接 https://www.bilibili.com/video/{bvid}
+          - title: 视频标题
+          - pic: 封面图片URL，可用 ![](url) 渲染
+          - description: 视频简介
+          - created: 发布时间戳（秒）
+          - created_time: 可读的发布时间（如 2024-12-18 20:00）
+          - play: 播放量
+          - like: 点赞数
+          - subtitle: 字幕信息 (has_subtitle, subtitle_summary)
+        - total: 视频总数
+        """
         cred, error = _get_credential_from_context(ctx)
         if error:
             return error
@@ -220,7 +242,17 @@ def create_server():
     ) -> Dict[str, Any]:
         """获取用户的动态更新
         
-        返回的 images 字段包含图片URL列表，可用 ![](url) 格式渲染展示给用户。
+        返回字段:
+        - dynamics: 动态列表，每条动态包含:
+          - dynamic_id: 动态ID
+          - type: 动态类型 (TEXT/IMAGE_TEXT/REPOST/VIDEO/ARTICLE)
+          - text_content: 文字内容
+          - timestamp: 发布时间戳（秒）
+          - publish_time: 可读的发布时间（如 2024-12-18 20:00）
+          - images: 图片URL列表（IMAGE_TEXT类型），可用 ![](url) 渲染
+          - origin: 被转发的原始内容（REPOST类型），包含 user_name, type, text_content 等
+        - total_fetched: 获取到的动态数量
+        - filter_type: 当前筛选类型
         """
         cred, error = _get_credential_from_context(ctx)
         if error:
@@ -250,7 +282,17 @@ def create_server():
         page: Annotated[int, Field(description="页码，从1开始")] = 1,
         limit: Annotated[int, Field(description="每页文章数量")] = 10
     ) -> Dict[str, Any]:
-        """获取用户的专栏文章列表"""
+        """获取用户的专栏文章列表
+        
+        返回字段:
+        - articles: 文章列表，每篇文章包含:
+          - id: 文章ID，可拼接链接 https://www.bilibili.com/read/cv{id}
+          - title: 文章标题
+          - summary: 文章摘要
+          - publish_time: 发布时间戳（秒）
+          - publish_time_str: 可读的发布时间（如 2024-12-18 20:00）
+          - stats: 互动数据 (view, like, reply 等)
+        """
         cred, error = _get_credential_from_context(ctx)
         if error:
             return error
@@ -279,7 +321,15 @@ def create_server():
         page: Annotated[int, Field(description="页码，从1开始")] = 1,
         limit: Annotated[int, Field(description="每页关注者数量")] = 20
     ) -> Dict[str, Any]:
-        """获取用户关注列表"""
+        """获取用户关注列表
+        
+        返回字段:
+        - followings: 关注列表，每个用户包含:
+          - mid: 用户ID
+          - uname: 用户昵称
+          - sign: 个性签名
+        - total: 关注总数
+        """
         cred, error = _get_credential_from_context(ctx)
         if error:
             return error
