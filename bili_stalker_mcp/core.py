@@ -332,42 +332,76 @@ async def get_user_id_by_username(username: str) -> Optional[int]:
     """通过用户名搜索并获取用户ID
     
     优先返回用户名精确匹配的结果，找不到时返回搜索排名第一的结果。
+    针对云环境优化：包含重试机制和反爬策略。
     """
     if not username:
         return None
-    try:
-        search_result = await search.search_by_type(
-            keyword=username,
-            search_type=search.SearchObjectType.USER
-        )
-        result_list = search_result.get("result") or (search_result.get("data", {}) or {}).get("result")
-        if not isinstance(result_list, list) or not result_list:
-            logger.warning(f"User '{username}' not found in search results.")
+    
+    max_retries = 5
+    retry_delay = 2.0
+    
+    for attempt in range(max_retries):
+        try:
+            # 云环境反爬策略：请求前添加随机延迟
+            if attempt > 0:
+                wait_time = retry_delay * (2 ** (attempt - 1)) + random.uniform(1, 3)
+                logger.warning(f"Retry {attempt}/{max_retries} for searching '{username}' in {wait_time:.2f}s...")
+                await asyncio.sleep(wait_time)
+            else:
+                # 首次请求也添加小延迟，减少触发反爬概率
+                await asyncio.sleep(random.uniform(0.5, 1.5))
+            
+            search_result = await search.search_by_type(
+                keyword=username,
+                search_type=search.SearchObjectType.USER
+            )
+            result_list = search_result.get("result") or (search_result.get("data", {}) or {}).get("result")
+            if not isinstance(result_list, list) or not result_list:
+                logger.warning(f"User '{username}' not found in search results.")
+                return None
+            
+            # 优先寻找用户名精确匹配的结果（忽略大小写）
+            username_lower = username.lower()
+            for user_item in result_list:
+                uname = user_item.get('uname', '')
+                if uname.lower() == username_lower:
+                    logger.debug(f"Found exact match for '{username}': UID {user_item['mid']}")
+                    return user_item['mid']
+            
+            # 找不到精确匹配，返回第一个结果并警告
+            logger.warning(f"No exact match for '{username}', using first result: {result_list[0].get('uname')}")
+            return result_list[0]['mid']
+            
+        except ApiException as e:
+            error_code = getattr(e, 'code', None)
+            if error_code == -412 or (hasattr(e, 'msg') and '412' in str(e.msg)):
+                if attempt < max_retries - 1:
+                    logger.warning(f"Search blocked by anti-crawler (412) for '{username}', will retry...")
+                    continue
+                else:
+                    logger.error(f"Search request blocked for '{username}' after {max_retries} retries")
+            elif error_code == -509:
+                logger.error(f"Search request rate limited for '{username}': too frequent requests")
+            else:
+                logger.error(f"Bilibili API error while searching for user '{username}': {e}")
             return None
-        
-        # 优先寻找用户名精确匹配的结果（忽略大小写）
-        username_lower = username.lower()
-        for user_item in result_list:
-            uname = user_item.get('uname', '')
-            if uname.lower() == username_lower:
-                logger.debug(f"Found exact match for '{username}': UID {user_item['mid']}")
-                return user_item['mid']
-        
-        # 找不到精确匹配，返回第一个结果并警告
-        logger.warning(f"No exact match for '{username}', using first result: {result_list[0].get('uname')}")
-        return result_list[0]['mid']
-    except ApiException as e:
-        error_code = getattr(e, 'code', None)
-        if error_code == -412:
-            logger.error(f"Search request blocked for '{username}': rate limit exceeded")
-        elif error_code == -509:
-            logger.error(f"Search request rate limited for '{username}': too frequent requests")
-        else:
-            logger.error(f"Bilibili API error while searching for user '{username}': {e}")
-        return None
-    except Exception as e:
-        logger.error(f"Unexpected error while searching for user '{username}': {e}")
-        return None
+            
+        except Exception as e:
+            error_str = str(e)
+            # 捕获 HTTP 412 状态码错误（来自底层库）
+            if '412' in error_str:
+                if attempt < max_retries - 1:
+                    logger.warning(f"HTTP 412 error for '{username}', will retry...")
+                    continue
+                else:
+                    logger.error(f"HTTP 412 error for '{username}' after {max_retries} retries: {e}")
+            else:
+                logger.error(f"Unexpected error while searching for user '{username}': {e}")
+            
+            if attempt >= max_retries - 1:
+                return None
+    
+    return None
 
 @alru_cache(maxsize=32, ttl=300)
 async def fetch_user_info(user_id: int, cred: Credential) -> Dict[str, Any]:
