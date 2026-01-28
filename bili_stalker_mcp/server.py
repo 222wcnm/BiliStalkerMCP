@@ -3,8 +3,7 @@ import logging
 from typing import Annotated, Any, Dict, Optional, Tuple
 
 from fastmcp import FastMCP, Context
-from pydantic import Field, BaseModel
-from smithery.decorators import smithery
+from pydantic import Field
 
 from bilibili_api import Credential
 from .core import (
@@ -17,34 +16,17 @@ from .core import (
     get_credential,
 )
 
-# --- Smithery Configuration Schema ---
-class BiliStalkerConfig(BaseModel):
-    sessdata: Optional[str] = Field(None, description="Bilibili SESSDATA cookie for basic authentication (optional, can use environment variables).")
-    bili_jct: Optional[str] = Field(None, description="Bilibili BILI_JCT cookie for enhanced authentication (optional).")
-    buvid3: Optional[str] = Field(None, description="Bilibili BUVID3 cookie for anti-crawler protection (optional).")
-
 # --- Common Helper Functions ---
 def _get_credential_from_context(ctx: Context) -> Tuple[Optional[Credential], Optional[Dict[str, Any]]]:
-    """从 Context 配置或环境变量获取凭证
+    """从环境变量获取凭证
     
     Returns:
         (Credential, None) 如果成功
         (None, error_dict) 如果失败
     """
-    config = getattr(ctx, 'config', None)
-    sessdata = getattr(config, 'sessdata', None) if config else None
-    bili_jct = getattr(config, 'bili_jct', None) if config else None
-    buvid3 = getattr(config, 'buvid3', None) if config else None
-
-    # 优先从环境变量获取
     cred = get_credential()
-    if not cred and sessdata:
-        # 从 Smithery 配置创建凭证
-        cred = Credential(sessdata=sessdata, bili_jct=bili_jct or "", buvid3=buvid3 or "")
-
     if not cred:
-        return None, {"error": "Missing SESSDATA configuration. Please provide SESSDATA in Smithery server config or environment variables."}
-    
+        return None, {"error": "Missing SESSDATA. Please provide SESSDATA in environment variables."}
     return cred, None
 
 def _parse_user_identifier(user_id_or_username: str) -> Tuple[Optional[int], Optional[str]]:
@@ -59,10 +41,9 @@ def _parse_user_identifier(user_id_or_username: str) -> Tuple[Optional[int], Opt
     except ValueError:
         return None, user_id_or_username
 
-# --- Smithery Server Definition ---
-@smithery.server(config_schema=BiliStalkerConfig)
+# --- Server Definition ---
 def create_server():
-    """Create and configure the BiliStalkerMCP server for Smithery."""
+    """Create and configure the BiliStalkerMCP server."""
 
     logger = logging.getLogger(__name__)
     mcp = FastMCP("BiliStalkerMCP")
