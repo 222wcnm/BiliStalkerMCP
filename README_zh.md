@@ -50,6 +50,15 @@ uv pip install bili-stalker-mcp
 
 > **提示**: 您可以在 B 站网页端按下 F12 -> Application -> Cookies 中找到这些值。
 
+### 环境变量说明
+
+| 变量名 | 必填 | 描述 |
+|--------|:----:|------|
+| `SESSDATA` | **是** | B 站登录凭证，获取大多数数据的基础。 |
+| `BILI_JCT` | 否 | CSRF Token，若涉及更高权限操作可能需要。 |
+| `BUVID3` | 否 | 浏览器指纹，有助于进一步降低风控风险。 |
+| `BILI_LOG_LEVEL` | 否 | 日志等级 (`INFO`, `DEBUG`, `WARNING`)，默认 `WARNING`。 |
+
 ## 🛠️ 可用工具
 
 | 工具名称 | 描述 | 参数 |
@@ -82,6 +91,26 @@ uv pip install -e .[dev]
 # 运行全功能测试套件
 uv run tests/test_suite.py -u <UID或用户名>
 ```
+
+## 🐳 Docker 支持
+
+如果您更喜欢使用容器，可以使用提供的 `Dockerfile`:
+
+```bash
+docker build -t bilistalker-mcp .
+docker run -e SESSDATA=... -e BILI_JCT=... -e BUVID3=... bilistalker-mcp
+```
+
+## ❓ 常见问题
+
+**Q: 为什么我遇到了 412 错误？**
+A: 412 错误通常表示 B 站触发了风控。请确保：
+1. `SESSDATA` 是最新的且未失效。
+2. 尽可能提供 `BUVID3`。
+3. 如果是在云服务器上运行，请尝试在本地运行，因为云服务的 IP 段更容易被拦截。
+
+**Q: 我需要所有三个 Cookie 吗？**
+A: 只要有 `SESSDATA` 就可以运行，但强烈建议同时提供 `BILI_JCT` 和 `BUVID3` 以确保最高稳定性。
 
 ## 📄 开源协议
 
