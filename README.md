@@ -5,9 +5,9 @@
 [![Version](https://img.shields.io/badge/Version-2.5-green)](https://pypi.org/project/bili-stalker-mcp/)
 [![smithery badge](https://smithery.ai/badge/@222wcnm/bilistalkermcp)](https://smithery.ai/server/@222wcnm/bilistalkermcp)
 
-A Model Context Protocol (MCP) server for comprehensive Bilibili user data acquisition.
+BiliStalkerMCP is a [Model Context Protocol (MCP)](https://modelcontextprotocol.io) server for Bilibili, specifically designed for AI assistants (like Claude, ChatGPT).
 
-## Quick Start
+**English | [中文说明](README_zh.md)**
 
 ### Installation
 
@@ -25,7 +25,8 @@ uvx bili-stalker-mcp
 ```
 
 ### Configuration
-Add to your MCP client settings:
+
+Add to your MCP client settings (e.g., Claude Desktop):
 
 ```json
 {
@@ -42,6 +43,17 @@ Add to your MCP client settings:
   }
 }
 ```
+
+> **Tip**: You can find these values in your browser by pressing F12 -> Application -> Cookies on the Bilibili website.
+
+### Environment Variables
+
+| Variable | Required | Description |
+|----------|:--------:|-------------|
+| `SESSDATA` | **Yes** | Authentication token from Bilibili cookies. |
+| `BILI_JCT` | No | CSRF token from cookies. |
+| `BUVID3` | No | Browser fingerprint, helps reduce rate limiting issues. |
+| `BILI_LOG_LEVEL` | No | Log level (`INFO`, `DEBUG`, `WARNING`), default is `WARNING`. |
 
 ## Available Tools
 
@@ -66,12 +78,6 @@ The `get_user_dynamic_updates` tool supports filtering by type:
 | `DRAW` | Image-text dynamics only |
 | `TEXT` | Text-only dynamics |
 
-### Return Data Features
-
-- **Human-readable timestamps**: All time fields include formatted strings (e.g., `created_time`, `publish_time`)
-- **Image URLs**: Video covers (`pic`) and dynamic images (`images`) can be rendered with `![](url)`
-- **Repost origin**: REPOST dynamics include full `origin` object with original content details
-
 ## Development
 
 ```bash
@@ -84,11 +90,28 @@ uv pip install -e .
 python tests/test_suite.py -u <user_id_or_username>
 ```
 
+## 🐳 Docker Support
+
+You can also run the server using Docker:
+
+```bash
+docker build -t bilistalker-mcp .
+docker run -e SESSDATA=... -e BILI_JCT=... -e BUVID3=... bilistalker-mcp
+```
+
+## ❓ Troubleshooting
+
+**Q: Why am I getting "412 Precondition Failed"?**
+A: This usually means you are being rate-limited or blocked by Bilibili. Try to:
+1. Refresh your `SESSDATA`.
+2. Ensure you provide `BUVID3`.
+3. If running on a cloud server, try running locally as cloud IPs are more likely to be blocked.
+
 ## License
 
 MIT
 
 ---
 
-*This project was entirely created and maintained by AI.*
+*This project is built and maintained with the help of AI.*
 
