@@ -9,8 +9,6 @@ BiliStalkerMCP is a [Model Context Protocol (MCP)](https://modelcontextprotocol.
 
 **English | [中文说明](README_zh.md)**
 
-## 🌟 Key Features
-
 ### Installation
 
 #### Installing via Smithery
@@ -68,12 +66,6 @@ The `get_user_dynamic_updates` tool supports filtering by type:
 | `DRAW` | Image-text dynamics only |
 | `TEXT` | Text-only dynamics |
 
-### Return Data Features
-
-- **Human-readable timestamps**: All time fields include formatted strings (e.g., `created_time`, `publish_time`)
-- **Image URLs**: Video covers (`pic`) and dynamic images (`images`) can be rendered with `![](url)`
-- **Repost origin**: REPOST dynamics include full `origin` object with original content details
-
 ## Development
 
 ```bash
@@ -92,5 +84,5 @@ MIT
 
 ---
 
-*This project was entirely created and maintained by AI.*
+*This project is built and maintained with the help of AI.*
 
