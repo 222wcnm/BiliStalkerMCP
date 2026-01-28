@@ -2,8 +2,7 @@
 
 [![Python](https://img.shields.io/badge/Python-3.10+-blue?logo=python)](https://www.python.org/)
 [![MCP](https://img.shields.io/badge/MCP-Compatible-orange)](https://github.com/jlowin/fastmcp)
-[![Version](https://img.shields.io/badge/Version-2.5-green)](https://pypi.org/project/bili-stalker-mcp/)
-[![smithery badge](https://smithery.ai/badge/@222wcnm/bilistalkermcp)](https://smithery.ai/server/@222wcnm/bilistalkermcp)
+[![Version](https://img.shields.io/badge/Version-2.6-green)](https://pypi.org/project/bili-stalker-mcp/)
 
 BiliStalkerMCP is a [Model Context Protocol (MCP)](https://modelcontextprotocol.io) server for Bilibili, specifically designed for AI assistants (like Claude, ChatGPT).
 
@@ -11,17 +10,10 @@ BiliStalkerMCP is a [Model Context Protocol (MCP)](https://modelcontextprotocol.
 
 ### Installation
 
-#### Installing via Smithery
-
-To install bilistalkermcp automatically via [Smithery](https://smithery.ai/server/@222wcnm/bilistalkermcp):
-
-```bash
-npx -y @smithery/cli install @222wcnm/bilistalkermcp
-```
-
-#### Manual Installation
 ```bash
 uvx bili-stalker-mcp
+# or
+pip install bili-stalker-mcp
 ```
 
 ### Configuration

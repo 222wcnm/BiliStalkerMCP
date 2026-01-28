@@ -2,8 +2,7 @@
 
 [![Python](https://img.shields.io/badge/Python-3.10+-blue?logo=python)](https://www.python.org/)
 [![MCP](https://img.shields.io/badge/MCP-Compatible-orange)](https://github.com/jlowin/fastmcp)
-[![Version](https://img.shields.io/badge/Version-2.5-green)](https://pypi.org/project/bili-stalker-mcp/)
-[![smithery badge](https://smithery.ai/badge/@222wcnm/bilistalkermcp)](https://smithery.ai/server/@222wcnm/bilistalkermcp)
+[![Version](https://img.shields.io/badge/Version-2.6-green)](https://pypi.org/project/bili-stalker-mcp/)
 
 BiliStalkerMCP 是一个基于 Model Context Protocol (MCP) 的 Bilibili 数据获取服务，专为 AI 助理（如 Claude, ChatGPT）设计，能够帮助 AI 深度获取和分析 B 站用户数据。
 
@@ -14,18 +13,10 @@ BiliStalkerMCP 是一个基于 Model Context Protocol (MCP) 的 Bilibili 数据�
 
 ### 安装
 
-#### 方式 A: 通过 Smithery 自动安装 (推荐)
-
-如果你使用 [Smithery](https://smithery.ai/server/@222wcnm/bilistalkermcp):
-
 ```bash
-npx -y @smithery/cli install @222wcnm/bilistalkermcp
-```
-
-#### 方式 B: 手动安装
-
-```bash
-uv pip install bili-stalker-mcp
+uvx bili-stalker-mcp
+# 或
+pip install bili-stalker-mcp
 ```
 
 ### 配置

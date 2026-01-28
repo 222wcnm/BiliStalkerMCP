@@ -13,7 +13,6 @@ RUN uv venv
 COPY pyproject.toml uv.lock README.md ./
 
 # Install dependencies into the virtual environment
-# This includes the 'smithery' CLI
 RUN . .venv/bin/activate && uv sync --no-dev
 
 # 2. Final Stage: Setup the runtime environment
@@ -31,9 +30,9 @@ COPY ./bili_stalker_mcp ./bili_stalker_mcp
 # This ensures that 'python' and any installed CLIs are found
 ENV PATH="/app/.venv/bin:$PATH"
 
-# The port the container will listen on. Smithery will set this.
+# Expose port for HTTP mode (optional)
 EXPOSE 8080
 ENV PORT=8080
 
-# The command to run the application using our HTTP server script
-CMD ["python", "-m", "bili_stalker_mcp.start_http"]
+# Default command: run the MCP server via CLI
+CMD ["bili-stalker-mcp"]
