@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "bili_stalker_mcp"
-version = "2.4.1"
+version = "2.5.0"
 description = "MCP Server for getting Bilibili user video updates"
 authors = [
     {name = "222wcnm", email = "2328072813li@gmail.com"},
@@ -35,6 +35,7 @@ dependencies = [
     "fastapi>=0.104.0",
     "aiohttp>=3.9.0",
     "python-dotenv>=1.0.0",
+    "curl_cffi>=0.7.0",
 ]
 
 [project.optional-dependencies]

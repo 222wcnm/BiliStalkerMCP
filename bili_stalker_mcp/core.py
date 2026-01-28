@@ -12,12 +12,15 @@ from bilibili_api import Credential, user, search, video, aid2bvid
 from bilibili_api.exceptions import ApiException
 from async_lru import alru_cache
 
+# 导入配置（会自动初始化 bilibili-api 反爬设置）
 from .config import (
     DEFAULT_HEADERS, REQUEST_DELAY,
     REQUEST_TIMEOUT, CONNECT_TIMEOUT, READ_TIMEOUT
 )
+# 导入统一重试装饰器
+from .retry import with_retry
 
-# 配置 bilibili-api 请求设置
+# 配置 bilibili-api 请求设置（headers 和 timeout）
 bilibili_api.request_settings.set('headers', DEFAULT_HEADERS)
 bilibili_api.request_settings.set('timeout', REQUEST_TIMEOUT)
 
@@ -69,7 +72,11 @@ def _get_cookies(cred: Credential) -> str:
     return "; ".join(cookie_parts)
 
 async def _get_video_subtitle_info(bvid: str, cred: Credential) -> Dict[str, Any]:
-    """获取视频的详细字幕信息（优化版）"""
+    """获取视频的详细字幕信息（优化版）
+    
+    使用 get_player_info 作为主要方法，因为它能返回包括 AI 字幕在内的完整字幕列表。
+    Bilibili 的 x/web-interface/view API 不再返回完整字幕信息。
+    """
     try:
         if not bvid:
             return {"has_subtitle": False, "subtitle_count": 0, "subtitle_list": []}
@@ -80,31 +87,49 @@ async def _get_video_subtitle_info(bvid: str, cred: Credential) -> Dict[str, Any
             "has_subtitle": False,
             "subtitle_count": 0,
             "subtitle_list": [],
-            "subtitle_summary": "无字幕"  # 新增：字幕概要信息
+            "subtitle_summary": "无字幕"
         }
         
-        # 方法1：先尝试从视频基本信息获取
-        video_info = await v.get_info()
-        subtitles_from_info = video_info.get("subtitle", {}).get("list", [])
-        
-        # 方法2：如果方法1无数据，尝试使用get_subtitle方法
         subtitles_data = None
-        if not subtitles_from_info:
+        
+        # 方法1（主要）：使用 get_player_info 获取字幕，这是最可靠的方式
+        # 因为它调用的是 x/player/v2 端点，能返回完整的字幕列表（包括AI字幕）
+        try:
+            pages = await v.get_pages()
+            if pages:
+                cid = pages[0].get('cid')
+                if cid:
+                    # 使用 get_player_info 获取播放器信息，包含字幕
+                    player_info = await v.get_player_info(cid=cid)
+                    subtitles_data = player_info.get("subtitle", {}).get("subtitles", [])
+                    if subtitles_data:
+                        logger.debug(f"Using get_player_info method for video {bvid}, found {len(subtitles_data)} subtitles")
+        except Exception as e:
+            logger.debug(f"get_player_info method failed for video {bvid}: {e}")
+        
+        # 方法2（备选）：尝试从视频基本信息获取（可能不包含AI字幕）
+        if not subtitles_data:
             try:
-                # 获取页面信息和cid
+                video_info = await v.get_info()
+                subtitles_data = video_info.get("subtitle", {}).get("list", [])
+                if subtitles_data:
+                    logger.debug(f"Using video info method for video {bvid}, found {len(subtitles_data)} subtitles")
+            except Exception as e:
+                logger.debug(f"get_info method failed for video {bvid}: {e}")
+        
+        # 方法3（备选）：使用 get_subtitle 方法
+        if not subtitles_data:
+            try:
                 pages = await v.get_pages()
                 if pages:
                     cid = pages[0].get('cid')
                     if cid:
-                        # 使用get_subtitle方法
                         subtitle_response = await v.get_subtitle(cid=cid)
                         subtitles_data = subtitle_response.get("subtitles", [])
-                        logger.debug(f"Using get_subtitle method for video {bvid}, found {len(subtitles_data)} subtitles")
+                        if subtitles_data:
+                            logger.debug(f"Using get_subtitle method for video {bvid}, found {len(subtitles_data)} subtitles")
             except Exception as e:
                 logger.debug(f"get_subtitle method failed for video {bvid}: {e}")
-        else:
-            subtitles_data = subtitles_from_info
-            logger.debug(f"Using video info method for video {bvid}, found {len(subtitles_data)} subtitles")
         
         # 处理字幕数据
         if subtitles_data:
@@ -328,242 +353,137 @@ def _parse_dynamic_item(item: dict) -> dict:
         return debug_info
 
 @alru_cache(maxsize=128, ttl=3600)
+@with_retry(max_retries=5, base_delay=2.0, return_default=True, default_on_exhaust=None)
 async def get_user_id_by_username(username: str) -> Optional[int]:
     """通过用户名搜索并获取用户ID
     
     优先返回用户名精确匹配的结果，找不到时返回搜索排名第一的结果。
-    针对云环境优化：包含重试机制和反爬策略。
+    使用 @with_retry 装饰器自动处理反爬重试。
     """
     if not username:
         return None
     
-    max_retries = 5
-    retry_delay = 2.0
+    search_result = await search.search_by_type(
+        keyword=username,
+        search_type=search.SearchObjectType.USER
+    )
+    result_list = search_result.get("result") or (search_result.get("data", {}) or {}).get("result")
+    if not isinstance(result_list, list) or not result_list:
+        logger.warning(f"User '{username}' not found in search results.")
+        return None
     
-    for attempt in range(max_retries):
-        try:
-            # 云环境反爬策略：请求前添加随机延迟
-            if attempt > 0:
-                wait_time = retry_delay * (2 ** (attempt - 1)) + random.uniform(1, 3)
-                logger.warning(f"Retry {attempt}/{max_retries} for searching '{username}' in {wait_time:.2f}s...")
-                await asyncio.sleep(wait_time)
-            else:
-                # 首次请求也添加小延迟，减少触发反爬概率
-                await asyncio.sleep(random.uniform(0.5, 1.5))
-            
-            search_result = await search.search_by_type(
-                keyword=username,
-                search_type=search.SearchObjectType.USER
-            )
-            result_list = search_result.get("result") or (search_result.get("data", {}) or {}).get("result")
-            if not isinstance(result_list, list) or not result_list:
-                logger.warning(f"User '{username}' not found in search results.")
-                return None
-            
-            # 优先寻找用户名精确匹配的结果（忽略大小写）
-            username_lower = username.lower()
-            for user_item in result_list:
-                uname = user_item.get('uname', '')
-                if uname.lower() == username_lower:
-                    logger.debug(f"Found exact match for '{username}': UID {user_item['mid']}")
-                    return user_item['mid']
-            
-            # 找不到精确匹配，返回第一个结果并警告
-            logger.warning(f"No exact match for '{username}', using first result: {result_list[0].get('uname')}")
-            return result_list[0]['mid']
-            
-        except ApiException as e:
-            error_code = getattr(e, 'code', None)
-            if error_code == -412 or (hasattr(e, 'msg') and '412' in str(e.msg)):
-                if attempt < max_retries - 1:
-                    logger.warning(f"Search blocked by anti-crawler (412) for '{username}', will retry...")
-                    continue
-                else:
-                    logger.error(f"Search request blocked for '{username}' after {max_retries} retries")
-            elif error_code == -509:
-                logger.error(f"Search request rate limited for '{username}': too frequent requests")
-            else:
-                logger.error(f"Bilibili API error while searching for user '{username}': {e}")
-            return None
-            
-        except Exception as e:
-            error_str = str(e)
-            # 捕获 HTTP 412 状态码错误（来自底层库）
-            if '412' in error_str:
-                if attempt < max_retries - 1:
-                    logger.warning(f"HTTP 412 error for '{username}', will retry...")
-                    continue
-                else:
-                    logger.error(f"HTTP 412 error for '{username}' after {max_retries} retries: {e}")
-            else:
-                logger.error(f"Unexpected error while searching for user '{username}': {e}")
-            
-            if attempt >= max_retries - 1:
-                return None
+    # 优先寻找用户名精确匹配的结果（忽略大小写）
+    username_lower = username.lower()
+    for user_item in result_list:
+        uname = user_item.get('uname', '')
+        if uname.lower() == username_lower:
+            logger.debug(f"Found exact match for '{username}': UID {user_item['mid']}")
+            return user_item['mid']
     
-    return None
+    # 找不到精确匹配，返回第一个结果并警告
+    logger.warning(f"No exact match for '{username}', using first result: {result_list[0].get('uname')}")
+    return result_list[0]['mid']
 
 @alru_cache(maxsize=32, ttl=300)
+@with_retry(max_retries=3, base_delay=2.0, return_default=True, default_on_exhaust={"error": "All retry attempts failed"})
 async def fetch_user_info(user_id: int, cred: Credential) -> Dict[str, Any]:
-    """获取B站用户的详细资料。返回JSON对象，为保证数据完整，默认返回所有字段。"""
-    max_retries = 3
-    retry_delay = 2.0
+    """获取B站用户的详细资料。返回JSON对象，为保证数据完整，默认返回所有字段。
     
-    for attempt in range(max_retries):
+    使用 @with_retry 装饰器自动处理反爬重试。
+    """
+    try:
+        u = user.User(uid=user_id, credential=cred)
+        info = await u.get_user_info()
+        if not info or 'mid' not in info:
+            raise ValueError("User info response is invalid")
+
+        user_data = {
+            "mid": info.get("mid"),
+            "name": info.get("name"),
+            "sign": info.get("sign"),
+            "following": None,
+            "follower": None
+        }
+
+        # 获取关注/粉丝数（非关键，失败不影响主流程）
         try:
-            u = user.User(uid=user_id, credential=cred)
-            info = await u.get_user_info()
-            if not info or 'mid' not in info:
-                raise ValueError("User info response is invalid")
-
-            user_data = {
-                "mid": info.get("mid"),
-                "name": info.get("name"),
-                "sign": info.get("sign"),
-                "following": None,
-                "follower": None
-            }
-
-            try:
-                stat_url = "https://api.bilibili.com/x/relation/stat"
-                params = {'vmid': user_id}
-                headers = DEFAULT_HEADERS.copy()
-                headers['Cookie'] = _get_cookies(cred)
-                
-                async with httpx.AsyncClient() as client:
-                    response = await client.get(stat_url, params=params, headers=headers, timeout=httpx.Timeout(CONNECT_TIMEOUT, read=READ_TIMEOUT))
-                    response.raise_for_status()
-                    stat_data = response.json()
-
-                if stat_data.get('code') == 0 and 'data' in stat_data:
-                    user_data['following'] = stat_data['data'].get('following')
-                    user_data['follower'] = stat_data['data'].get('follower')
-                else:
-                    logger.warning(f"Failed to get relation stat for UID {user_id}: {stat_data.get('message')}")
-            except httpx.RequestError as e:
-                logger.warning(f"HTTP request for relation stat failed for UID {user_id}: {e}")
+            stat_url = "https://api.bilibili.com/x/relation/stat"
+            params = {'vmid': user_id}
+            headers = DEFAULT_HEADERS.copy()
+            headers['Cookie'] = _get_cookies(cred)
             
-            return user_data
+            async with httpx.AsyncClient() as client:
+                response = await client.get(stat_url, params=params, headers=headers, timeout=httpx.Timeout(CONNECT_TIMEOUT, read=READ_TIMEOUT))
+                response.raise_for_status()
+                stat_data = response.json()
 
-        except ApiException as e:
-            error_code = getattr(e, 'code', None)
-            if error_code == -412:
-                if attempt < max_retries - 1:
-                    # 增加延迟并重试
-                    wait_time = retry_delay * (2 ** attempt) + random.uniform(0, 1)
-                    logger.warning(f"Request blocked by anti-crawler system (412). Retrying in {wait_time:.2f} seconds...")
-                    await asyncio.sleep(wait_time)
-                    continue
-                else:
-                    logger.error(f"Bilibili API error for UID {user_id}: {e}")
-                    return {"error": f"Bilibili API 错误（码: {error_code}）: 请求被拦截，可能是访问频率过高，请稍后重试"}
-            elif error_code == -404:
-                return {"error": f"用户 {user_id} 不存在或已注销"}
-            elif error_code == -509:
-                return {"error": "请求过于频繁，被系统限流，请逐渐减少请求频率"}
+            if stat_data.get('code') == 0 and 'data' in stat_data:
+                user_data['following'] = stat_data['data'].get('following')
+                user_data['follower'] = stat_data['data'].get('follower')
             else:
-                logger.error(f"Bilibili API error for UID {user_id}: {e}")
-                return {"error": f"Bilibili API 错误（码: {error_code}）: {str(e)}"}
+                logger.warning(f"Failed to get relation stat for UID {user_id}: {stat_data.get('message')}")
         except httpx.RequestError as e:
-            logger.error(f"Network error for UID {user_id}: {e}")
-            if attempt < max_retries - 1:
-                # 增加延迟并重试
-                wait_time = retry_delay * (2 ** attempt) + random.uniform(0, 1)
-                logger.warning(f"Request failed. Retrying in {wait_time:.2f} seconds...")
-                await asyncio.sleep(wait_time)
-                continue
-            else:
-                return {"error": f"网络错误: {str(e)}，请检查网络连接或稍后重试"}
-        except Exception as e:
-            logger.error(f"Failed to get user info for UID {user_id}: {e}")
-            if attempt < max_retries - 1:
-                # 增加延迟并重试
-                wait_time = retry_delay * (2 ** attempt) + random.uniform(0, 1)
-                logger.warning(f"Request failed. Retrying in {wait_time:.2f} seconds...")
-                await asyncio.sleep(wait_time)
-                continue
-            else:
-                return {"error": f"获取用户信息时发生未知错误: {str(e)}"}
-    
-    # 如果所有重试都失败了，返回错误
-    return {"error": "All retry attempts failed"}
+            logger.warning(f"HTTP request for relation stat failed for UID {user_id}: {e}")
+        
+        return user_data
 
+    except ApiException as e:
+        error_code = getattr(e, 'code', None)
+        # 不可重试的错误码，直接返回错误信息
+        if error_code == -404:
+            return {"error": f"用户 {user_id} 不存在或已注销"}
+        elif error_code == -509:
+            return {"error": "请求过于频繁，被系统限流，请逐渐减少请求频率"}
+        # 可重试的错误（-412），让装饰器处理
+        raise
+
+@with_retry(max_retries=3, base_delay=2.0, return_default=True, default_on_exhaust={"error": "All retry attempts failed"})
 async def fetch_user_videos(user_id: int, page: int, limit: int, cred: Credential) -> Dict[str, Any]:
-    """获取用户的视频列表。现在包含增强的字幕信息，包括字幕语言、作者和下载URL等详细信息。"""
-    max_retries = 3
-    retry_delay = 2.0
+    """获取用户的视频列表。现在包含增强的字幕信息，包括字幕语言、作者和下载URL等详细信息。
     
-    for attempt in range(max_retries):
-        try:
-            u = user.User(uid=user_id, credential=cred)
-            video_list = await u.get_videos(pn=page, ps=limit)
-            raw_videos = video_list.get("list", {}).get("vlist", [])
-            processed_videos = []
-            
-            for v_data in raw_videos:
-                # 修复 bvid 字段 - 如果为空则从 aid 转换生成
-                bvid = v_data.get("bvid")
-                aid = v_data.get("aid")
-                
-                if not bvid and aid:
-                    try:
-                        bvid = aid2bvid(aid)
-                        logger.debug(f"Generated bvid {bvid} from aid {aid}")
-                    except Exception as e:
-                        logger.warning(f"Failed to convert aid {aid} to bvid: {e}")
-                        bvid = None
-                
-                # 获取详细的字幕信息（只有当 bvid 存在时才获取）
-                if bvid:
-                    subtitle_info = await _get_video_subtitle_info(bvid, cred)
-                else:
-                    subtitle_info = {"has_subtitle": False, "subtitle_count": 0, "subtitle_list": [], "error": "No bvid available"}
-                
-                processed_video = {
-                    "bvid": bvid,
-                    "title": v_data.get("title"),
-                    "pic": v_data.get("pic"),
-                    "description": v_data.get("description"),
-                    "created": v_data.get("created"),
-                    "created_time": _format_timestamp(v_data.get("created")),
-                    "play": v_data.get("play"),
-                    "like": v_data.get("like"),
-                    "subtitle": {
-                        "has_subtitle": subtitle_info.get("has_subtitle", False),
-                        "subtitle_summary": subtitle_info.get("subtitle_summary", "无字幕")
-                    }
-                }
-                processed_videos.append(processed_video)
+    使用 @with_retry 装饰器自动处理反爬重试。
+    """
+    u = user.User(uid=user_id, credential=cred)
+    video_list = await u.get_videos(pn=page, ps=limit)
+    raw_videos = video_list.get("list", {}).get("vlist", [])
+    processed_videos = []
+    
+    for v_data in raw_videos:
+        # 修复 bvid 字段 - 如果为空则从 aid 转换生成
+        bvid = v_data.get("bvid")
+        aid = v_data.get("aid")
+        
+        if not bvid and aid:
+            try:
+                bvid = aid2bvid(aid)
+                logger.debug(f"Generated bvid {bvid} from aid {aid}")
+            except Exception as e:
+                logger.warning(f"Failed to convert aid {aid} to bvid: {e}")
+                bvid = None
+        
+        # 获取详细的字幕信息（只有当 bvid 存在时才获取）
+        if bvid:
+            subtitle_info = await _get_video_subtitle_info(bvid, cred)
+        else:
+            subtitle_info = {"has_subtitle": False, "subtitle_count": 0, "subtitle_list": [], "error": "No bvid available"}
+        
+        processed_video = {
+            "bvid": bvid,
+            "title": v_data.get("title"),
+            "pic": v_data.get("pic"),
+            "description": v_data.get("description"),
+            "created": v_data.get("created"),
+            "created_time": _format_timestamp(v_data.get("created")),
+            "play": v_data.get("play"),
+            "like": v_data.get("like"),
+            "subtitle": {
+                "has_subtitle": subtitle_info.get("has_subtitle", False),
+                "subtitle_summary": subtitle_info.get("subtitle_summary", "无字幕")
+            }
+        }
+        processed_videos.append(processed_video)
 
-            return {"videos": processed_videos, "total": video_list.get("page", {}).get("count", 0)}
-        except ApiException as e:
-            error_code = getattr(e, 'code', None)
-            if error_code == -412:
-                if attempt < max_retries - 1:
-                    # 增加延迟并重试
-                    wait_time = retry_delay * (2 ** attempt) + random.uniform(0, 1)
-                    logger.warning(f"Request blocked by anti-crawler system (412). Retrying in {wait_time:.2f} seconds...")
-                    await asyncio.sleep(wait_time)
-                    continue
-                else:
-                    logger.error(f"Bilibili API error for videos of UID {user_id}: {e}")
-                    return {"error": f"Bilibili API 错误（码: {error_code}）: 请求被拦截，可能是访问频率过高，请稍后重试"}
-            else:
-                logger.error(f"Bilibili API error for videos of UID {user_id}: {e}")
-                return {"error": f"Bilibili API 错误（码: {error_code}）: {str(e)}"}
-        except Exception as e:
-            logger.error(f"Failed to get user videos for UID {user_id}: {e}")
-            if attempt < max_retries - 1:
-                # 增加延迟并重试
-                wait_time = retry_delay * (2 ** attempt) + random.uniform(0, 1)
-                logger.warning(f"Request failed. Retrying in {wait_time:.2f} seconds...")
-                await asyncio.sleep(wait_time)
-                continue
-            else:
-                return {"error": f"获取用户视频时发生未知错误: {str(e)}"}
-    
-    # 如果所有重试都失败了，返回错误
-    return {"error": "All retry attempts failed"}
+    return {"videos": processed_videos, "total": video_list.get("page", {}).get("count", 0)}
 
 async def fetch_user_dynamics(user_id: int, offset: int, limit: int, cred: Credential, dynamic_type: str = "ALL") -> Dict[str, Any]:
     """获取用户的动态列表。为保证数据可用性，返回JSON列表。会尝试解析不同类型的动态。"""
@@ -646,85 +566,47 @@ async def fetch_user_articles(user_id: int, page: int, limit: int, cred: Credent
         return {"error": f"获取用户专栏文章时发生未知错误: {str(e)}"}
 
 
+@with_retry(max_retries=3, base_delay=2.0, return_default=True, default_on_exhaust={"error": "All retry attempts failed"})
 async def fetch_user_followings(user_id: int, page: int, limit: int, cred: Credential) -> Dict[str, Any]:
-    """获取用户的关注列表。"""
-    max_retries = 3
-    retry_delay = 2.0
+    """获取用户的关注列表。
     
-    for attempt in range(max_retries):
-        try:
-            api_url = "https://api.bilibili.com/x/relation/followings"
-            params = {'vmid': user_id, 'ps': limit, 'pn': page}
-            headers = DEFAULT_HEADERS.copy()
-            headers['Cookie'] = _get_cookies(cred)
-            async with httpx.AsyncClient() as client:
-                response = await client.get(api_url, params=params, headers=headers, timeout=httpx.Timeout(CONNECT_TIMEOUT, read=READ_TIMEOUT))
-                response.raise_for_status()
-                followings_data = response.json()
-                
-                # 增强错误码处理
-                if followings_data.get('code') == -412:
-                    if attempt < max_retries - 1:
-                        # 增加延迟并重试
-                        wait_time = retry_delay * (2 ** attempt) + random.uniform(0, 1)
-                        logger.warning(f"Request blocked by anti-crawler system (412). Retrying in {wait_time:.2f} seconds...")
-                        await asyncio.sleep(wait_time)
-                        continue
-                    else:
-                        return {"error": "请求被拦截，可能是访问频率过高，请稍后重试"}
-                elif followings_data.get('code') == -509:
-                    return {"error": "请求过于频繁，被系统限流，请逐渐减少请求频率"}
-                elif followings_data.get('code') == 2207:
-                    return {"error": "用户关注列表已设置为隐私，无法查看"}
-                elif followings_data.get('code') == -404:
-                    return {"error": f"用户 {user_id} 不存在或已注销"}
-                elif followings_data.get('code') != 0:
-                    error_msg = followings_data.get('message', 'Failed to fetch followings from raw API.')
-                    return {"error": f"API返回错误（码: {followings_data.get('code')}）: {error_msg}"}
-                followings_data = followings_data.get('data', {})
-
-            raw_followings = followings_data.get("list", [])
-            processed_followings = []
-            for f_data in raw_followings:
-                processed_following = {
-                    "mid": f_data.get("mid"),
-                    "uname": f_data.get("uname"),
-                    "sign": f_data.get("sign")
-                }
-                processed_followings.append(processed_following)
-
-            return {"followings": processed_followings, "total": followings_data.get("total", 0)}
-
-        except ApiException as e:
-            logger.error(f"Bilibili API error for followings of UID {user_id}: {e}")
-            if attempt < max_retries - 1:
-                # 增加延迟并重试
-                wait_time = retry_delay * (2 ** attempt) + random.uniform(0, 1)
-                logger.warning(f"Request failed. Retrying in {wait_time:.2f} seconds...")
-                await asyncio.sleep(wait_time)
-                continue
-            else:
-                return {"error": f"Bilibili API 错误: {str(e)}"}
-        except httpx.RequestError as e:
-            logger.error(f"Network error for followings of UID {user_id}: {e}")
-            if attempt < max_retries - 1:
-                # 增加延迟并重试
-                wait_time = retry_delay * (2 ** attempt) + random.uniform(0, 1)
-                logger.warning(f"Request failed. Retrying in {wait_time:.2f} seconds...")
-                await asyncio.sleep(wait_time)
-                continue
-            else:
-                return {"error": f"网络错误: {str(e)}"}
-        except Exception as e:
-            logger.error(f"Failed to get user followings for UID {user_id}: {e}")
-            if attempt < max_retries - 1:
-                # 增加延迟并重试
-                wait_time = retry_delay * (2 ** attempt) + random.uniform(0, 1)
-                logger.warning(f"Request failed. Retrying in {wait_time:.2f} seconds...")
-                await asyncio.sleep(wait_time)
-                continue
-            else:
-                return {"error": f"获取用户关注列表时发生未知错误: {str(e)}"}
+    使用 @with_retry 装饰器自动处理反爬重试。
+    """
+    api_url = "https://api.bilibili.com/x/relation/followings"
+    params = {'vmid': user_id, 'ps': limit, 'pn': page}
+    headers = DEFAULT_HEADERS.copy()
+    headers['Cookie'] = _get_cookies(cred)
     
-    # 如果所有重试都失败了，返回错误
-    return {"error": "All retry attempts failed"}
+    async with httpx.AsyncClient() as client:
+        response = await client.get(api_url, params=params, headers=headers, timeout=httpx.Timeout(CONNECT_TIMEOUT, read=READ_TIMEOUT))
+        response.raise_for_status()
+        followings_data = response.json()
+        
+        # 处理特殊错误码（不可重试）
+        error_code = followings_data.get('code')
+        if error_code == -509:
+            return {"error": "请求过于频繁，被系统限流，请逐渐减少请求频率"}
+        elif error_code == 2207:
+            return {"error": "用户关注列表已设置为隐私，无法查看"}
+        elif error_code == -404:
+            return {"error": f"用户 {user_id} 不存在或已注销"}
+        elif error_code == -412:
+            # 让装饰器处理 412 重试
+            raise ApiException({"code": -412, "message": "Request blocked"})
+        elif error_code != 0:
+            error_msg = followings_data.get('message', 'Failed to fetch followings')
+            return {"error": f"API返回错误（码: {error_code}）: {error_msg}"}
+        
+        followings_data = followings_data.get('data', {})
+
+    raw_followings = followings_data.get("list", [])
+    processed_followings = []
+    for f_data in raw_followings:
+        processed_following = {
+            "mid": f_data.get("mid"),
+            "uname": f_data.get("uname"),
+            "sign": f_data.get("sign")
+        }
+        processed_followings.append(processed_following)
+
+    return {"followings": processed_followings, "total": followings_data.get("total", 0)}

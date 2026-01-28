@@ -1,5 +1,25 @@
 # Bilibili API and other configurations
 
+import logging
+
+# 配置 bilibili-api 全局设置（反爬策略增强）
+try:
+    from bilibili_api import request_settings, select_client
+    
+    # 启用自动 BUVID 生成（显著降低 412 错误率）
+    request_settings.set_enable_auto_buvid(True)
+    
+    # 尝试使用 curl_cffi 客户端（支持 TLS 指纹伪装）
+    try:
+        select_client("curl_cffi")
+        request_settings.set("impersonate", "chrome131")
+        logging.getLogger(__name__).debug("Using curl_cffi client with chrome131 impersonation")
+    except (ImportError, Exception) as e:
+        logging.getLogger(__name__).debug(f"curl_cffi not available, using default client: {e}")
+
+except ImportError:
+    logging.getLogger(__name__).warning("bilibili_api not installed, skipping request settings")
+
 # 默认请求头 - 模拟真实浏览器请求（针对云环境优化反爬策略）
 DEFAULT_HEADERS = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
