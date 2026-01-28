@@ -2,7 +2,7 @@
 
 [![Python](https://img.shields.io/badge/Python-3.10+-blue?logo=python)](https://www.python.org/)
 [![MCP](https://img.shields.io/badge/MCP-Compatible-orange)](https://github.com/jlowin/fastmcp)
-[![Version](https://img.shields.io/badge/Version-2.6-green)](https://pypi.org/project/bili-stalker-mcp/)
+[![Version](https://img.shields.io/badge/Version-2.6.1-green)](https://pypi.org/project/bili-stalker-mcp/)
 
 BiliStalkerMCP is a [Model Context Protocol (MCP)](https://modelcontextprotocol.io) server for Bilibili, specifically designed for AI assistants (like Claude, ChatGPT).
 
