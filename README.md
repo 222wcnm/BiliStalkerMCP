@@ -5,9 +5,11 @@
 [![Version](https://img.shields.io/badge/Version-2.5-green)](https://pypi.org/project/bili-stalker-mcp/)
 [![smithery badge](https://smithery.ai/badge/@222wcnm/bilistalkermcp)](https://smithery.ai/server/@222wcnm/bilistalkermcp)
 
-A Model Context Protocol (MCP) server for comprehensive Bilibili user data acquisition.
+BiliStalkerMCP is a [Model Context Protocol (MCP)](https://modelcontextprotocol.io) server for Bilibili, specifically designed for AI assistants (like Claude, ChatGPT).
 
-## Quick Start
+**English | [中文说明](README_zh.md)**
+
+## 🌟 Key Features
 
 ### Installation
 

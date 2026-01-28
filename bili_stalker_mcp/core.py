@@ -586,7 +586,7 @@ async def fetch_user_followings(user_id: int, page: int, limit: int, cred: Crede
         error_code = followings_data.get('code')
         if error_code == -509:
             return {"error": "请求过于频繁，被系统限流，请逐渐减少请求频率"}
-        elif error_code == 2207:
+        elif error_code in [2207, 22115]:
             return {"error": "用户关注列表已设置为隐私，无法查看"}
         elif error_code == -404:
             return {"error": f"用户 {user_id} 不存在或已注销"}
