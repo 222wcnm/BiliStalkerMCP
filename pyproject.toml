@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "bili_stalker_mcp"
-version = "2.6.1"
+version = "2.7.0"
 description = "Comprehensive MCP Server for Bilibili Data Retrieval (UserInfo, Videos, Dynamics, Articles, Followings)"
 authors = [
     {name = "222wcnm", email = "2328072813li@gmail.com"},

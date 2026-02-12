@@ -61,15 +61,12 @@ def _format_timestamp(ts: int | None) -> str | None:
         return None
 
 def _get_cookies(cred: Credential) -> str:
-    """获取用于请求的 Cookie 字符串。"""
-    cookie_parts = []
-    if getattr(cred, "sessdata", None):
-        cookie_parts.append(f"SESSDATA={cred.sessdata}")
-    if getattr(cred, "bili_jct", None):
-        cookie_parts.append(f"bili_jct={cred.bili_jct}")
-    if getattr(cred, "buvid3", None):
-        cookie_parts.append(f"buvid3={cred.buvid3}")
-    return "; ".join(cookie_parts)
+    """获取用于请求的 Cookie 字符串。
+    
+    使用 Credential 自带的 get_cookies() 方法，避免手动拼接导致的字段遗漏。
+    """
+    cookies_dict = cred.get_cookies()
+    return "; ".join(f"{k}={v}" for k, v in cookies_dict.items() if v)
 
 async def _get_video_subtitle_info(bvid: str, cred: Credential) -> Dict[str, Any]:
     """获取视频的详细字幕信息（优化版）
@@ -385,59 +382,51 @@ async def get_user_id_by_username(username: str) -> Optional[int]:
     return result_list[0]['mid']
 
 @alru_cache(maxsize=32, ttl=300)
-@with_retry(max_retries=3, base_delay=2.0, return_default=True, default_on_exhaust={"error": "All retry attempts failed"})
+@with_retry(max_retries=3, base_delay=2.0)
 async def fetch_user_info(user_id: int, cred: Credential) -> Dict[str, Any]:
     """获取B站用户的详细资料。返回JSON对象，为保证数据完整，默认返回所有字段。
     
     使用 @with_retry 装饰器自动处理反爬重试。
+    Raises:
+        ApiException: 不可重试的 API 错误（如 -404）
+        ValueError: 无效的用户信息响应
     """
+    u = user.User(uid=user_id, credential=cred)
+    info = await u.get_user_info()
+    if not info or 'mid' not in info:
+        raise ValueError(f"用户 {user_id} 的信息响应无效")
+
+    user_data = {
+        "mid": info.get("mid"),
+        "name": info.get("name"),
+        "sign": info.get("sign"),
+        "following": None,
+        "follower": None
+    }
+
+    # 获取关注/粉丝数（非关键，失败不影响主流程）
     try:
-        u = user.User(uid=user_id, credential=cred)
-        info = await u.get_user_info()
-        if not info or 'mid' not in info:
-            raise ValueError("User info response is invalid")
-
-        user_data = {
-            "mid": info.get("mid"),
-            "name": info.get("name"),
-            "sign": info.get("sign"),
-            "following": None,
-            "follower": None
-        }
-
-        # 获取关注/粉丝数（非关键，失败不影响主流程）
-        try:
-            stat_url = "https://api.bilibili.com/x/relation/stat"
-            params = {'vmid': user_id}
-            headers = DEFAULT_HEADERS.copy()
-            headers['Cookie'] = _get_cookies(cred)
-            
-            async with httpx.AsyncClient() as client:
-                response = await client.get(stat_url, params=params, headers=headers, timeout=httpx.Timeout(CONNECT_TIMEOUT, read=READ_TIMEOUT))
-                response.raise_for_status()
-                stat_data = response.json()
-
-            if stat_data.get('code') == 0 and 'data' in stat_data:
-                user_data['following'] = stat_data['data'].get('following')
-                user_data['follower'] = stat_data['data'].get('follower')
-            else:
-                logger.warning(f"Failed to get relation stat for UID {user_id}: {stat_data.get('message')}")
-        except httpx.RequestError as e:
-            logger.warning(f"HTTP request for relation stat failed for UID {user_id}: {e}")
+        stat_url = "https://api.bilibili.com/x/relation/stat"
+        params = {'vmid': user_id}
+        headers = DEFAULT_HEADERS.copy()
+        headers['Cookie'] = _get_cookies(cred)
         
-        return user_data
+        async with httpx.AsyncClient() as client:
+            response = await client.get(stat_url, params=params, headers=headers, timeout=httpx.Timeout(CONNECT_TIMEOUT, read=READ_TIMEOUT))
+            response.raise_for_status()
+            stat_data = response.json()
 
-    except ApiException as e:
-        error_code = getattr(e, 'code', None)
-        # 不可重试的错误码，直接返回错误信息
-        if error_code == -404:
-            return {"error": f"用户 {user_id} 不存在或已注销"}
-        elif error_code == -509:
-            return {"error": "请求过于频繁，被系统限流，请逐渐减少请求频率"}
-        # 可重试的错误（-412），让装饰器处理
-        raise
+        if stat_data.get('code') == 0 and 'data' in stat_data:
+            user_data['following'] = stat_data['data'].get('following')
+            user_data['follower'] = stat_data['data'].get('follower')
+        else:
+            logger.warning(f"Failed to get relation stat for UID {user_id}: {stat_data.get('message')}")
+    except httpx.RequestError as e:
+        logger.warning(f"HTTP request for relation stat failed for UID {user_id}: {e}")
+    
+    return user_data
 
-@with_retry(max_retries=3, base_delay=2.0, return_default=True, default_on_exhaust={"error": "All retry attempts failed"})
+@with_retry(max_retries=3, base_delay=2.0)
 async def fetch_user_videos(user_id: int, page: int, limit: int, cred: Credential) -> Dict[str, Any]:
     """获取用户的视频列表。现在包含增强的字幕信息，包括字幕语言、作者和下载URL等详细信息。
     
@@ -485,92 +474,89 @@ async def fetch_user_videos(user_id: int, page: int, limit: int, cred: Credentia
 
     return {"videos": processed_videos, "total": video_list.get("page", {}).get("count", 0)}
 
+@with_retry(max_retries=3, base_delay=2.0)
 async def fetch_user_dynamics(user_id: int, offset: int, limit: int, cred: Credential, dynamic_type: str = "ALL") -> Dict[str, Any]:
-    """获取用户的动态列表。为保证数据可用性，返回JSON列表。会尝试解析不同类型的动态。"""
-    try:
-        # 导入DynamicType配置
-        from .config import DynamicType
-        
-        u = user.User(uid=user_id, credential=cred)
-        raw_dynamics_data = await u.get_dynamics(offset=offset)
-        
-        processed_dynamics = []
-        if raw_dynamics_data and raw_dynamics_data.get("cards"):
-            for card in raw_dynamics_data["cards"]:
-                if len(processed_dynamics) >= limit:
-                    break
-                    
-                parsed_item = _parse_dynamic_item(card)
-                
-                # 实现动态类型筛选
-                item_type_id = card.get('desc', {}).get('type')
-                
-                # 默认只返回有分析价值的类型: TEXT(4), IMAGE_TEXT(2), REPOST(1)
-                # 过滤掉 VIDEO(8) 和 ARTICLE(64) 因为有专门的工具获取
-                valuable_types = [1, 2, 4]  # REPOST, IMAGE_TEXT, TEXT
-                
-                if dynamic_type == "ALL":
-                    # 默认只返回有分析价值的类型
-                    if item_type_id not in valuable_types:
-                        continue
-                elif dynamic_type == "ALL_RAW":
-                    # 返回所有类型（包括 VIDEO/ARTICLE）
-                    pass
-                elif dynamic_type == "VIDEO" and item_type_id != 8:
-                    continue
-                elif dynamic_type == "ARTICLE" and item_type_id != 64:
-                    continue
-                elif dynamic_type == "DRAW" and item_type_id != 2:
-                    continue
-                elif dynamic_type == "TEXT" and item_type_id != 4:
-                    continue
-                        
-                processed_dynamics.append(parsed_item)
-
-        return {"dynamics": processed_dynamics, "total_fetched": len(processed_dynamics), "filter_type": dynamic_type}
-    except ApiException as e:
-        logger.error(f"Bilibili API error for dynamics of UID {user_id}: {e}")
-        return {"error": f"Bilibili API 错误: {str(e)}"}
-    except Exception as e:
-        logger.error(f"An unexpected error in fetch_user_dynamics for UID {user_id}: {e}")
-        return {"error": f"处理动态数据时发生未知错误: {str(e)}"}
-
-async def fetch_user_articles(user_id: int, page: int, limit: int, cred: Credential) -> Dict[str, Any]:
-    """获取用户的专栏文章列表。为保证数据完整，默认返回所有字段。"""
-    try:
-        u = user.User(uid=user_id, credential=cred)
-        articles_data = await u.get_articles(pn=page, ps=limit)
-        
-        raw_articles = articles_data.get("articles", [])
-        processed_articles = []
-        for article_data in raw_articles:
-            if len(processed_articles) >= limit:
+    """获取用户的动态列表。为保证数据可用性，返回JSON列表。会尝试解析不同类型的动态。
+    
+    使用 @with_retry 装饰器自动处理反爬重试。
+    """
+    # 导入DynamicType配置
+    from .config import DynamicType
+    
+    u = user.User(uid=user_id, credential=cred)
+    raw_dynamics_data = await u.get_dynamics(offset=offset)
+    
+    processed_dynamics = []
+    if raw_dynamics_data and raw_dynamics_data.get("cards"):
+        for card in raw_dynamics_data["cards"]:
+            if len(processed_dynamics) >= limit:
                 break
-
-            processed_article = {
-                "id": article_data.get("id"),
-                "title": article_data.get("title"),
-                "summary": article_data.get("summary"),
-                "publish_time": article_data.get("publish_time"),
-                "publish_time_str": _format_timestamp(article_data.get("publish_time")),
-                "stats": article_data.get("stats")
-            }
-            processed_articles.append(processed_article)
+                
+            parsed_item = _parse_dynamic_item(card)
             
-        return {"articles": processed_articles}
-    except ApiException as e:
-        logger.error(f"Bilibili API error for articles of UID {user_id}: {e}")
-        return {"error": f"Bilibili API 错误: {str(e)}"}
-    except Exception as e:
-        logger.error(f"Failed to get user articles for UID {user_id}: {e}")
-        return {"error": f"获取用户专栏文章时发生未知错误: {str(e)}"}
+            # 实现动态类型筛选
+            item_type_id = card.get('desc', {}).get('type')
+            
+            # 默认只返回有分析价值的类型: TEXT(4), IMAGE_TEXT(2), REPOST(1)
+            # 过滤掉 VIDEO(8) 和 ARTICLE(64) 因为有专门的工具获取
+            valuable_types = [1, 2, 4]  # REPOST, IMAGE_TEXT, TEXT
+            
+            if dynamic_type == "ALL":
+                # 默认只返回有分析价值的类型
+                if item_type_id not in valuable_types:
+                    continue
+            elif dynamic_type == "ALL_RAW":
+                # 返回所有类型（包括 VIDEO/ARTICLE）
+                pass
+            elif dynamic_type == "VIDEO" and item_type_id != 8:
+                continue
+            elif dynamic_type == "ARTICLE" and item_type_id != 64:
+                continue
+            elif dynamic_type == "DRAW" and item_type_id != 2:
+                continue
+            elif dynamic_type == "TEXT" and item_type_id != 4:
+                continue
+                    
+            processed_dynamics.append(parsed_item)
+
+    return {"dynamics": processed_dynamics, "total_fetched": len(processed_dynamics), "filter_type": dynamic_type}
+
+@with_retry(max_retries=3, base_delay=2.0)
+async def fetch_user_articles(user_id: int, page: int, limit: int, cred: Credential) -> Dict[str, Any]:
+    """获取用户的专栏文章列表。为保证数据完整，默认返回所有字段。
+    
+    使用 @with_retry 装饰器自动处理反爬重试。
+    """
+    u = user.User(uid=user_id, credential=cred)
+    articles_data = await u.get_articles(pn=page, ps=limit)
+    
+    raw_articles = articles_data.get("articles", [])
+    processed_articles = []
+    for article_data in raw_articles:
+        if len(processed_articles) >= limit:
+            break
+
+        processed_article = {
+            "id": article_data.get("id"),
+            "title": article_data.get("title"),
+            "summary": article_data.get("summary"),
+            "publish_time": article_data.get("publish_time"),
+            "publish_time_str": _format_timestamp(article_data.get("publish_time")),
+            "stats": article_data.get("stats")
+        }
+        processed_articles.append(processed_article)
+        
+    return {"articles": processed_articles}
 
 
-@with_retry(max_retries=3, base_delay=2.0, return_default=True, default_on_exhaust={"error": "All retry attempts failed"})
+@with_retry(max_retries=3, base_delay=2.0)
 async def fetch_user_followings(user_id: int, page: int, limit: int, cred: Credential) -> Dict[str, Any]:
     """获取用户的关注列表。
     
     使用 @with_retry 装饰器自动处理反爬重试。
+    Raises:
+        ValueError: 业务错误（隐私设置、用户不存在等）
+        ApiException: 可重试的 API 错误（-412）
     """
     api_url = "https://api.bilibili.com/x/relation/followings"
     params = {'vmid': user_id, 'ps': limit, 'pn': page}
@@ -582,20 +568,20 @@ async def fetch_user_followings(user_id: int, page: int, limit: int, cred: Crede
         response.raise_for_status()
         followings_data = response.json()
         
-        # 处理特殊错误码（不可重试）
+        # 处理特殊错误码
         error_code = followings_data.get('code')
         if error_code == -509:
-            return {"error": "请求过于频繁，被系统限流，请逐渐减少请求频率"}
+            raise ValueError("请求过于频繁，被系统限流，请逐渐减少请求频率")
         elif error_code in [2207, 22115]:
-            return {"error": "用户关注列表已设置为隐私，无法查看"}
+            raise ValueError("用户关注列表已设置为隐私，无法查看")
         elif error_code == -404:
-            return {"error": f"用户 {user_id} 不存在或已注销"}
+            raise ValueError(f"用户 {user_id} 不存在或已注销")
         elif error_code == -412:
             # 让装饰器处理 412 重试
             raise ApiException({"code": -412, "message": "Request blocked"})
         elif error_code != 0:
             error_msg = followings_data.get('message', 'Failed to fetch followings')
-            return {"error": f"API返回错误（码: {error_code}）: {error_msg}"}
+            raise ValueError(f"API返回错误（码: {error_code}）: {error_msg}")
         
         followings_data = followings_data.get('data', {})
 
