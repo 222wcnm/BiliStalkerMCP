@@ -163,9 +163,10 @@ async def test_user_info(cred, user_id, username):
             logger.error(f"找不到用户 '{username}'")
             return None
 
-    user_info = await core.fetch_user_info(target_uid, cred)
-    if "error" in user_info:
-        logger.error(f"获取用户信息失败: {user_info['error']}")
+    try:
+        user_info = await core.fetch_user_info(target_uid, cred)
+    except Exception as e:
+        logger.error(f"获取用户信息失败: {e}")
         return None
 
     logger.info(f"成功获取用户 '{user_info['name']}' (ID: {user_info['mid']}) 的信息。")
@@ -205,9 +206,10 @@ async def test_videos(cred, user_id, limit):
 async def test_dynamics(cred, user_id, limit):
     """测试动态获取和解析并验证字段"""
     logger.info(f"--- 测试: 获取最新 {limit} 条动态 (所有类型) ---")
-    dynamics_result = await core.fetch_user_dynamics(user_id, 0, limit, cred, dynamic_type="ALL")
-    if "error" in dynamics_result:
-        logger.error(f"获取动态失败: {dynamics_result['error']}")
+    try:
+        dynamics_result = await core.fetch_user_dynamics(user_id, 0, limit, cred, dynamic_type="ALL")
+    except Exception as e:
+        logger.error(f"获取动态失败: {e}")
         return
 
     dynamics = dynamics_result.get("dynamics", [])
@@ -234,9 +236,10 @@ async def test_dynamics(cred, user_id, limit):
 async def test_articles(cred, user_id, limit):
     """测试专栏文章获取"""
     logger.info(f"--- 测试: 获取最新 {limit} 篇专栏文章 ---")
-    article_result = await core.fetch_user_articles(user_id, 1, limit, cred)
-    if "error" in article_result:
-        logger.error(f"获取专栏文章失败: {article_result['error']}")
+    try:
+        article_result = await core.fetch_user_articles(user_id, 1, limit, cred)
+    except Exception as e:
+        logger.error(f"获取专栏文章失败: {e}")
         return
 
     articles = article_result.get("articles", [])
@@ -247,12 +250,14 @@ async def test_articles(cred, user_id, limit):
 async def test_followings(cred, user_id, limit):
     """测试关注列表获取"""
     logger.info(f"--- 测试: 获取最新 {limit} 个关注 ---")
-    followings_result = await core.fetch_user_followings(user_id, 1, limit, cred)
-    if "error" in followings_result:
-        if "隐私" in followings_result['error']:
-            logger.warning(f"获取关注列表失败: {followings_result['error']}")
-        else:
-            logger.error(f"获取关注列表失败: {followings_result['error']}")
+    try:
+        followings_result = await core.fetch_user_followings(user_id, 1, limit, cred)
+    except ValueError as e:
+        # 业务错误（隐私、不存在等）降级为 warning
+        logger.warning(f"获取关注列表失败: {e}")
+        return
+    except Exception as e:
+        logger.error(f"获取关注列表失败: {e}")
         return
 
 
