@@ -1,330 +1,382 @@
-
-import logging
-from typing import Annotated, Any, Dict, Optional, Tuple
-
-from fastmcp import FastMCP, Context
-from pydantic import Field
+﻿import logging
+import time
+import uuid
+from typing import Annotated, Any, Awaitable, Callable, Dict, Literal, Optional, Tuple
 
 from bilibili_api import Credential
+from fastmcp import Context, FastMCP
+from fastmcp.exceptions import ToolError
+from pydantic import Field
+
+from . import __version__
+from .config import DynamicType
 from .core import (
-    get_user_id_by_username,
+    fetch_user_articles,
+    fetch_user_dynamics,
+    fetch_user_followings,
     fetch_user_info,
     fetch_user_videos,
-    fetch_user_dynamics,
-    fetch_user_articles,
-    fetch_user_followings,
     get_credential,
+    get_user_id_by_username,
 )
+from .observability import begin_request, snapshot_metrics
 
-# --- Common Helper Functions ---
-def _get_credential_from_context(ctx: Context) -> Tuple[Optional[Credential], Optional[Dict[str, Any]]]:
-    """从环境变量获取凭证
-    
-    Returns:
-        (Credential, None) 如果成功
-        (None, error_dict) 如果失败
-    """
+
+DynamicTypeLiteral = Literal["ALL", "ALL_RAW", "VIDEO", "ARTICLE", "DRAW", "TEXT"]
+
+MAX_PAGE = 1000
+MAX_VIDEO_LIMIT = 30
+MAX_DYNAMIC_LIMIT = 30
+MAX_ARTICLE_LIMIT = 30
+MAX_FOLLOWING_LIMIT = 50
+
+
+def _get_credential_from_context(_ctx: Context) -> Credential:
+    """Get credential from environment or raise protocol-level tool error."""
     cred = get_credential()
-    if not cred:
-        return None, {"error": "Missing SESSDATA. Please provide SESSDATA in environment variables."}
-    return cred, None
+    if cred is None:
+        raise ToolError("Missing SESSDATA. Please provide SESSDATA in environment variables.")
+    return cred
+
 
 def _parse_user_identifier(user_id_or_username: str) -> Tuple[Optional[int], Optional[str]]:
-    """解析用户标识符
-    
-    Returns:
-        (user_id, None) 如果是数字ID
-        (None, username) 如果是用户名
-    """
+    """Parse a user identifier string into (user_id, username)."""
     try:
         return int(user_id_or_username), None
     except ValueError:
         return None, user_id_or_username
 
-# --- Server Definition ---
-def create_server():
+
+def create_server() -> FastMCP:
     """Create and configure the BiliStalkerMCP server."""
-
     logger = logging.getLogger(__name__)
-    mcp = FastMCP("BiliStalkerMCP")
+    mcp = FastMCP("BiliStalkerMCP", version=__version__)
 
-    # --- Internal Helper Functions ---
-    async def _resolve_user_id(user_id: int | None, username: str | None) -> int | None:
+    async def _resolve_user_id(user_id: int | None, username: str | None) -> int:
         if user_id is not None:
             return user_id
-        if username:
-            return await get_user_id_by_username(username)
-        return None
 
-    # --- MCP Prompts ---
+        if username:
+            resolved = await get_user_id_by_username(username)
+            if resolved is not None:
+                return resolved
+
+        raise ToolError(f"User '{username or user_id}' was not found.")
+
+    async def _run_tool(
+        tool_name: str,
+        runner: Callable[[], Awaitable[Dict[str, Any]]],
+    ) -> Dict[str, Any]:
+        request_id = uuid.uuid4().hex
+        begin_request(request_id)
+        started = time.perf_counter()
+
+        try:
+            result = await runner()
+            total_duration_ms = round((time.perf_counter() - started) * 1000, 3)
+            metrics = snapshot_metrics()
+            logger.info(
+                "tool_call_succeeded",
+                extra={
+                    "event": "tool_call_succeeded",
+                    "tool": tool_name,
+                    "request_id": request_id,
+                    "duration_ms": total_duration_ms,
+                    "upstream_duration_ms": metrics["upstream_duration_ms"],
+                    "retry_count": metrics["retry_count"],
+                    "cache": metrics["cache"],
+                },
+            )
+            return result
+        except Exception as exc:
+            total_duration_ms = round((time.perf_counter() - started) * 1000, 3)
+            metrics = snapshot_metrics()
+            logger.error(
+                "tool_call_failed",
+                extra={
+                    "event": "tool_call_failed",
+                    "tool": tool_name,
+                    "request_id": request_id,
+                    "duration_ms": total_duration_ms,
+                    "upstream_duration_ms": metrics["upstream_duration_ms"],
+                    "retry_count": metrics["retry_count"],
+                    "cache": metrics["cache"],
+                    "error": str(exc),
+                },
+            )
+            raise
+
     @mcp.prompt()
     def track_user_updates() -> str:
-        """跟踪B站用户更新
-
-        这个提示帮助你设置一个自动化工作流来跟踪指定B站用户的最新动态。
-        可以获取用户的视频、文章、动态等更新内容。
-        """
-        return """
-你是一个B站内容追踪助手。请按照以下步骤帮助用户跟踪目标B站用户的更新：
-
-1. **获取用户基本信息**
-   - 使用 get_user_info 工具获取用户详细信息
-   - 验证用户是否存在并获取用户ID
-
-2. **获取最新内容更新**
-   - 使用 get_user_video_updates 获取最新视频
-   - 使用 get_user_dynamic_updates 获取最新动态
-   - 使用 get_user_articles 获取最新专栏文章
-
-3. **整理更新信息**
-   - 按时间顺序排列更新内容
-   - 提供内容摘要和链接
-   - 识别重要更新和高价值内容
-
-4. **建议后续行动**
-   - 推荐值得关注的视频或文章
-   - 提供内容质量评估
-   - 建议进一步了解的领域
-
-请用户提供想要跟踪的用户ID或用户名，开始追踪流程。
-        """
+        """Generate a workflow prompt for tracking a Bilibili user."""
+        return (
+            "Track a target Bilibili user in this order: \n"
+            "1) get_user_info \n"
+            "2) get_user_video_updates \n"
+            "3) get_user_dynamic_updates \n"
+            "4) get_user_articles \n"
+            "Then summarize new content by publish time and highlight major changes."
+        )
 
     @mcp.prompt()
     def analyze_user_activity() -> str:
-        """分析B站用户活动模式
+        """Generate a workflow prompt for analyzing a Bilibili user."""
+        return (
+            "Analyze one Bilibili user's content behavior: \n"
+            "1) Collect profile, videos, dynamics, and articles. \n"
+            "2) Measure cadence and content-type mix. \n"
+            "3) Summarize top themes and recent shifts."
+        )
 
-        这个提示帮助你深入分析B站用户的活动规律、内容偏好和互动模式。
-        """
-        return """
-你是一个B站用户行为分析专家。请使用以下工具和方法分析用户活动模式：
-
-1. **获取用户基础数据**
-   - 使用 get_user_info 获取用户基本信息
-   - 使用 get_user_video_updates 获取视频发布历史
-   - 使用 get_user_dynamic_updates 获取动态活动
-   - 使用 get_user_articles 获取专栏文章
-
-2. **分析发布模式**
-   - 内容发布频率和时间段
-   - 内容类型分布（视频、动态、文章）
-   - 内容质量和受欢迎程度
-
-3. **分析互动行为**
-   - 评论和点赞数据
-   - 与其他用户的互动模式
-   - 社区参与度
-
-4. **生成洞察报告**
-   - 用户活跃度评估
-   - 内容偏好分析
-   - 最佳互动时机建议
-
-5. **提供优化建议**
-   - 内容发布策略建议
-   - 社区互动优化方案
-   - 增长潜力评估
-
-请提供目标用户ID，开始全面分析。
-        """
-
-
-    # --- MCP Tool Definitions ---
     @mcp.tool(
         annotations={
             "readOnlyHint": True,
             "destructiveHint": False,
-            "idempotentHint": True
+            "idempotentHint": True,
         }
     )
     async def get_user_info(
         ctx: Context,
-        user_id_or_username: Annotated[str, Field(description="用户ID（数字）或用户名")]
+        user_id_or_username: Annotated[
+            str,
+            Field(
+                min_length=1,
+                description="Bilibili user id (numeric) or username.",
+            ),
+        ],
     ) -> Dict[str, Any]:
-        """获取指定哔哩哔哩用户的详细信息
-        
-        返回字段:
-        - mid: 用户ID
-        - name: 用户昵称
-        - sign: 个性签名
-        - following: 关注数
-        - follower: 粉丝数
-        """
-        cred, error = _get_credential_from_context(ctx)
-        if error:
-            return error
-        
-        user_id, username = _parse_user_identifier(user_id_or_username)
-        
-        try:
+        """Get profile information for a Bilibili user."""
+
+        async def _runner() -> Dict[str, Any]:
+            cred = _get_credential_from_context(ctx)
+            user_id, username = _parse_user_identifier(user_id_or_username)
             target_uid = await _resolve_user_id(user_id, username)
-            if not target_uid:
-                return {"error": f"用户 '{user_id_or_username}' 未找到。"}
             return await fetch_user_info(target_uid, cred)
-        except Exception as e:
-            logger.error(f"An error in get_user_info: {e}")
-            return {"error": f"获取用户信息时发生错误: {str(e)}。"}
+
+        try:
+            return await _run_tool("get_user_info", _runner)
+        except ToolError:
+            raise
+        except Exception as exc:
+            logger.exception("get_user_info failed")
+            raise ToolError(f"Failed to fetch user info: {exc}")
 
     @mcp.tool(
         annotations={
             "readOnlyHint": True,
             "destructiveHint": False,
-            "idempotentHint": True
+            "idempotentHint": True,
         }
     )
     async def get_user_video_updates(
         ctx: Context,
-        user_id_or_username: Annotated[str, Field(description="用户ID（数字）或用户名")],
-        page: Annotated[int, Field(description="页码，从1开始")] = 1,
-        limit: Annotated[int, Field(description="每页视频数量，最大30")] = 10
+        user_id_or_username: Annotated[
+            str,
+            Field(
+                min_length=1,
+                description="Bilibili user id (numeric) or username.",
+            ),
+        ],
+        page: Annotated[
+            int,
+            Field(
+                ge=1,
+                le=MAX_PAGE,
+                description="Page number starting from 1.",
+            ),
+        ] = 1,
+        limit: Annotated[
+            int,
+            Field(
+                ge=1,
+                le=MAX_VIDEO_LIMIT,
+                description=f"Items per page, 1-{MAX_VIDEO_LIMIT}.",
+            ),
+        ] = 10,
     ) -> Dict[str, Any]:
-        """获取用户的最新视频更新列表
-        
-        返回字段:
-        - videos: 视频列表，每个视频包含:
-          - bvid: BV号，可拼接链接 https://www.bilibili.com/video/{bvid}
-          - title: 视频标题
-          - pic: 封面图片URL，可用 ![](url) 渲染
-          - description: 视频简介
-          - created: 发布时间戳（秒）
-          - created_time: 可读的发布时间（如 2024-12-18 20:00）
-          - play: 播放量
-          - like: 点赞数
-          - subtitle: 字幕信息 (has_subtitle, subtitle_summary)
-        - total: 视频总数
-        """
-        cred, error = _get_credential_from_context(ctx)
-        if error:
-            return error
-        
-        user_id, username = _parse_user_identifier(user_id_or_username)
-        
-        try:
+        """Get latest user videos and subtitle summary."""
+
+        async def _runner() -> Dict[str, Any]:
+            cred = _get_credential_from_context(ctx)
+            user_id, username = _parse_user_identifier(user_id_or_username)
             target_uid = await _resolve_user_id(user_id, username)
-            if not target_uid:
-                return {"error": f"用户 '{user_id_or_username}' 未找到。"}
             return await fetch_user_videos(target_uid, page, limit, cred)
-        except Exception as e:
-            logger.error(f"An error in get_user_video_updates: {e}")
-            return {"error": f"获取用户视频时发生错误: {str(e)}。"}
+
+        try:
+            return await _run_tool("get_user_video_updates", _runner)
+        except ToolError:
+            raise
+        except Exception as exc:
+            logger.exception("get_user_video_updates failed")
+            raise ToolError(f"Failed to fetch user videos: {exc}")
 
     @mcp.tool(
         annotations={
             "readOnlyHint": True,
             "destructiveHint": False,
-            "idempotentHint": True
+            "idempotentHint": True,
         }
     )
     async def get_user_dynamic_updates(
         ctx: Context,
-        user_id_or_username: Annotated[str, Field(description="用户ID（数字）或用户名")],
-        offset: Annotated[int, Field(description="偏移量，从0开始")] = 0,
-        limit: Annotated[int, Field(description="获取数量")] = 10,
-        dynamic_type: Annotated[str, Field(description="动态类型：ALL(默认,仅文字/图文/转发), ALL_RAW(全部), VIDEO, ARTICLE, DRAW, TEXT")] = "ALL"
+        user_id_or_username: Annotated[
+            str,
+            Field(
+                min_length=1,
+                description="Bilibili user id (numeric) or username.",
+            ),
+        ],
+        cursor: Annotated[
+            str | None,
+            Field(
+                description="Opaque cursor for cursor-based pagination. Preferred over deprecated offset.",
+            ),
+        ] = None,
+        offset: Annotated[
+            int,
+            Field(
+                ge=0,
+                description="Deprecated skip-count pagination. Use cursor in the next API version.",
+            ),
+        ] = 0,
+        limit: Annotated[
+            int,
+            Field(
+                ge=1,
+                le=MAX_DYNAMIC_LIMIT,
+                description=f"Items to fetch, 1-{MAX_DYNAMIC_LIMIT}.",
+            ),
+        ] = 10,
+        dynamic_type: Annotated[
+            DynamicTypeLiteral,
+            Field(
+                description=(
+                    "Allowed values: "
+                    f"{DynamicType.ALL}, {DynamicType.ALL_RAW}, {DynamicType.VIDEO}, "
+                    f"{DynamicType.ARTICLE}, {DynamicType.DRAW}, {DynamicType.TEXT}."
+                )
+            ),
+        ] = DynamicType.ALL,
     ) -> Dict[str, Any]:
-        """获取用户的动态更新
-        
-        返回字段:
-        - dynamics: 动态列表，每条动态包含:
-          - dynamic_id: 动态ID
-          - type: 动态类型 (TEXT/IMAGE_TEXT/REPOST/VIDEO/ARTICLE)
-          - text_content: 文字内容
-          - timestamp: 发布时间戳（秒）
-          - publish_time: 可读的发布时间（如 2024-12-18 20:00）
-          - images: 图片URL列表（IMAGE_TEXT类型），可用 ![](url) 渲染
-          - origin: 被转发的原始内容（REPOST类型），包含 user_name, type, text_content 等
-        - total_fetched: 获取到的动态数量
-        - filter_type: 当前筛选类型
-        """
-        cred, error = _get_credential_from_context(ctx)
-        if error:
-            return error
-        
-        user_id, username = _parse_user_identifier(user_id_or_username)
-        
-        try:
+        """Get user dynamics with type filtering."""
+
+        async def _runner() -> Dict[str, Any]:
+            cred = _get_credential_from_context(ctx)
+            user_id, username = _parse_user_identifier(user_id_or_username)
             target_uid = await _resolve_user_id(user_id, username)
-            if not target_uid:
-                return {"error": f"用户 '{user_id_or_username}' 未找到。"}
-            return await fetch_user_dynamics(target_uid, offset, limit, cred, dynamic_type)
-        except Exception as e:
-            logger.error(f"An error in get_user_dynamic_updates: {e}")
-            return {"error": f"获取用户动态时发生错误: {str(e)}。"}
+            return await fetch_user_dynamics(
+                target_uid,
+                offset,
+                limit,
+                cred,
+                dynamic_type,
+                cursor=cursor,
+            )
+
+        try:
+            return await _run_tool("get_user_dynamic_updates", _runner)
+        except ToolError:
+            raise
+        except Exception as exc:
+            logger.exception("get_user_dynamic_updates failed")
+            raise ToolError(f"Failed to fetch user dynamics: {exc}")
 
     @mcp.tool(
         annotations={
             "readOnlyHint": True,
             "destructiveHint": False,
-            "idempotentHint": True
+            "idempotentHint": True,
         }
     )
     async def get_user_articles(
         ctx: Context,
-        user_id_or_username: Annotated[str, Field(description="用户ID（数字）或用户名")],
-        page: Annotated[int, Field(description="页码，从1开始")] = 1,
-        limit: Annotated[int, Field(description="每页文章数量")] = 10
+        user_id_or_username: Annotated[
+            str,
+            Field(
+                min_length=1,
+                description="Bilibili user id (numeric) or username.",
+            ),
+        ],
+        page: Annotated[
+            int,
+            Field(
+                ge=1,
+                le=MAX_PAGE,
+                description="Page number starting from 1.",
+            ),
+        ] = 1,
+        limit: Annotated[
+            int,
+            Field(
+                ge=1,
+                le=MAX_ARTICLE_LIMIT,
+                description=f"Items per page, 1-{MAX_ARTICLE_LIMIT}.",
+            ),
+        ] = 10,
     ) -> Dict[str, Any]:
-        """获取用户的专栏文章列表
-        
-        返回字段:
-        - articles: 文章列表，每篇文章包含:
-          - id: 文章ID，可拼接链接 https://www.bilibili.com/read/cv{id}
-          - title: 文章标题
-          - summary: 文章摘要
-          - publish_time: 发布时间戳（秒）
-          - publish_time_str: 可读的发布时间（如 2024-12-18 20:00）
-          - stats: 互动数据 (view, like, reply 等)
-        """
-        cred, error = _get_credential_from_context(ctx)
-        if error:
-            return error
-        
-        user_id, username = _parse_user_identifier(user_id_or_username)
-        
-        try:
+        """Get user articles."""
+
+        async def _runner() -> Dict[str, Any]:
+            cred = _get_credential_from_context(ctx)
+            user_id, username = _parse_user_identifier(user_id_or_username)
             target_uid = await _resolve_user_id(user_id, username)
-            if not target_uid:
-                return {"error": f"用户 '{user_id_or_username}' 未找到。"}
             return await fetch_user_articles(target_uid, page, limit, cred)
-        except Exception as e:
-            logger.error(f"An error in get_user_articles: {e}")
-            return {"error": f"获取用户文章时发生错误: {str(e)}。"}
+
+        try:
+            return await _run_tool("get_user_articles", _runner)
+        except ToolError:
+            raise
+        except Exception as exc:
+            logger.exception("get_user_articles failed")
+            raise ToolError(f"Failed to fetch user articles: {exc}")
 
     @mcp.tool(
         annotations={
             "readOnlyHint": True,
             "destructiveHint": False,
-            "idempotentHint": True
+            "idempotentHint": True,
         }
     )
     async def get_user_followings(
         ctx: Context,
-        user_id_or_username: Annotated[str, Field(description="用户ID（数字）或用户名")],
-        page: Annotated[int, Field(description="页码，从1开始")] = 1,
-        limit: Annotated[int, Field(description="每页关注者数量")] = 20
+        user_id_or_username: Annotated[
+            str,
+            Field(
+                min_length=1,
+                description="Bilibili user id (numeric) or username.",
+            ),
+        ],
+        page: Annotated[
+            int,
+            Field(
+                ge=1,
+                le=MAX_PAGE,
+                description="Page number starting from 1.",
+            ),
+        ] = 1,
+        limit: Annotated[
+            int,
+            Field(
+                ge=1,
+                le=MAX_FOLLOWING_LIMIT,
+                description=f"Items per page, 1-{MAX_FOLLOWING_LIMIT}.",
+            ),
+        ] = 20,
     ) -> Dict[str, Any]:
-        """获取用户关注列表
-        
-        返回字段:
-        - followings: 关注列表，每个用户包含:
-          - mid: 用户ID
-          - uname: 用户昵称
-          - sign: 个性签名
-        - total: 关注总数
-        """
-        cred, error = _get_credential_from_context(ctx)
-        if error:
-            return error
-        
-        user_id, username = _parse_user_identifier(user_id_or_username)
-        
-        try:
+        """Get user followings."""
+
+        async def _runner() -> Dict[str, Any]:
+            cred = _get_credential_from_context(ctx)
+            user_id, username = _parse_user_identifier(user_id_or_username)
             target_uid = await _resolve_user_id(user_id, username)
-            if not target_uid:
-                return {"error": f"用户 '{user_id_or_username}' 未找到。"}
             return await fetch_user_followings(target_uid, page, limit, cred)
-        except Exception as e:
-            logger.error(f"An error in get_user_followings: {e}")
-            return {"error": f"获取用户关注时发生错误: {str(e)}。"}
+
+        try:
+            return await _run_tool("get_user_followings", _runner)
+        except ToolError:
+            raise
+        except Exception as exc:
+            logger.exception("get_user_followings failed")
+            raise ToolError(f"Failed to fetch user followings: {exc}")
 
     return mcp
-

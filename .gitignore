@@ -147,3 +147,9 @@ OPTIMIZATION_REPORT.md
 GEMINI.md
 test_*.py
 !tests/
+!tests/test_*.py
+.cleanup/
+*.out.txt
+run_pytest.py
+verify_dynamics.py
+fixer.py

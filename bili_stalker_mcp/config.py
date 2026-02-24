@@ -1,73 +1,74 @@
-# Bilibili API and other configurations
+﻿"""Project-wide runtime and API constants."""
 
 import logging
 
-# 配置 bilibili-api 全局设置（反爬策略增强）
+logger = logging.getLogger(__name__)
+
+
 try:
     from bilibili_api import request_settings, select_client
-    
-    # 启用自动 BUVID 生成（显著降低 412 错误率）
+
     request_settings.set_enable_auto_buvid(True)
-    
-    # 尝试使用 curl_cffi 客户端（支持 TLS 指纹伪装）
+
     try:
         select_client("curl_cffi")
         request_settings.set("impersonate", "chrome131")
-        logging.getLogger(__name__).debug("Using curl_cffi client with chrome131 impersonation")
-    except (ImportError, Exception) as e:
-        logging.getLogger(__name__).debug(f"curl_cffi not available, using default client: {e}")
-
+        logger.debug("Using curl_cffi client with chrome131 impersonation")
+    except Exception as exc:
+        logger.debug("curl_cffi client unavailable, using default client: %s", exc)
 except ImportError:
-    logging.getLogger(__name__).warning("bilibili_api not installed, skipping request settings")
+    logger.warning("bilibili_api is not installed, skipping request settings initialization")
 
-# 默认请求头 - 模拟真实浏览器请求（针对云环境优化反爬策略）
+
 DEFAULT_HEADERS = {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-    'Referer': 'https://www.bilibili.com/',
-    'Accept': 'application/json, text/plain, */*',
-    'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6',
-    'Accept-Encoding': 'gzip, deflate, br',
-    'Cache-Control': 'no-cache',
-    'Pragma': 'no-cache',
-    'sec-ch-ua': '"Google Chrome";v="131", "Not=A?Brand";v="8", "Chromium";v="131"',
-    'sec-ch-ua-mobile': '?0',
-    'sec-ch-ua-platform': '"Windows"',
-    'sec-ch-ua-model': '""',
-    'sec-ch-ua-arch': '"x86"',
-    'sec-ch-ua-bitness': '"64"',
-    'sec-ch-ua-full-version-list': '"Google Chrome";v="131.0.0.0", "Not=A?Brand";v="8.0.0.0", "Chromium";v="131.0.0.0"',
-    'Upgrade-Insecure-Requests': '1',
-    'Connection': 'keep-alive',
-    'DNT': '1',
-    'Sec-Fetch-Dest': 'empty',
-    'Sec-Fetch-Mode': 'cors',
-    'Sec-Fetch-Site': 'same-origin',
-    'sec-gpc': '1',
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+    "Referer": "https://www.bilibili.com/",
+    "Accept": "application/json, text/plain, */*",
+    "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6",
+    "Accept-Encoding": "gzip, deflate, br",
+    "Cache-Control": "no-cache",
+    "Pragma": "no-cache",
+    "sec-ch-ua": '"Google Chrome";v="131", "Not=A?Brand";v="8", "Chromium";v="131"',
+    "sec-ch-ua-mobile": "?0",
+    "sec-ch-ua-platform": '"Windows"',
+    "sec-ch-ua-model": '""',
+    "sec-ch-ua-arch": '"x86"',
+    "sec-ch-ua-bitness": '"64"',
+    "sec-ch-ua-full-version-list": '"Google Chrome";v="131.0.0.0", "Not=A?Brand";v="8.0.0.0", "Chromium";v="131.0.0.0"',
+    "Upgrade-Insecure-Requests": "1",
+    "Connection": "keep-alive",
+    "DNT": "1",
+    "Sec-Fetch-Dest": "empty",
+    "Sec-Fetch-Mode": "cors",
+    "Sec-Fetch-Site": "same-origin",
+    "sec-gpc": "1",
 }
 
-# 请求间隔时间（秒），用于避免API请求过于频繁
-REQUEST_DELAY = 3.0
 
-# 网络超时配置
+REQUEST_DELAY = 3.0
 REQUEST_TIMEOUT = 60.0
 CONNECT_TIMEOUT = 15.0
 READ_TIMEOUT = 45.0
 
-# 动态类型常量
+
 class DynamicType:
+    """Supported dynamic filter values exposed by the MCP tool contract."""
+
     ALL = "ALL"
+    ALL_RAW = "ALL_RAW"
     VIDEO = "VIDEO"
     ARTICLE = "ARTICLE"
-    ANIME = "ANIME"
     DRAW = "DRAW"
-    VALID_TYPES = [ALL, VIDEO, ARTICLE, ANIME, DRAW]
-    
-    # 动态类型映射（用于API调用）
+    TEXT = "TEXT"
+
+    VALID_TYPES = (ALL, ALL_RAW, VIDEO, ARTICLE, DRAW, TEXT)
+
     TYPE_MAPPINGS = {
         ALL: "all",
-        VIDEO: "8",     # 视频动态
-        ARTICLE: "64",  # 专栏动态  
-        ANIME: "512",   # 番剧动态
-        DRAW: "2"       # 图文动态
+        ALL_RAW: "all_raw",
+        VIDEO: "8",
+        ARTICLE: "64",
+        DRAW: "2",
+        TEXT: "4",
     }
-
