@@ -18,8 +18,20 @@ DEFAULT_RETRYABLE_CODES: Set[int] = {-412, -509}
 T = TypeVar("T")
 
 
-def _extract_api_error_code(exc: ApiException) -> int | None:
+class RetryableBiliApiError(Exception):
+    """Structured error carrying a Bilibili code for retry classification."""
+
+    def __init__(self, code: int, message: str) -> None:
+        self.code = code
+        self.message = message
+        super().__init__(f"{message} (code={code})")
+
+
+def _extract_api_error_code(exc: Exception) -> int | None:
     """Best-effort extraction of Bilibili API error code from ApiException."""
+    if isinstance(exc, RetryableBiliApiError):
+        return exc.code
+
     code = getattr(exc, "code", None)
     if isinstance(code, int):
         return code
@@ -72,7 +84,7 @@ def with_retry(
 
                     return await func(*args, **kwargs)
 
-                except ApiException as exc:
+                except (ApiException, RetryableBiliApiError) as exc:
                     last_exception = exc
                     code = _extract_api_error_code(exc)
                     if code in codes and attempt < max_retries:
@@ -144,6 +156,8 @@ def is_retryable_error(
     codes = retryable_codes or DEFAULT_RETRYABLE_CODES
 
     if isinstance(exception, ApiException):
+        return _extract_api_error_code(exception) in codes
+    if isinstance(exception, RetryableBiliApiError):
         return _extract_api_error_code(exception) in codes
 
     if isinstance(exception, httpx.RequestError):

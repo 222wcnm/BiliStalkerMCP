@@ -2,7 +2,7 @@
 
 [![Python](https://img.shields.io/badge/Python-3.12+-blue?logo=python)](https://www.python.org/)
 [![MCP](https://img.shields.io/badge/MCP-Compatible-orange)](https://github.com/jlowin/fastmcp)
-[![Version](https://img.shields.io/badge/Version-2.7.0-green)](https://pypi.org/project/bili-stalker-mcp/)
+[![Version](https://img.shields.io/badge/Version-3.0.0-green)](https://pypi.org/project/bili-stalker-mcp/)
 
 BiliStalkerMCP is an [MCP](https://modelcontextprotocol.io) server providing high-fidelity Bilibili data access for AI agents (Claude, ChatGPT).
 
@@ -16,14 +16,14 @@ uvx bili-stalker-mcp
 pip install bili-stalker-mcp
 ```
 
-### Configuration (Claude Desktop)
+### Configuration (Claude Desktop, Recommended)
 
 ```json
 {
   "mcpServers": {
     "bilistalker": {
-      "command": "uvx",
-      "args": ["bili-stalker-mcp"],
+      "command": "uv",
+      "args": ["run", "--directory", "/path/to/BiliStalkerMCP", "bili-stalker-mcp"],
       "env": {
         "SESSDATA": "required_sessdata",
         "BILI_JCT": "optional_jct",
@@ -33,6 +33,9 @@ pip install bili-stalker-mcp
   }
 }
 ```
+
+> Prefer `uv run --directory ...` for faster local updates when PyPI release propagation is delayed.
+> You can still use `uvx bili-stalker-mcp` for quick one-off usage.
 
 > **Auth**: Obtain `SESSDATA` from Browser DevTools (F12) > Application > Cookies > `.bilibili.com`.
 
@@ -44,24 +47,36 @@ pip install bili-stalker-mcp
 | `BILI_JCT` | No | CSRF protection token. |
 | `BUVID3` | No | Hardware fingerprint (reduces rate-limiting risk). |
 | `BILI_LOG_LEVEL` | No | `DEBUG`, `INFO` (Default), `WARNING`. |
+| `BILI_TIMEZONE` | No | Output time zone for formatted timestamps (default: `Asia/Shanghai`). |
 
 ## Available Tools
 
 | Tool | Capability | Parameters |
 |------|------------|------------|
 | `get_user_info` | Profile & core statistics | `user_id_or_username` |
-| `get_user_video_updates` | Video uploads with subtitle analysis | `user_id_or_username`, `page`, `limit` |
-| `get_user_dynamic_updates` | Dynamics with cursor pagination & filtering | `user_id_or_username`, `cursor`, `limit`, `dynamic_type` |
-| `get_user_articles` | Long-form article retrieval | `user_id_or_username`, `page`, `limit` |
+| `get_user_videos` | Lightweight video list | `user_id_or_username`, `page`, `limit` |
+| `get_video_detail` | Full video detail + optional subtitles | `bvid`, `fetch_subtitles` (default: `false`), `subtitle_mode` (`smart`/`full`/`minimal`), `subtitle_lang` (default: `auto`), `subtitle_max_chars` |
+| `get_user_dynamics` | Structured dynamics with cursor pagination | `user_id_or_username`, `cursor`, `limit`, `dynamic_type` |
+| `get_user_articles` | Lightweight article list | `user_id_or_username`, `page`, `limit` |
+| `get_article_content` | Full article markdown content | `article_id` |
 | `get_user_followings` | Subscription list analysis | `user_id_or_username`, `page`, `limit` |
 
 ### Dynamic Filtering (`dynamic_type`)
 
-- `ALL` (default): Text, Image-Text, and Reposts.
+- `ALL` (default): Text, Draw, and Reposts.
 - `ALL_RAW`: Unfiltered (includes Videos & Articles).
 - `VIDEO`, `ARTICLE`, `DRAW`, `TEXT`: Specific category filtering.
 
 **Pagination**: Responses include `next_cursor`. Pass this to subsequent requests for seamless scrolling.
+
+### Subtitle Modes (`get_video_detail`)
+
+- `smart` (default when `fetch_subtitles=true`): fetch metadata for all pages, download only one best-matched subtitle track text.
+- `full`: download text for all subtitle tracks (higher cost).
+- `minimal`: skip subtitle metadata and subtitle text fetching.
+
+`subtitle_lang` can force a language (for example `en-US`); `auto` uses built-in priority fallback.  
+`subtitle_max_chars` caps returned subtitle text size to avoid token explosion.
 
 ## Development
 

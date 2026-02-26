@@ -1,23 +1,9 @@
-﻿"""Project-wide runtime and API constants."""
+"""Project-wide runtime and API constants."""
 
 import logging
+import os
 
 logger = logging.getLogger(__name__)
-
-
-try:
-    from bilibili_api import request_settings, select_client
-
-    request_settings.set_enable_auto_buvid(True)
-
-    try:
-        select_client("curl_cffi")
-        request_settings.set("impersonate", "chrome131")
-        logger.debug("Using curl_cffi client with chrome131 impersonation")
-    except Exception as exc:
-        logger.debug("curl_cffi client unavailable, using default client: %s", exc)
-except ImportError:
-    logger.warning("bilibili_api is not installed, skipping request settings initialization")
 
 
 DEFAULT_HEADERS = {
@@ -50,6 +36,36 @@ REQUEST_DELAY = 3.0
 REQUEST_TIMEOUT = 60.0
 CONNECT_TIMEOUT = 15.0
 READ_TIMEOUT = 45.0
+DEFAULT_TIMEZONE = os.environ.get("BILI_TIMEZONE", "Asia/Shanghai")
+
+_request_settings_initialized = False
+
+
+def initialize_bilibili_request_settings() -> None:
+    """Apply request settings once for bilibili_api."""
+    global _request_settings_initialized
+
+    if _request_settings_initialized:
+        return
+
+    try:
+        from bilibili_api import request_settings, select_client
+    except ImportError:
+        logger.warning("bilibili_api is not installed, skipping request settings initialization")
+        return
+
+    request_settings.set_enable_auto_buvid(True)
+    request_settings.set("headers", DEFAULT_HEADERS)
+    request_settings.set("timeout", REQUEST_TIMEOUT)
+
+    try:
+        select_client("curl_cffi")
+        request_settings.set("impersonate", "chrome131")
+        logger.debug("Using curl_cffi client with chrome131 impersonation")
+    except Exception as exc:
+        logger.debug("curl_cffi client unavailable, using default client: %s", exc)
+
+    _request_settings_initialized = True
 
 
 class DynamicType:

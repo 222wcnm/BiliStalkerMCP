@@ -1,18 +1,28 @@
 ﻿import base64
 import json
+import logging
 import time
 from typing import Any
 
 from bilibili_api import Credential, user
 
 from ..config import DynamicType
-from ..models import DynamicUpdatesResponse
+from ..models import DynamicItemResponse, DynamicListResponse
 from ..observability import add_upstream_duration_ms
 from ..parsers.dynamic_parser import parse_dynamic_item
 from ..retry import with_retry
 
 CURSOR_VERSION = 1
 FIRST_PAGE_CURSOR = 0
+MAX_SCAN_PAGES = 20
+logger = logging.getLogger(__name__)
+
+
+def _cursor_identity(cursor: Any) -> str:
+    try:
+        return json.dumps(cursor, ensure_ascii=True, sort_keys=True)
+    except TypeError:
+        return repr(cursor)
 
 
 def normalize_dynamic_type(dynamic_type: str) -> str:
@@ -97,23 +107,22 @@ def decode_cursor_token(
 @with_retry(max_retries=3, base_delay=2.0)
 async def fetch_user_dynamics(
     user_id: int,
-    offset: int,
     limit: int,
     cred: Credential,
     dynamic_type: str = "ALL",
     cursor: str | None = None,
+    offset: Any = FIRST_PAGE_CURSOR,
 ) -> dict[str, Any]:
-    if offset < 0:
-        raise ValueError("offset must be >= 0")
     if limit <= 0:
         raise ValueError("limit must be > 0")
-    if cursor and offset > 0:
-        raise ValueError("offset is deprecated and cannot be combined with cursor")
 
     dynamic_type = normalize_dynamic_type(dynamic_type)
 
+    if cursor and offset not in (None, FIRST_PAGE_CURSOR):
+        raise ValueError("cursor and offset cannot be combined")
+
     u = user.User(uid=user_id, credential=cred)
-    processed_dynamics: list[dict[str, Any]] = []
+    processed_dynamics: list[DynamicItemResponse] = []
 
     if cursor:
         current_cursor, in_page_skip = decode_cursor_token(
@@ -121,16 +130,39 @@ async def fetch_user_dynamics(
             user_id=user_id,
             dynamic_type=dynamic_type,
         )
-        legacy_skip_remaining = 0
     else:
-        current_cursor = FIRST_PAGE_CURSOR
+        current_cursor = offset if offset is not None else FIRST_PAGE_CURSOR
         in_page_skip = 0
-        legacy_skip_remaining = offset
 
     next_cursor: str | None = None
     has_more = False
+    scanned_pages = 0
+    seen_offsets: set[str] = set()
 
     while len(processed_dynamics) < limit:
+        scanned_pages += 1
+        if scanned_pages > MAX_SCAN_PAGES:
+            logger.warning(
+                "Dynamic pagination aborted for uid=%s: exceeded max scanned pages (%s)",
+                user_id,
+                MAX_SCAN_PAGES,
+            )
+            next_cursor = None
+            has_more = False
+            break
+
+        current_key = _cursor_identity(current_cursor)
+        if current_key in seen_offsets:
+            logger.warning(
+                "Dynamic pagination aborted for uid=%s: repeated offset %r",
+                user_id,
+                current_cursor,
+            )
+            next_cursor = None
+            has_more = False
+            break
+        seen_offsets.add(current_key)
+
         call_started = time.perf_counter()
         raw_dynamics_data = await u.get_dynamics(offset=current_cursor)
         add_upstream_duration_ms((time.perf_counter() - call_started) * 1000)
@@ -158,11 +190,8 @@ async def fetch_user_dynamics(
             if matched_count_in_page <= in_page_skip:
                 continue
 
-            if legacy_skip_remaining > 0:
-                legacy_skip_remaining -= 1
-                continue
+            processed_dynamics.append(DynamicItemResponse(**parse_dynamic_item(card)))
 
-            processed_dynamics.append(parse_dynamic_item(card))
             if len(processed_dynamics) >= limit:
                 remaining_match_in_page = any(
                     is_dynamic_type_match(
@@ -197,6 +226,16 @@ async def fetch_user_dynamics(
             break
 
         if page_has_more:
+            if page_next_offset == current_cursor:
+                logger.warning(
+                    "Dynamic pagination aborted for uid=%s: non-advancing next_offset %r",
+                    user_id,
+                    page_next_offset,
+                )
+                next_cursor = None
+                has_more = False
+                break
+
             current_cursor = page_next_offset
             in_page_skip = 0
             next_cursor = encode_cursor_token(
@@ -212,7 +251,7 @@ async def fetch_user_dynamics(
         has_more = False
         break
 
-    payload = DynamicUpdatesResponse(
+    payload = DynamicListResponse(
         dynamics=processed_dynamics,
         total_fetched=len(processed_dynamics),
         filter_type=dynamic_type,

@@ -1,8 +1,11 @@
 ﻿import json
+import asyncio
 import logging
 import os
 import sys
 from datetime import datetime, timezone
+
+from .infra.http_client import close_shared_http_client
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +68,14 @@ def _configure_logging() -> None:
     root.addHandler(handler)
 
 
+def _close_http_client_sync() -> None:
+    try:
+        asyncio.run(close_shared_http_client())
+    except RuntimeError:
+        # Best-effort cleanup only.
+        pass
+
+
 def main() -> None:
     """CLI entrypoint for MCP stdio transport."""
     try:
@@ -82,6 +93,8 @@ def main() -> None:
         print("Ensure the project is installed (uv pip install -e .)", file=sys.stderr)
     except Exception:
         logger.exception("server_start_failed", extra={"event": "server_start_failed"})
+    finally:
+        _close_http_client_sync()
 
 
 if __name__ == "__main__":

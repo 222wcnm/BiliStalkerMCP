@@ -1,12 +1,11 @@
 ﻿import logging
 import os
-from typing import Any, Optional
+from typing import Optional
 
-import bilibili_api
 from bilibili_api import Credential
 from bilibili_api import user  # compatibility export for tests/monkeypatching
 
-from .config import DEFAULT_HEADERS, REQUEST_TIMEOUT
+from .config import initialize_bilibili_request_settings
 from .infra.http_client import get_shared_http_client
 from .parsers.dynamic_parser import format_timestamp, parse_dynamic_item
 from .services.dynamic_service import (
@@ -17,17 +16,17 @@ from .services.dynamic_service import (
     normalize_dynamic_type,
 )
 from .services.user_service import (
-    _get_video_subtitle_info,
+    fetch_article_content,
     fetch_user_articles,
     fetch_user_followings,
     fetch_user_info,
     fetch_user_videos,
+    fetch_video_detail,
     get_user_id_by_username,
 )
 
 
-bilibili_api.request_settings.set("headers", DEFAULT_HEADERS)
-bilibili_api.request_settings.set("timeout", REQUEST_TIMEOUT)
+initialize_bilibili_request_settings()
 
 logger = logging.getLogger(__name__)
 
@@ -91,10 +90,11 @@ __all__ = [
     "get_user_id_by_username",
     "fetch_user_info",
     "fetch_user_videos",
+    "fetch_video_detail",
     "fetch_user_dynamics",
     "fetch_user_articles",
+    "fetch_article_content",
     "fetch_user_followings",
-    "_get_video_subtitle_info",
     "_format_timestamp",
     "_get_shared_http_client",
     "_normalize_dynamic_type",

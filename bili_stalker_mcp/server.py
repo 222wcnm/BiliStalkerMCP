@@ -11,11 +11,13 @@ from pydantic import Field
 from . import __version__
 from .config import DynamicType
 from .core import (
+    fetch_article_content,
     fetch_user_articles,
     fetch_user_dynamics,
     fetch_user_followings,
     fetch_user_info,
     fetch_user_videos,
+    fetch_video_detail,
     get_credential,
     get_user_id_by_username,
 )
@@ -23,6 +25,7 @@ from .observability import begin_request, snapshot_metrics
 
 
 DynamicTypeLiteral = Literal["ALL", "ALL_RAW", "VIDEO", "ARTICLE", "DRAW", "TEXT"]
+SubtitleModeLiteral = Literal["minimal", "smart", "full"]
 
 MAX_PAGE = 1000
 MAX_VIDEO_LIMIT = 30
@@ -112,10 +115,12 @@ def create_server() -> FastMCP:
         return (
             "Track a target Bilibili user in this order: \n"
             "1) get_user_info \n"
-            "2) get_user_video_updates \n"
-            "3) get_user_dynamic_updates \n"
-            "4) get_user_articles \n"
-            "Then summarize new content by publish time and highlight major changes."
+            "2) get_user_videos \n"
+            "3) get_video_detail (for videos that need full context) \n"
+            "4) get_user_dynamics \n"
+            "5) get_user_articles \n"
+            "6) get_article_content (for articles that need full context) \n"
+            "Then summarize by publish time and highlight major changes."
         )
 
     @mcp.prompt()
@@ -123,9 +128,10 @@ def create_server() -> FastMCP:
         """Generate a workflow prompt for analyzing a Bilibili user."""
         return (
             "Analyze one Bilibili user's content behavior: \n"
-            "1) Collect profile, videos, dynamics, and articles. \n"
-            "2) Measure cadence and content-type mix. \n"
-            "3) Summarize top themes and recent shifts."
+            "1) Collect profile + lightweight lists (videos, dynamics, articles). \n"
+            "2) Fetch details only for high-value items (video/article detail tools). \n"
+            "3) Measure cadence and content-type mix. \n"
+            "4) Summarize top themes and recent shifts."
         )
 
     @mcp.tool(
@@ -168,7 +174,7 @@ def create_server() -> FastMCP:
             "idempotentHint": True,
         }
     )
-    async def get_user_video_updates(
+    async def get_user_videos(
         ctx: Context,
         user_id_or_username: Annotated[
             str,
@@ -194,7 +200,7 @@ def create_server() -> FastMCP:
             ),
         ] = 10,
     ) -> Dict[str, Any]:
-        """Get latest user videos and subtitle summary."""
+        """Get lightweight video list for a user."""
 
         async def _runner() -> Dict[str, Any]:
             cred = _get_credential_from_context(ctx)
@@ -203,11 +209,11 @@ def create_server() -> FastMCP:
             return await fetch_user_videos(target_uid, page, limit, cred)
 
         try:
-            return await _run_tool("get_user_video_updates", _runner)
+            return await _run_tool("get_user_videos", _runner)
         except ToolError:
             raise
         except Exception as exc:
-            logger.exception("get_user_video_updates failed")
+            logger.exception("get_user_videos failed")
             raise ToolError(f"Failed to fetch user videos: {exc}")
 
     @mcp.tool(
@@ -217,7 +223,76 @@ def create_server() -> FastMCP:
             "idempotentHint": True,
         }
     )
-    async def get_user_dynamic_updates(
+    async def get_video_detail(
+        ctx: Context,
+        bvid: Annotated[
+            str,
+            Field(
+                min_length=3,
+                description="Video BVID, e.g. BV1xx411c7mD.",
+            ),
+        ],
+        fetch_subtitles: Annotated[
+            bool,
+            Field(description="Whether to fetch and aggregate subtitle tracks."),
+        ] = False,
+        subtitle_mode: Annotated[
+            SubtitleModeLiteral,
+            Field(
+                description=(
+                    "Subtitle fetch mode when fetch_subtitles=true: "
+                    "minimal (no subtitle API), smart (single best track text), "
+                    "full (all track texts)."
+                )
+            ),
+        ] = "smart",
+        subtitle_lang: Annotated[
+            str,
+            Field(
+                description=(
+                    "Requested subtitle language code (e.g. zh-CN, en-US). "
+                    "Use auto for built-in priority fallback."
+                )
+            ),
+        ] = "auto",
+        subtitle_max_chars: Annotated[
+            int,
+            Field(
+                ge=1,
+                le=200000,
+                description="Maximum subtitle text characters returned in this response.",
+            ),
+        ] = 12000,
+    ) -> Dict[str, Any]:
+        """Get full video detail and optional subtitles."""
+
+        async def _runner() -> Dict[str, Any]:
+            cred = _get_credential_from_context(ctx)
+            return await fetch_video_detail(
+                bvid=bvid,
+                fetch_subtitles=fetch_subtitles,
+                subtitle_mode=subtitle_mode,
+                subtitle_lang=subtitle_lang,
+                subtitle_max_chars=subtitle_max_chars,
+                cred=cred,
+            )
+
+        try:
+            return await _run_tool("get_video_detail", _runner)
+        except ToolError:
+            raise
+        except Exception as exc:
+            logger.exception("get_video_detail failed")
+            raise ToolError(f"Failed to fetch video detail: {exc}")
+
+    @mcp.tool(
+        annotations={
+            "readOnlyHint": True,
+            "destructiveHint": False,
+            "idempotentHint": True,
+        }
+    )
+    async def get_user_dynamics(
         ctx: Context,
         user_id_or_username: Annotated[
             str,
@@ -229,16 +304,9 @@ def create_server() -> FastMCP:
         cursor: Annotated[
             str | None,
             Field(
-                description="Opaque cursor for cursor-based pagination. Preferred over deprecated offset.",
+                description="Opaque cursor for cursor-based pagination.",
             ),
         ] = None,
-        offset: Annotated[
-            int,
-            Field(
-                ge=0,
-                description="Deprecated skip-count pagination. Use cursor in the next API version.",
-            ),
-        ] = 0,
         limit: Annotated[
             int,
             Field(
@@ -258,27 +326,26 @@ def create_server() -> FastMCP:
             ),
         ] = DynamicType.ALL,
     ) -> Dict[str, Any]:
-        """Get user dynamics with type filtering."""
+        """Get user dynamics with type filtering and cursor pagination."""
 
         async def _runner() -> Dict[str, Any]:
             cred = _get_credential_from_context(ctx)
             user_id, username = _parse_user_identifier(user_id_or_username)
             target_uid = await _resolve_user_id(user_id, username)
             return await fetch_user_dynamics(
-                target_uid,
-                offset,
-                limit,
-                cred,
-                dynamic_type,
+                user_id=target_uid,
+                limit=limit,
+                cred=cred,
+                dynamic_type=dynamic_type,
                 cursor=cursor,
             )
 
         try:
-            return await _run_tool("get_user_dynamic_updates", _runner)
+            return await _run_tool("get_user_dynamics", _runner)
         except ToolError:
             raise
         except Exception as exc:
-            logger.exception("get_user_dynamic_updates failed")
+            logger.exception("get_user_dynamics failed")
             raise ToolError(f"Failed to fetch user dynamics: {exc}")
 
     @mcp.tool(
@@ -314,7 +381,7 @@ def create_server() -> FastMCP:
             ),
         ] = 10,
     ) -> Dict[str, Any]:
-        """Get user articles."""
+        """Get lightweight article list for a user."""
 
         async def _runner() -> Dict[str, Any]:
             cred = _get_credential_from_context(ctx)
@@ -329,6 +396,37 @@ def create_server() -> FastMCP:
         except Exception as exc:
             logger.exception("get_user_articles failed")
             raise ToolError(f"Failed to fetch user articles: {exc}")
+
+    @mcp.tool(
+        annotations={
+            "readOnlyHint": True,
+            "destructiveHint": False,
+            "idempotentHint": True,
+        }
+    )
+    async def get_article_content(
+        ctx: Context,
+        article_id: Annotated[
+            int,
+            Field(
+                ge=1,
+                description="Article CV id.",
+            ),
+        ],
+    ) -> Dict[str, Any]:
+        """Get full article markdown content."""
+
+        async def _runner() -> Dict[str, Any]:
+            cred = _get_credential_from_context(ctx)
+            return await fetch_article_content(article_id=article_id, cred=cred)
+
+        try:
+            return await _run_tool("get_article_content", _runner)
+        except ToolError:
+            raise
+        except Exception as exc:
+            logger.exception("get_article_content failed")
+            raise ToolError(f"Failed to fetch article content: {exc}")
 
     @mcp.tool(
         annotations={
