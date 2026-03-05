@@ -160,5 +160,7 @@ docker run -e SESSDATA=... bilistalker-mcp
 
 MIT
 
+> **Disclaimer**: For personal research and learning only. Bulk profiling, harassment, or commercial surveillance is prohibited.
+
 ---
 *This project is built and maintained with the help of AI.*
