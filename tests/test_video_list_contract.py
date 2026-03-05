@@ -14,10 +14,11 @@ async def test_fetch_user_videos_is_lightweight_and_returns_v3_keys(monkeypatch)
             self.uid = uid
             self.credential = credential
 
-        async def get_videos(self, pn, ps):
+        async def get_videos(self, pn, ps, keyword=""):
             calls["get_videos"] += 1
             assert pn == 1
             assert ps == 3
+            assert keyword == ""
             return {
                 "list": {
                     "vlist": [
@@ -115,3 +116,32 @@ async def test_fetch_user_videos_is_lightweight_and_returns_v3_keys(monkeypatch)
     assert "pic" not in first
     assert "like" not in first
     assert "subtitle" not in first
+
+
+@pytest.mark.asyncio
+async def test_fetch_user_videos_passes_keyword_to_upstream(monkeypatch):
+    seen = {"keyword": None}
+
+    class FakeUser:
+        def __init__(self, uid, credential):
+            self.uid = uid
+            self.credential = credential
+
+        async def get_videos(self, pn, ps, keyword=""):
+            assert pn == 2
+            assert ps == 5
+            seen["keyword"] = keyword
+            return {"list": {"vlist": []}, "page": {"count": 0}}
+
+    monkeypatch.setattr("bili_stalker_mcp.services.user_service.user.User", FakeUser)
+
+    result = await fetch_user_videos(
+        user_id=99,
+        page=2,
+        limit=5,
+        cred=None,
+        keyword="劳动法",
+    )
+
+    assert seen["keyword"] == "劳动法"
+    assert result == {"videos": [], "total": 0}

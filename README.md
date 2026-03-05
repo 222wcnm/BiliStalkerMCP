@@ -55,6 +55,7 @@ pip install bili-stalker-mcp
 |------|------------|------------|
 | `get_user_info` | Profile & core statistics | `user_id_or_username` |
 | `get_user_videos` | Lightweight video list | `user_id_or_username`, `page`, `limit` |
+| `search_user_videos` | Keyword search in one user's video list | `user_id_or_username`, `keyword`, `page`, `limit` |
 | `get_video_detail` | Full video detail + optional subtitles | `bvid`, `fetch_subtitles` (default: `false`), `subtitle_mode` (`smart`/`full`/`minimal`), `subtitle_lang` (default: `auto`), `subtitle_max_chars` |
 | `get_user_dynamics` | Structured dynamics with cursor pagination | `user_id_or_username`, `cursor`, `limit`, `dynamic_type` |
 | `get_user_articles` | Lightweight article list | `user_id_or_username`, `page`, `limit` |
@@ -77,6 +78,38 @@ pip install bili-stalker-mcp
 
 `subtitle_lang` can force a language (for example `en-US`); `auto` uses built-in priority fallback.  
 `subtitle_max_chars` caps returned subtitle text size to avoid token explosion.
+
+## Bundled Skill
+
+The repository ships a ready-to-use AI agent skill in `skills/bili-content-analysis/`:
+
+```
+skills/bili-content-analysis/
+├── SKILL.md                        # Workflow & output contract
+└── references/
+    └── analysis-style.md           # Detailed writing style rules
+```
+
+### What It Does
+
+Guides compatible AI agents (Gemini, Claude, etc.) through a structured 6-step workflow for deep Bilibili content analysis:
+
+1. **Clarify** target and scope (uid / bvid / keyword).
+2. **Collect** evidence — lightweight lists first, heavy detail only for high-value items.
+3. **Reconstruct** source structure before interpreting (timeline, chapters, speakers).
+4. **Analyze** — facts, logic chain, assumptions, themes, and shifts.
+5. **Retain anchors** — uid, bvid, article_id, timestamps, key source snippets.
+6. **Handle failures** — state blockers explicitly, stop speculation.
+
+### Usage
+
+Copy the `bili-content-analysis` folder into your project's skill directory:
+
+```
+<project>/.agent/skills/bili-content-analysis/
+```
+
+The agent will automatically activate the skill when user requests involve Bilibili creator tracking, transcript interpretation, timeline reconstruction, or content analysis.
 
 ## Development
 

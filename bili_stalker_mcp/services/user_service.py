@@ -6,6 +6,7 @@ from typing import Any, Literal
 from async_lru import alru_cache
 from bilibili_api import Credential, aid2bvid, article, search, user, video
 from bilibili_api.exceptions import ApiException
+from bilibili_api.utils.initial_state import get_initial_state
 
 from ..config import DEFAULT_HEADERS
 from ..infra.http_client import get_shared_http_client
@@ -618,9 +619,10 @@ async def fetch_user_videos(
     page: int,
     limit: int,
     cred: Credential,
+    keyword: str = "",
 ) -> dict[str, Any]:
     u = user.User(uid=user_id, credential=cred)
-    video_list = await _timed_await(u.get_videos(pn=page, ps=limit))
+    video_list = await _timed_await(u.get_videos(pn=page, ps=limit, keyword=keyword))
     raw_videos = (video_list.get("list") or {}).get("vlist") or []
 
     videos = []
@@ -766,6 +768,250 @@ def _build_article_fallback_markdown(
     return "\n".join(lines)
 
 
+def _normalize_http_url(url: Any) -> str | None:
+    if not isinstance(url, str):
+        return None
+    value = url.strip()
+    if not value:
+        return None
+    if value.startswith("//"):
+        return f"https:{value}"
+    if value.startswith("http://") or value.startswith("https://"):
+        return value
+    return f"https://{value.lstrip('/')}"
+
+
+def _render_module_word_node(node: dict[str, Any]) -> str:
+    word = node.get("word")
+    if not isinstance(word, dict):
+        return ""
+
+    text = word.get("words")
+    if not isinstance(text, str):
+        return ""
+
+    style = word.get("style")
+    if not isinstance(style, dict):
+        style = {}
+
+    rendered = text
+    if style.get("strikethrough"):
+        rendered = f"~~{rendered}~~"
+    if style.get("underline"):
+        rendered = f"<u>{rendered}</u>"
+    if style.get("italic"):
+        rendered = f"*{rendered}*"
+    if style.get("bold"):
+        rendered = f"**{rendered}**"
+    return rendered
+
+
+def _render_module_rich_node(node: dict[str, Any]) -> str:
+    rich = node.get("rich")
+    if not isinstance(rich, dict):
+        return ""
+
+    label = rich.get("text")
+    if not isinstance(label, str) or not label.strip():
+        label = rich.get("orig_text")
+    if not isinstance(label, str) or not label.strip():
+        label = rich.get("jump_url")
+    if not isinstance(label, str):
+        label = ""
+    label = label.strip()
+
+    jump_url = _normalize_http_url(rich.get("jump_url"))
+    if jump_url and label:
+        return f"[{label}]({jump_url})"
+    if jump_url:
+        return jump_url
+    return label
+
+
+def _render_module_text_nodes(nodes: Any) -> str:
+    if not isinstance(nodes, list):
+        return ""
+
+    fragments: list[str] = []
+    for node in nodes:
+        if not isinstance(node, dict):
+            continue
+        node_type = node.get("type")
+        if node_type == "TEXT_NODE_TYPE_WORD":
+            fragments.append(_render_module_word_node(node))
+            continue
+        if node_type == "TEXT_NODE_TYPE_RICH":
+            fragments.append(_render_module_rich_node(node))
+
+    return "".join(fragments).replace("\r\n", "\n").replace("\r", "\n")
+
+
+def _render_module_text_block(block: Any) -> str:
+    if isinstance(block, str):
+        return block.strip()
+    if not isinstance(block, dict):
+        return ""
+
+    nodes = block.get("nodes")
+    if isinstance(nodes, list):
+        return _render_module_text_nodes(nodes).strip()
+
+    for key in ("text", "words", "content", "title"):
+        value = block.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return ""
+
+
+def _extract_title_from_initial_state(initial_state: dict[str, Any]) -> str | None:
+    detail = initial_state.get("detail")
+    if not isinstance(detail, dict):
+        return None
+
+    basic = detail.get("basic")
+    if isinstance(basic, dict):
+        basic_title = basic.get("title")
+        if isinstance(basic_title, str) and basic_title.strip():
+            return basic_title.strip()
+
+    modules = detail.get("modules")
+    if not isinstance(modules, list):
+        return None
+
+    for module in modules:
+        if not isinstance(module, dict):
+            continue
+        title_block = module.get("module_title")
+        if not isinstance(title_block, dict):
+            continue
+        module_title = title_block.get("text")
+        if isinstance(module_title, str) and module_title.strip():
+            return module_title.strip()
+    return None
+
+
+def _extract_content_paragraphs(initial_state: dict[str, Any]) -> list[dict[str, Any]]:
+    detail = initial_state.get("detail")
+    if not isinstance(detail, dict):
+        return []
+
+    modules = detail.get("modules")
+    if not isinstance(modules, list):
+        return []
+
+    for module in modules:
+        if not isinstance(module, dict):
+            continue
+        content_block = module.get("module_content")
+        if not isinstance(content_block, dict):
+            continue
+        paragraphs = content_block.get("paragraphs")
+        if isinstance(paragraphs, list):
+            return [p for p in paragraphs if isinstance(p, dict)]
+    return []
+
+
+def _render_content_paragraph(paragraph: dict[str, Any], *, has_top_title: bool) -> str | None:
+    para_type = _coerce_int(paragraph.get("para_type"))
+
+    if para_type == 1:
+        content = _render_module_text_block(paragraph.get("text")).strip("\n").strip()
+        return content or None
+
+    if para_type == 2:
+        pic_block = paragraph.get("pic")
+        if not isinstance(pic_block, dict):
+            return None
+        pics = pic_block.get("pics")
+        if not isinstance(pics, list):
+            return None
+        image_lines: list[str] = []
+        for pic in pics:
+            if not isinstance(pic, dict):
+                continue
+            url = _normalize_http_url(pic.get("url"))
+            if not url:
+                continue
+            image_lines.append(f"![]({url})")
+        if not image_lines:
+            return None
+        return "\n\n".join(image_lines)
+
+    if para_type == 3:
+        return "---"
+
+    if para_type == 8:
+        heading_block = paragraph.get("heading")
+        if not isinstance(heading_block, dict):
+            return None
+        heading_text = _render_module_text_block(heading_block).strip()
+        if not heading_text:
+            return None
+        heading_level = _coerce_int(heading_block.get("level")) or 1
+        if has_top_title and heading_level < 6:
+            heading_level += 1
+        heading_level = min(max(1, heading_level), 6)
+        return f"{'#' * heading_level} {heading_text}"
+
+    fallback = _render_module_text_block(paragraph.get("text")).strip()
+    return fallback or None
+
+
+def _build_markdown_from_initial_state(
+    initial_state: dict[str, Any],
+    preferred_title: str | None,
+) -> str | None:
+    paragraphs = _extract_content_paragraphs(initial_state)
+    if not paragraphs:
+        return None
+
+    title = preferred_title.strip() if isinstance(preferred_title, str) and preferred_title.strip() else None
+    if not title:
+        title = _extract_title_from_initial_state(initial_state)
+
+    sections: list[str] = []
+    has_top_title = bool(title)
+    if has_top_title and title is not None:
+        sections.append(f"# {title}")
+
+    for paragraph in paragraphs:
+        rendered = _render_content_paragraph(paragraph, has_top_title=has_top_title)
+        if not rendered:
+            continue
+        rendered = rendered.strip()
+        if rendered:
+            sections.append(rendered)
+
+    if not sections:
+        return None
+    return "\n\n".join(sections).strip()
+
+
+async def _extract_markdown_from_opus_initial_state(
+    article_id: int,
+    cred: Credential | None,
+    preferred_title: str | None,
+) -> str | None:
+    credential = cred if cred is not None else Credential()
+    url = f"https://www.bilibili.com/read/cv{article_id}/?jump_opus=1"
+
+    try:
+        initial_state, _ = await _timed_await(
+            get_initial_state(url=url, credential=credential)
+        )
+    except Exception as exc:
+        logger.warning(
+            "Article %s initial-state extraction failed: %s",
+            article_id,
+            exc,
+        )
+        return None
+
+    if not isinstance(initial_state, dict):
+        return None
+    return _build_markdown_from_initial_state(initial_state, preferred_title)
+
+
 @with_retry(max_retries=3, base_delay=2.0)
 async def fetch_user_articles(
     user_id: int,
@@ -808,42 +1054,52 @@ async def fetch_article_content(
     article_client = article.Article(cvid=article_id, credential=cred)
 
     article_info = await _timed_await(article_client.get_info())
+    article_title = article_info.get("title") if isinstance(article_info, dict) else None
+    markdown_content: str | None = None
+    parser_error_reason: str | None = None
 
     try:
         # bilibili_api requires parsing content first before markdown conversion.
         await _timed_await(article_client.fetch_content())
         markdown_content = article_client.markdown()
     except KeyError as exc:
-        # Some legacy CVs return a payload shape without readInfo in bilibili_api.
+        # New article schema in upstream may omit readInfo, breaking bilibili_api parser.
         logger.warning(
             "Article %s markdown payload is unsupported by upstream schema: %s",
             article_id,
             exc,
         )
-        markdown_content = _build_article_fallback_markdown(
-            article_id=article_id,
-            article_info=article_info if isinstance(article_info, dict) else None,
-            reason=f"unsupported payload key: {exc}",
-        )
+        parser_error_reason = f"unsupported payload key: {exc}"
     except ApiException as exc:
         # Keep compatibility when upstream parser state cannot be built.
-        if "fetch_content" in str(exc):
+        exc_str = str(exc)
+        if "fetch_content" in exc_str or "readInfo" in exc_str:
             logger.warning(
                 "Article %s markdown parsing failed after fetch_content: %s",
                 article_id,
                 exc,
             )
-            markdown_content = _build_article_fallback_markdown(
-                article_id=article_id,
-                article_info=article_info if isinstance(article_info, dict) else None,
-                reason=str(exc),
-            )
+            parser_error_reason = exc_str
         else:
             raise
 
+    if markdown_content is None:
+        markdown_content = await _extract_markdown_from_opus_initial_state(
+            article_id=article_id,
+            cred=cred,
+            preferred_title=article_title if isinstance(article_title, str) else None,
+        )
+
+    if markdown_content is None:
+        markdown_content = _build_article_fallback_markdown(
+            article_id=article_id,
+            article_info=article_info if isinstance(article_info, dict) else None,
+            reason=parser_error_reason or "upstream payload unavailable",
+        )
+
     payload = ArticleContentResponse(
         id=article_id,
-        title=article_info.get("title") if isinstance(article_info, dict) else None,
+        title=article_title if isinstance(article_title, str) else None,
         markdown_content=markdown_content if isinstance(markdown_content, str) else str(markdown_content),
     )
     return payload.model_dump()

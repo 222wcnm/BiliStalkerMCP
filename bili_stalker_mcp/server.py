@@ -223,6 +223,68 @@ def create_server() -> FastMCP:
             "idempotentHint": True,
         }
     )
+    async def search_user_videos(
+        ctx: Context,
+        user_id_or_username: Annotated[
+            str,
+            Field(
+                min_length=1,
+                description="Bilibili user id (numeric) or username.",
+            ),
+        ],
+        keyword: Annotated[
+            str,
+            Field(
+                min_length=1,
+                description="Keyword used to search in target user's video list.",
+            ),
+        ],
+        page: Annotated[
+            int,
+            Field(
+                ge=1,
+                le=MAX_PAGE,
+                description="Page number starting from 1.",
+            ),
+        ] = 1,
+        limit: Annotated[
+            int,
+            Field(
+                ge=1,
+                le=MAX_VIDEO_LIMIT,
+                description=f"Items per page, 1-{MAX_VIDEO_LIMIT}.",
+            ),
+        ] = 10,
+    ) -> Dict[str, Any]:
+        """Search a user's videos by keyword."""
+
+        async def _runner() -> Dict[str, Any]:
+            cred = _get_credential_from_context(ctx)
+            user_id, username = _parse_user_identifier(user_id_or_username)
+            target_uid = await _resolve_user_id(user_id, username)
+            return await fetch_user_videos(
+                target_uid,
+                page,
+                limit,
+                cred,
+                keyword=keyword,
+            )
+
+        try:
+            return await _run_tool("search_user_videos", _runner)
+        except ToolError:
+            raise
+        except Exception as exc:
+            logger.exception("search_user_videos failed")
+            raise ToolError(f"Failed to search user videos: {exc}")
+
+    @mcp.tool(
+        annotations={
+            "readOnlyHint": True,
+            "destructiveHint": False,
+            "idempotentHint": True,
+        }
+    )
     async def get_video_detail(
         ctx: Context,
         bvid: Annotated[

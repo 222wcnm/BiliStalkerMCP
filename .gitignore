@@ -153,3 +153,6 @@ test_*.py
 run_pytest.py
 verify_dynamics.py
 fixer.py
+
+# Skill archives (local use only)
+skills/*.zip

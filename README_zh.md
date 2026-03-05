@@ -57,6 +57,7 @@ pip install bili-stalker-mcp
 |------|----------|------|
 | `get_user_info` | 档案资料与核心统计数据 | `user_id_or_username` |
 | `get_user_videos` | 轻量视频列表 | `user_id_or_username`, `page`, `limit` |
+| `search_user_videos` | 指定用户视频关键词检索 | `user_id_or_username`, `keyword`, `page`, `limit` |
 | `get_video_detail` | 视频详情与可选字幕聚合 | `bvid`, `fetch_subtitles`（默认：`false`）, `subtitle_mode`（`smart`/`full`/`minimal`）, `subtitle_lang`（默认：`auto`）, `subtitle_max_chars` |
 | `get_user_dynamics` | 结构化动态流（Cursor 分页） | `user_id_or_username`, `cursor`, `limit`, `dynamic_type` |
 | `get_user_articles` | 轻量专栏列表 | `user_id_or_username`, `page`, `limit` |
@@ -79,6 +80,38 @@ pip install bili-stalker-mcp
 
 `subtitle_lang` 可指定语言（如 `en-US`）；`auto` 会按内置优先级自动回退。  
 `subtitle_max_chars` 可限制字幕正文最大返回字符数，避免 token 膨胀。
+
+## 📎 附带 Skill
+
+仓库内置一个可直接使用的 AI Agent Skill，位于 `skills/bili-content-analysis/`：
+
+```
+skills/bili-content-analysis/
+├── SKILL.md                        # 工作流与输出规范
+└── references/
+    └── analysis-style.md           # 深度分析写作风格指南
+```
+
+### 功能
+
+引导兼容的 AI Agent（Gemini、Claude 等）执行结构化的 6 步 B 站内容分析流程：
+
+1. **明确目标** — 提取 uid / bvid / 关键词等标识符。
+2. **最小采集** — 优先调用轻量列表工具，仅对高价值条目拉取详情。
+3. **重建原文** — 按时间线、章节或原始逻辑顺序还原源材料结构。
+4. **构建分析** — 梳理事实、逻辑链、假设、主题与近期转向。
+5. **保留锚点** — 输出中保留 uid、bvid、article_id、时间戳及关键原文片段。
+6. **安全降级** — 数据缺失时明确阻塞原因，拒绝臆测。
+
+### 使用方式
+
+将 `bili-content-analysis` 文件夹复制到项目的 Skill 目录：
+
+```
+<project>/.agent/skills/bili-content-analysis/
+```
+
+当用户请求涉及 B 站创作者追踪、字幕解读、时间线重建或内容深度分析时，Agent 将自动激活此 Skill。
 
 ## 👨‍💻 开发与测试
 
