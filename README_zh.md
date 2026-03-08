@@ -4,7 +4,13 @@
 [![MCP](https://img.shields.io/badge/MCP-Compatible-orange)](https://github.com/jlowin/fastmcp)
 [![Version](https://img.shields.io/badge/Version-3.0.0-green)](https://pypi.org/project/bili-stalker-mcp/)
 
-BiliStalkerMCP 是基于 [Model Context Protocol (MCP)](https://modelcontextprotocol.io) 的 Bilibili 数据接入服务，专为 AI 助手（如 Claude, ChatGPT）设计，提供精准、深度的用户行为分析支持。
+## 面向指定 B 站用户分析的 Bilibili MCP Server
+
+BiliStalkerMCP 是一个基于 [Model Context Protocol (MCP)](https://modelcontextprotocol.io) 的 Bilibili MCP Server，专门面向需要分析指定 B 站用户或 UP 主的 AI 助手。
+
+它的工作流默认从目标 uid 或用户名出发，再结构化获取该用户的档案、视频、动态、专栏、字幕与关注列表。
+
+如果你在查找 Bilibili MCP、哔哩哔哩 MCP、B 站 MCP Server，或用于追踪与分析指定 B 站用户的 Model Context Protocol 服务，这个仓库就是为这些场景设计的。
 
 **[English](README.md) | 中文说明**
 

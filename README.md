@@ -4,7 +4,13 @@
 [![MCP](https://img.shields.io/badge/MCP-Compatible-orange)](https://github.com/jlowin/fastmcp)
 [![Version](https://img.shields.io/badge/Version-3.0.0-green)](https://pypi.org/project/bili-stalker-mcp/)
 
-BiliStalkerMCP is an [MCP](https://modelcontextprotocol.io) server providing high-fidelity Bilibili data access for AI agents (Claude, ChatGPT).
+## Bilibili MCP Server for Specific User Analysis
+
+BiliStalkerMCP is a Bilibili MCP server built on [Model Context Protocol (MCP)](https://modelcontextprotocol.io), designed for AI agents that need to analyze a specific Bilibili user or creator.
+
+It is optimized for workflows that start from a target uid or username, then retrieve that user's profile, videos, dynamics, articles, subtitles, and followings with structured tools.
+
+If you are searching for a Bilibili MCP server, a Bilibili Model Context Protocol server, or an MCP server for tracking and analyzing a specific Bilibili user, this repository is designed for that use case.
 
 **English | [中文说明](README_zh.md)**
 
