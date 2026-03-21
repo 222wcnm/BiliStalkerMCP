@@ -1,8 +1,8 @@
-﻿# BiliStalkerMCP
+# BiliStalkerMCP
 
 [![Python](https://img.shields.io/badge/Python-3.12+-blue?logo=python)](https://www.python.org/)
 [![MCP](https://img.shields.io/badge/MCP-Compatible-orange)](https://github.com/jlowin/fastmcp)
-[![Version](https://img.shields.io/badge/Version-3.0.0-green)](https://pypi.org/project/bili-stalker-mcp/)
+[![PyPI version](https://badge.fury.io/py/bili-stalker-mcp.svg)](https://pypi.org/project/bili-stalker-mcp/)
 
 ## 面向指定 B 站用户分析的 Bilibili MCP Server
 

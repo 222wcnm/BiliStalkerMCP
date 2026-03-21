@@ -1,4 +1,4 @@
-﻿"""
+"""
 BiliStalkerMCP package
 
 MCP Server for Bilibili user content intelligence.
@@ -9,7 +9,7 @@ from importlib.metadata import PackageNotFoundError, version
 try:
     __version__ = version("bili_stalker_mcp")
 except PackageNotFoundError:
-    __version__ = "3.0.0"  # fallback
+    __version__ = "unknown"
 
 __author__ = "222wcnm"
 __email__ = "2328072813li@gmail.com"
