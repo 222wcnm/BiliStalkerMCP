@@ -1,4 +1,4 @@
-﻿import logging
+import logging
 import time
 import uuid
 from typing import Annotated, Any, Awaitable, Callable, Dict, Literal, Optional, Tuple
@@ -10,6 +10,7 @@ from pydantic import Field
 
 from . import __version__
 from .config import DynamicType
+from .utils import extract_bvid
 from .core import (
     fetch_article_content,
     fetch_user_articles,
@@ -291,7 +292,7 @@ def create_server() -> FastMCP:
             str,
             Field(
                 min_length=3,
-                description="Video BVID, e.g. BV1xx411c7mD.",
+                description="Video BVID (e.g. BV1xx411c7mD), AV number (e.g. av170001), or a Bilibili video URL.",
             ),
         ],
         fetch_subtitles: Annotated[
@@ -330,8 +331,9 @@ def create_server() -> FastMCP:
 
         async def _runner() -> Dict[str, Any]:
             cred = _get_credential_from_context(ctx)
+            resolved_bvid = await extract_bvid(bvid)
             return await fetch_video_detail(
-                bvid=bvid,
+                bvid=resolved_bvid,
                 fetch_subtitles=fetch_subtitles,
                 subtitle_mode=subtitle_mode,
                 subtitle_lang=subtitle_lang,
