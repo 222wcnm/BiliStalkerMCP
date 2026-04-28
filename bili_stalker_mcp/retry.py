@@ -1,4 +1,4 @@
-﻿"""Unified retry strategy for transient Bilibili/API network failures."""
+"""Unified retry strategy for transient Bilibili/API network failures."""
 
 import asyncio
 import functools
@@ -7,13 +7,13 @@ import random
 from typing import Any, Callable, Optional, Set, Type, TypeVar
 
 import httpx
-from bilibili_api.exceptions import ApiException
+from bilibili_api.exceptions import ApiException, NetworkException
 
 from .observability import add_retry
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_RETRYABLE_CODES: Set[int] = {-412, -509}
+DEFAULT_RETRYABLE_CODES: Set[int] = {-412, -509, 403, 412, 429}
 
 T = TypeVar("T")
 
@@ -28,7 +28,13 @@ class RetryableBiliApiError(Exception):
 
 
 def _extract_api_error_code(exc: Exception) -> int | None:
-    """Best-effort extraction of Bilibili API error code from ApiException."""
+    """Best-effort extraction of Bilibili API error code from an exception.
+
+    Handles three exception families:
+    - ``RetryableBiliApiError`` – project-level sentinel (``.code``).
+    - ``ResponseCodeException`` / generic ``ApiException`` – (``.code``).
+    - ``NetworkException`` – HTTP-level status (``.status``).
+    """
     if isinstance(exc, RetryableBiliApiError):
         return exc.code
 
@@ -36,12 +42,19 @@ def _extract_api_error_code(exc: Exception) -> int | None:
     if isinstance(code, int):
         return code
 
+    status = getattr(exc, "status", None)
+    if isinstance(status, int):
+        return status
+
     if exc.args:
         first = exc.args[0]
         if isinstance(first, dict):
             arg_code = first.get("code")
             if isinstance(arg_code, int):
                 return arg_code
+
+    if isinstance(exc, httpx.HTTPStatusError):
+        return exc.response.status_code
 
     return None
 
@@ -84,7 +97,7 @@ def with_retry(
 
                     return await func(*args, **kwargs)
 
-                except (ApiException, RetryableBiliApiError) as exc:
+                except (ApiException, NetworkException, RetryableBiliApiError) as exc:
                     last_exception = exc
                     code = _extract_api_error_code(exc)
                     if code in codes and attempt < max_retries:
@@ -110,6 +123,27 @@ def with_retry(
                             code,
                             exc,
                         )
+                    break
+
+                except httpx.HTTPStatusError as exc:
+                    last_exception = exc
+                    code = _extract_api_error_code(exc)
+                    if code in codes and attempt < max_retries:
+                        add_retry()
+                        if on_retry:
+                            on_retry(attempt + 1, exc)
+                        logger.warning(
+                            "Retryable HTTP status in %s (status=%s)",
+                            func.__name__,
+                            code,
+                        )
+                        continue
+                    logger.error(
+                        "Non-retryable HTTP status in %s (status=%s): %s",
+                        func.__name__,
+                        code,
+                        exc,
+                    )
                     break
 
                 except exceptions as exc:
@@ -155,9 +189,10 @@ def is_retryable_error(
     """Check whether an exception is retryable under this policy."""
     codes = retryable_codes or DEFAULT_RETRYABLE_CODES
 
-    if isinstance(exception, ApiException):
+    if isinstance(exception, (ApiException, NetworkException, RetryableBiliApiError)):
         return _extract_api_error_code(exception) in codes
-    if isinstance(exception, RetryableBiliApiError):
+
+    if isinstance(exception, httpx.HTTPStatusError):
         return _extract_api_error_code(exception) in codes
 
     if isinstance(exception, httpx.RequestError):

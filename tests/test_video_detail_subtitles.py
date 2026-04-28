@@ -1,13 +1,26 @@
 import pytest
 
-from bili_stalker_mcp.services.user_service import fetch_video_detail
+from bili_stalker_mcp.observability import begin_request, snapshot_metrics
+from bili_stalker_mcp.retry import RetryableBiliApiError
+from bili_stalker_mcp.services.user_service import (
+    _fetch_video_detail_cached,
+    fetch_video_detail,
+)
+
+
+@pytest.fixture(autouse=True)
+def clear_video_detail_cache():
+    _fetch_video_detail_cached.cache_clear()
+    yield
+    _fetch_video_detail_cached.cache_clear()
 
 
 @pytest.mark.asyncio
-async def test_fetch_video_detail_fetches_single_track_in_smart_mode(monkeypatch):
+async def test_fetch_video_detail_falls_back_to_subtitle_api_for_multi_page_smart_mode(
+    monkeypatch,
+):
     calls = {
         "get_info": 0,
-        "get_pages": 0,
         "get_subtitle": 0,
         "subtitle_text": [],
     }
@@ -35,14 +48,11 @@ async def test_fetch_video_detail_fetches_single_track_in_smart_mode(monkeypatch
                     "like": 7,
                 },
                 "tag": [{"tag_name": "tag-a"}, {"name": "tag-b"}],
+                "pages": [
+                    {"cid": 101, "page": 1, "part": "P1", "duration": 30},
+                    {"cid": 202, "page": 2, "part": "P2", "duration": 45},
+                ],
             }
-
-        async def get_pages(self):
-            calls["get_pages"] += 1
-            return [
-                {"cid": 101, "page": 1, "part": "P1", "duration": 30},
-                {"cid": 202, "page": 2, "part": "P2", "duration": 45},
-            ]
 
         async def get_subtitle(self, cid):
             calls["get_subtitle"] += 1
@@ -74,7 +84,7 @@ async def test_fetch_video_detail_fetches_single_track_in_smart_mode(monkeypatch
 
     monkeypatch.setattr("bili_stalker_mcp.services.user_service.video.Video", FakeVideo)
     monkeypatch.setattr(
-        "bili_stalker_mcp.services.user_service._fetch_subtitle_text",
+        "bili_stalker_mcp.services.subtitle_service._fetch_subtitle_text",
         fake_fetch_subtitle_text,
     )
 
@@ -85,12 +95,15 @@ async def test_fetch_video_detail_fetches_single_track_in_smart_mode(monkeypatch
     )
 
     assert calls["get_info"] == 1
-    assert calls["get_pages"] == 1
     assert calls["get_subtitle"] == 2
     assert calls["subtitle_text"] == ["https://example.com/zh.json"]
 
     assert set(result.keys()) == {"video", "subtitles"}
     assert result["video"]["tags"] == ["tag-a", "tag-b"]
+    assert result["video"]["pages"] == [
+        {"cid": 101, "page": 1, "part": "P1", "duration": 30},
+        {"cid": 202, "page": 2, "part": "P2", "duration": 45},
+    ]
 
     subtitles = result["subtitles"]
     assert subtitles["enabled"] is True
@@ -114,6 +127,196 @@ async def test_fetch_video_detail_fetches_single_track_in_smart_mode(monkeypatch
 
 
 @pytest.mark.asyncio
+async def test_fetch_video_detail_smart_mode_short_circuits_single_page_inline_subtitles(
+    monkeypatch,
+):
+    calls = {
+        "get_info": 0,
+        "get_subtitle": 0,
+        "subtitle_text": [],
+    }
+
+    class FakeVideo:
+        def __init__(self, bvid, credential):
+            self.bvid = bvid
+            self.credential = credential
+
+        async def get_info(self):
+            calls["get_info"] += 1
+            return {
+                "bvid": "BV1inline111",
+                "aid": 321,
+                "stat": {},
+                "pages": [{"cid": 101, "page": 1, "part": "P1", "duration": 30}],
+                "subtitle": {
+                    "list": [
+                        {
+                            "lan": "zh-CN",
+                            "lan_doc": "Chinese",
+                            "subtitle_url": "//example.com/zh-inline.json",
+                        },
+                        {
+                            "lan": "en-US",
+                            "lan_doc": "English",
+                            "subtitle_url": "https://example.com/en-inline.json",
+                        },
+                    ]
+                },
+            }
+
+        async def get_subtitle(self, cid):
+            calls["get_subtitle"] += 1
+            return {"subtitles": []}
+
+    async def fake_fetch_subtitle_text(subtitle_url, cred):
+        calls["subtitle_text"].append(subtitle_url)
+        if subtitle_url.endswith("zh-inline.json"):
+            return "inline zh body", None
+        if subtitle_url.endswith("en-inline.json"):
+            return "inline en body", None
+        return "", "unknown subtitle url"
+
+    monkeypatch.setattr("bili_stalker_mcp.services.user_service.video.Video", FakeVideo)
+    monkeypatch.setattr(
+        "bili_stalker_mcp.services.subtitle_service._fetch_subtitle_text",
+        fake_fetch_subtitle_text,
+    )
+
+    result = await fetch_video_detail(
+        bvid="BV1inline111",
+        fetch_subtitles=True,
+        cred=None,
+    )
+
+    subtitles = result["subtitles"]
+    assert calls["get_info"] == 1
+    assert calls["get_subtitle"] == 0
+    assert calls["subtitle_text"] == ["https://example.com/zh-inline.json"]
+    assert subtitles["mode"] == "smart"
+    assert subtitles["available_languages"] == ["zh-CN", "en-US"]
+    assert subtitles["selected_language"] == "zh-CN"
+    assert subtitles["track_count"] == 1
+    assert subtitles["dropped_tracks"] == 1
+    assert subtitles["full_text"] == "inline zh body"
+    assert subtitles["errors"] == []
+
+
+@pytest.mark.asyncio
+async def test_fetch_video_detail_invalid_inline_subtitles_fall_back_to_subtitle_api(
+    monkeypatch,
+):
+    calls = {
+        "get_subtitle": 0,
+        "subtitle_text": [],
+    }
+
+    class FakeVideo:
+        def __init__(self, bvid, credential):
+            self.bvid = bvid
+            self.credential = credential
+
+        async def get_info(self):
+            return {
+                "bvid": "BV1fallback11",
+                "aid": 456,
+                "stat": {},
+                "pages": [{"cid": 101, "page": 1, "part": "P1", "duration": 30}],
+                "subtitle": {
+                    "list": [
+                        {
+                            "lan": "zh-CN",
+                            "lan_doc": "Chinese",
+                        }
+                    ]
+                },
+            }
+
+        async def get_subtitle(self, cid):
+            calls["get_subtitle"] += 1
+            return {
+                "subtitles": [
+                    {
+                        "lan": "zh-CN",
+                        "lan_doc": "Chinese",
+                        "subtitle_url": "https://example.com/fallback.json",
+                    }
+                ]
+            }
+
+    async def fake_fetch_subtitle_text(subtitle_url, cred):
+        calls["subtitle_text"].append(subtitle_url)
+        if subtitle_url.endswith("fallback.json"):
+            return "fallback body", None
+        return "", "unknown subtitle url"
+
+    monkeypatch.setattr("bili_stalker_mcp.services.user_service.video.Video", FakeVideo)
+    monkeypatch.setattr(
+        "bili_stalker_mcp.services.subtitle_service._fetch_subtitle_text",
+        fake_fetch_subtitle_text,
+    )
+
+    result = await fetch_video_detail(
+        bvid="BV1fallback11",
+        fetch_subtitles=True,
+        cred=None,
+    )
+
+    subtitles = result["subtitles"]
+    assert calls["get_subtitle"] == 1
+    assert calls["subtitle_text"] == ["https://example.com/fallback.json"]
+    assert subtitles["track_count"] == 1
+    assert subtitles["full_text"] == "fallback body"
+
+
+@pytest.mark.asyncio
+async def test_fetch_video_detail_marks_blocked_subtitle_downloads_in_errors(monkeypatch):
+    class FakeVideo:
+        def __init__(self, bvid, credential):
+            self.bvid = bvid
+            self.credential = credential
+
+        async def get_info(self):
+            return {
+                "bvid": "BV1blocked111",
+                "aid": 999,
+                "stat": {},
+                "pages": [{"cid": 101, "page": 1, "part": "P1", "duration": 30}],
+                "subtitle": {
+                    "list": [
+                        {
+                            "lan": "zh-CN",
+                            "lan_doc": "Chinese",
+                            "subtitle_url": "https://example.com/blocked.json",
+                        }
+                    ]
+                },
+            }
+
+        async def get_subtitle(self, cid):
+            return {"subtitles": []}
+
+    async def fake_get_json(*args, **kwargs):
+        raise RetryableBiliApiError(429, "HTTP rate limit from upstream")
+
+    monkeypatch.setattr("bili_stalker_mcp.services.user_service.video.Video", FakeVideo)
+    monkeypatch.setattr(
+        "bili_stalker_mcp.services.subtitle_service.get_json",
+        fake_get_json,
+    )
+
+    result = await fetch_video_detail(
+        bvid="BV1blocked111",
+        fetch_subtitles=True,
+        cred=None,
+    )
+
+    subtitles = result["subtitles"]
+    assert subtitles["track_count"] == 1
+    assert subtitles["full_text"] == ""
+    assert any("blocked or rate-limited" in err for err in subtitles["errors"])
+
+
+@pytest.mark.asyncio
 async def test_fetch_video_detail_full_mode_keeps_all_tracks(monkeypatch):
     calls = {
         "get_subtitle": 0,
@@ -126,10 +329,21 @@ async def test_fetch_video_detail_full_mode_keeps_all_tracks(monkeypatch):
             self.credential = credential
 
         async def get_info(self):
-            return {"bvid": "BV1xx411c7mD", "aid": 123, "stat": {}}
-
-        async def get_pages(self):
-            return [{"cid": 101, "page": 1, "part": "P1", "duration": 30}]
+            return {
+                "bvid": "BV1full11111",
+                "aid": 123,
+                "stat": {},
+                "pages": [{"cid": 101, "page": 1, "part": "P1", "duration": 30}],
+                "subtitle": {
+                    "list": [
+                        {
+                            "lan": "zh-CN",
+                            "lan_doc": "Chinese",
+                            "subtitle_url": "https://example.com/inline-zh.json",
+                        }
+                    ]
+                },
+            }
 
         async def get_subtitle(self, cid):
             calls["get_subtitle"] += 1
@@ -158,12 +372,12 @@ async def test_fetch_video_detail_full_mode_keeps_all_tracks(monkeypatch):
 
     monkeypatch.setattr("bili_stalker_mcp.services.user_service.video.Video", FakeVideo)
     monkeypatch.setattr(
-        "bili_stalker_mcp.services.user_service._fetch_subtitle_text",
+        "bili_stalker_mcp.services.subtitle_service._fetch_subtitle_text",
         fake_fetch_subtitle_text,
     )
 
     result = await fetch_video_detail(
-        bvid="BV1xx411c7mD",
+        bvid="BV1full11111",
         fetch_subtitles=True,
         subtitle_mode="full",
         cred=None,
@@ -184,7 +398,7 @@ async def test_fetch_video_detail_full_mode_keeps_all_tracks(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_fetch_video_detail_defaults_to_disabled_subtitles(monkeypatch):
-    calls = {"get_subtitle": 0}
+    calls = {"get_info": 0}
 
     class FakeVideo:
         def __init__(self, bvid, credential):
@@ -192,23 +406,22 @@ async def test_fetch_video_detail_defaults_to_disabled_subtitles(monkeypatch):
             self.credential = credential
 
         async def get_info(self):
-            return {"bvid": "BV1xx411c7mD", "aid": 123, "stat": {}}
-
-        async def get_pages(self):
-            return [{"cid": 101, "page": 1, "part": "P1", "duration": 30}]
-
-        async def get_subtitle(self, cid):
-            calls["get_subtitle"] += 1
-            return {"subtitles": []}
+            calls["get_info"] += 1
+            return {
+                "bvid": "BV1disabled11",
+                "aid": 123,
+                "stat": {},
+                "pages": [{"cid": 101, "page": 1, "part": "P1", "duration": 30}],
+            }
 
     monkeypatch.setattr("bili_stalker_mcp.services.user_service.video.Video", FakeVideo)
 
     result = await fetch_video_detail(
-        bvid="BV1xx411c7mD",
+        bvid="BV1disabled11",
         cred=None,
     )
 
-    assert calls["get_subtitle"] == 0
+    assert calls["get_info"] == 1
     assert result["subtitles"] == {
         "enabled": False,
         "mode": "disabled",
@@ -223,4 +436,41 @@ async def test_fetch_video_detail_defaults_to_disabled_subtitles(monkeypatch):
         "tracks": [],
         "full_text": "",
         "errors": [],
+    }
+
+
+@pytest.mark.asyncio
+async def test_fetch_video_detail_records_cache_hit_metrics(monkeypatch):
+    calls = {"get_info": 0}
+
+    class FakeVideo:
+        def __init__(self, bvid, credential):
+            self.bvid = bvid
+            self.credential = credential
+
+        async def get_info(self):
+            calls["get_info"] += 1
+            return {
+                "bvid": "BV1cache1111",
+                "aid": 789,
+                "title": "cache demo",
+                "stat": {},
+                "pages": [{"cid": 101, "page": 1, "part": "P1", "duration": 30}],
+            }
+
+    monkeypatch.setattr("bili_stalker_mcp.services.user_service.video.Video", FakeVideo)
+
+    begin_request("video-detail-cache")
+    first = await fetch_video_detail(bvid="BV1cache1111", cred=None)
+    second = await fetch_video_detail(bvid="BV1cache1111", cred=None)
+
+    metrics = snapshot_metrics()
+
+    assert first == second
+    assert calls["get_info"] == 1
+    assert metrics["cache"]["video_detail"] == {
+        "hit": 1,
+        "miss": 1,
+        "total": 2,
+        "hit_rate": 0.5,
     }

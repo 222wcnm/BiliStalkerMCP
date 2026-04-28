@@ -118,7 +118,7 @@ async def test_fetch_article_content_parses_opus_initial_state_when_readinfo_mis
         "bili_stalker_mcp.services.user_service.article.Article", FakeArticle
     )
     monkeypatch.setattr(
-        "bili_stalker_mcp.services.user_service.get_initial_state",
+        "bili_stalker_mcp.services.article_renderer.get_initial_state",
         fake_get_initial_state,
     )
 
@@ -160,7 +160,7 @@ async def test_fetch_article_content_keeps_fallback_when_initial_state_also_fail
         "bili_stalker_mcp.services.user_service.article.Article", FakeArticle
     )
     monkeypatch.setattr(
-        "bili_stalker_mcp.services.user_service.get_initial_state",
+        "bili_stalker_mcp.services.article_renderer.get_initial_state",
         fake_get_initial_state,
     )
 

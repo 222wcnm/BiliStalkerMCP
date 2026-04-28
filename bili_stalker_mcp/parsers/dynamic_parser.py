@@ -1,12 +1,12 @@
-﻿import json
+import json
 import logging
 from datetime import datetime, timezone, tzinfo
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from bilibili_api import aid2bvid
-
 from ..config import DEFAULT_TIMEZONE
+from ..utils.converters import coerce_int as _coerce_int
+from ..utils.converters import safe_aid_to_bvid as _safe_aid_to_bvid
 
 logger = logging.getLogger(__name__)
 _OUTPUT_TZ: tzinfo
@@ -24,33 +24,6 @@ def format_timestamp(ts: int | None) -> str | None:
     try:
         return datetime.fromtimestamp(ts, tz=_OUTPUT_TZ).strftime("%Y-%m-%d %H:%M")
     except (ValueError, OSError):
-        return None
-
-
-def _coerce_int(value: Any) -> int | None:
-    if value is None or isinstance(value, bool):
-        return None
-    if isinstance(value, int):
-        return value
-    if isinstance(value, float):
-        return int(value)
-    if isinstance(value, str):
-        stripped = value.strip()
-        if not stripped:
-            return None
-        try:
-            return int(stripped)
-        except ValueError:
-            return None
-    return None
-
-
-def _safe_aid_to_bvid(aid: Any) -> str | None:
-    if not aid:
-        return None
-    try:
-        return aid2bvid(aid)
-    except Exception:
         return None
 
 

@@ -80,6 +80,35 @@ async def test_retry_policy_retries_known_api_error(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_retry_policy_retries_retryable_http_status(monkeypatch):
+    sleep_calls = []
+    attempts = {"count": 0}
+
+    async def fake_sleep(delay: float) -> None:
+        sleep_calls.append(delay)
+
+    monkeypatch.setattr("bili_stalker_mcp.retry.asyncio.sleep", fake_sleep)
+    begin_request("retry-http-status")
+
+    request = httpx.Request("GET", "https://example.com")
+    response = httpx.Response(status_code=429, request=request)
+
+    @with_retry(max_retries=2, base_delay=0.01)
+    async def flaky_http():
+        attempts["count"] += 1
+        if attempts["count"] == 1:
+            raise httpx.HTTPStatusError("too many requests", request=request, response=response)
+        return "ok"
+
+    result = await flaky_http()
+
+    assert result == "ok"
+    assert attempts["count"] == 2
+    assert len(sleep_calls) == 1
+    assert snapshot_metrics()["retry_count"] == 1
+
+
+@pytest.mark.asyncio
 async def test_retry_policy_does_not_retry_non_retryable_error(monkeypatch):
     sleep_calls = []
 

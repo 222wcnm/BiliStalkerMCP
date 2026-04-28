@@ -37,6 +37,57 @@ REQUEST_TIMEOUT = 60.0
 CONNECT_TIMEOUT = 15.0
 READ_TIMEOUT = 45.0
 DEFAULT_TIMEZONE = os.environ.get("BILI_TIMEZONE", "Asia/Shanghai")
+DEFAULT_IMPERSONATE = "chrome131"
+
+
+def _get_env_int(name: str, default: int) -> int:
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+
+    try:
+        return int(raw)
+    except ValueError:
+        logger.warning("Invalid integer value for %s=%r, falling back to %s", name, raw, default)
+        return default
+
+
+def _get_env_bool(name: str, default: bool) -> bool:
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+
+    normalized = raw.strip().lower()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+
+    logger.warning("Invalid boolean value for %s=%r, falling back to %s", name, raw, default)
+    return default
+
+
+REQUEST_JITTER_MIN_MS = max(0, _get_env_int("BILI_REQUEST_JITTER_MIN_MS", 200))
+REQUEST_JITTER_MAX_MS = max(0, _get_env_int("BILI_REQUEST_JITTER_MAX_MS", 1200))
+if REQUEST_JITTER_MAX_MS < REQUEST_JITTER_MIN_MS:
+    logger.warning(
+        "BILI_REQUEST_JITTER_MAX_MS (%s) is lower than min (%s), clamping to min",
+        REQUEST_JITTER_MAX_MS,
+        REQUEST_JITTER_MIN_MS,
+    )
+    REQUEST_JITTER_MAX_MS = REQUEST_JITTER_MIN_MS
+
+LAZY_ENABLED = _get_env_bool("BILI_LAZY_ENABLED", True)
+LAZY_DYNAMICS_BATCH = max(1, _get_env_int("BILI_LAZY_DYNAMICS_BATCH", 30))
+LAZY_SLEEP_MIN_SECONDS = max(0, _get_env_int("BILI_LAZY_SLEEP_MIN_SECONDS", 5))
+LAZY_SLEEP_MAX_SECONDS = max(0, _get_env_int("BILI_LAZY_SLEEP_MAX_SECONDS", 20))
+if LAZY_SLEEP_MAX_SECONDS < LAZY_SLEEP_MIN_SECONDS:
+    logger.warning(
+        "BILI_LAZY_SLEEP_MAX_SECONDS (%s) is lower than min (%s), clamping to min",
+        LAZY_SLEEP_MAX_SECONDS,
+        LAZY_SLEEP_MIN_SECONDS,
+    )
+    LAZY_SLEEP_MAX_SECONDS = LAZY_SLEEP_MIN_SECONDS
 
 _request_settings_initialized = False
 
@@ -60,8 +111,8 @@ def initialize_bilibili_request_settings() -> None:
 
     try:
         select_client("curl_cffi")
-        request_settings.set("impersonate", "chrome131")
-        logger.debug("Using curl_cffi client with chrome131 impersonation")
+        request_settings.set("impersonate", DEFAULT_IMPERSONATE)
+        logger.debug("Using curl_cffi client with %s impersonation", DEFAULT_IMPERSONATE)
     except Exception as exc:
         logger.debug("curl_cffi client unavailable, using default client: %s", exc)
 

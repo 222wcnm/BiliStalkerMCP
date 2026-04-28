@@ -134,6 +134,7 @@ BILI_COOKIE.txt
 
 # IDE and tool-specific directories
 .qoder/
+.codex
 .clinerules/
 .vscode/
 .idea/

@@ -32,6 +32,7 @@ logger = logging.getLogger(__name__)
 
 _credential_cache_key: tuple[str | None, str | None, str | None] | None = None
 _credential_cache_value: Credential | None = None
+_missing_buvid3_warned = False
 
 
 def get_credential() -> Optional[Credential]:
@@ -40,7 +41,7 @@ def get_credential() -> Optional[Credential]:
     This function caches by raw env tuple to keep identity stable across calls,
     allowing async-lru caches keyed by credential object to hit reliably.
     """
-    global _credential_cache_key, _credential_cache_value
+    global _credential_cache_key, _credential_cache_value, _missing_buvid3_warned
 
     sessdata = os.environ.get("SESSDATA")
     bili_jct = os.environ.get("BILI_JCT")
@@ -57,6 +58,10 @@ def get_credential() -> Optional[Credential]:
         return _credential_cache_value
 
     try:
+        if not buvid3 and not _missing_buvid3_warned:
+            logger.warning("BUVID3 is not set; anti-bot block risk is higher for raw requests")
+            _missing_buvid3_warned = True
+
         if bili_jct and buvid3:
             credential = Credential(sessdata=sessdata, bili_jct=bili_jct, buvid3=buvid3)
         elif bili_jct:

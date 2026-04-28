@@ -1,15 +1,12 @@
-﻿import logging
-import asyncio
-import time
+import logging
 from typing import Any, Literal
 
 from async_lru import alru_cache
-from bilibili_api import Credential, aid2bvid, article, search, user, video
+from bilibili_api import Credential, article, search, user, video
 from bilibili_api.exceptions import ApiException
-from bilibili_api.utils.initial_state import get_initial_state
 
-from ..config import DEFAULT_HEADERS
-from ..infra.http_client import get_shared_http_client
+from ..infra.http_client import get_json
+from ..infra.upstream import timed_upstream_call
 from ..models import (
     ArticleContentResponse,
     ArticleListItem,
@@ -17,8 +14,6 @@ from ..models import (
     ArticlesResponse,
     FollowingItemResponse,
     FollowingsResponse,
-    SubtitleResponse,
-    SubtitleTrack,
     UserInfoResponse,
     VideoDetailItem,
     VideoDetailResponse,
@@ -26,122 +21,29 @@ from ..models import (
     VideoListResponse,
     VideoStatResponse,
 )
-from ..observability import add_upstream_duration_ms, record_cache_hit
+from ..observability import record_cache_hit
 from ..parsers.dynamic_parser import format_timestamp
 from ..retry import RetryableBiliApiError, with_retry
-
-logger = logging.getLogger(__name__)
-SUBTITLE_FETCH_CONCURRENCY = 4
-DEFAULT_SUBTITLE_MODE = "smart"
-DEFAULT_SUBTITLE_LANG = "auto"
-DEFAULT_SUBTITLE_MAX_CHARS = 12000
-DEFAULT_SUBTITLE_LANGUAGE_PRIORITY = (
-    "zh-cn",
-    "zh-hans",
-    "zh-hant",
-    "ai-zh",
-    "en-us",
-    "en",
-    "ai-en",
+from ..utils.converters import coerce_int, safe_aid_to_bvid
+from .article_renderer import (
+    build_article_fallback_markdown,
+    extract_markdown_from_opus_initial_state,
+)
+from .subtitle_service import (
+    DEFAULT_SUBTITLE_LANG,
+    DEFAULT_SUBTITLE_MAX_CHARS,
+    DEFAULT_SUBTITLE_MODE,
+    build_disabled_subtitles,
+    collect_subtitles,
 )
 
+logger = logging.getLogger(__name__)
 
-async def _timed_await(awaitable: Any) -> Any:
-    started = time.perf_counter()
-    result = await awaitable
-    add_upstream_duration_ms((time.perf_counter() - started) * 1000)
-    return result
-
-
-def _coerce_int(value: Any) -> int | None:
-    if value is None or isinstance(value, bool):
-        return None
-    if isinstance(value, int):
-        return value
-    if isinstance(value, float):
-        return int(value)
-    if isinstance(value, str):
-        stripped = value.strip()
-        if not stripped:
-            return None
-        try:
-            return int(stripped)
-        except ValueError:
-            return None
-    return None
-
-
-def _safe_aid_to_bvid(aid: Any) -> str | None:
-    if not aid:
-        return None
-    try:
-        return aid2bvid(aid)
-    except Exception:
-        return None
+# ──────────────────── internal helpers ────────────────────
 
 
 def _cache_hit(before: Any, after: Any) -> bool:
     return (after.hits > before.hits) if before and after else False
-
-
-def _build_cookie_header(cred: Credential | None) -> str:
-    if cred is None or not hasattr(cred, "get_cookies"):
-        return ""
-    try:
-        cookies = cred.get_cookies() or {}
-        return "; ".join(f"{k}={v}" for k, v in cookies.items() if v)
-    except Exception:
-        return ""
-
-
-def _normalize_subtitle_url(subtitle_url: Any) -> str | None:
-    if not subtitle_url or not isinstance(subtitle_url, str):
-        return None
-
-    value = subtitle_url.strip()
-    if not value:
-        return None
-
-    if value.startswith("//"):
-        return f"https:{value}"
-    if value.startswith("http://") or value.startswith("https://"):
-        return value
-    return f"https://{value.lstrip('/')}"
-
-
-async def _fetch_subtitle_text(
-    subtitle_url: Any,
-    cred: Credential | None,
-) -> tuple[str, str | None]:
-    url = _normalize_subtitle_url(subtitle_url)
-    if not url:
-        return "", "subtitle_url missing"
-
-    headers = DEFAULT_HEADERS.copy()
-    cookie = _build_cookie_header(cred)
-    if cookie:
-        headers["Cookie"] = cookie
-
-    try:
-        started = time.perf_counter()
-        response = await get_shared_http_client().get(url, headers=headers)
-        add_upstream_duration_ms((time.perf_counter() - started) * 1000)
-
-        response.raise_for_status()
-        subtitle_payload = response.json()
-
-        body = subtitle_payload.get("body") or []
-        lines: list[str] = []
-        for item in body:
-            if not isinstance(item, dict):
-                continue
-            content = item.get("content")
-            if isinstance(content, str) and content.strip():
-                lines.append(content.strip())
-
-        return "\n".join(lines), None
-    except Exception as exc:
-        return "", str(exc)
 
 
 def _extract_tags(video_info: dict[str, Any]) -> list[str]:
@@ -167,9 +69,9 @@ def _extract_tags(video_info: dict[str, Any]) -> list[str]:
 def _select_video_review_count(video_data: dict[str, Any]) -> int | None:
     """Pick the best available engagement counter for list-level `review`."""
     candidates = (
-        _coerce_int(video_data.get("review")),
-        _coerce_int(video_data.get("video_review")),
-        _coerce_int(video_data.get("comment")),
+        coerce_int(video_data.get("review")),
+        coerce_int(video_data.get("video_review")),
+        coerce_int(video_data.get("comment")),
     )
 
     for value in candidates:
@@ -183,332 +85,40 @@ def _select_video_review_count(video_data: dict[str, Any]) -> int | None:
     return None
 
 
-def _normalize_language_tag(value: Any) -> str | None:
-    if not isinstance(value, str):
-        return None
-    cleaned = value.strip().lower()
-    return cleaned or None
+def _normalize_video_pages(pages_raw: Any) -> list[dict[str, Any]]:
+    normalized_pages: list[dict[str, Any]] = []
+    if not isinstance(pages_raw, list):
+        return normalized_pages
 
-
-def _build_track_metadata(
-    cid: int,
-    part: str | None,
-    subtitle_item: dict[str, Any],
-) -> tuple[SubtitleTrack, str | None]:
-    lan = subtitle_item.get("lan") if isinstance(subtitle_item.get("lan"), str) else None
-    lan_doc = (
-        subtitle_item.get("lan_doc")
-        if isinstance(subtitle_item.get("lan_doc"), str)
-        else None
-    )
-
-    is_ai_generated = bool(
-        (isinstance(lan, str) and lan.startswith("ai-"))
-        or (_coerce_int(subtitle_item.get("ai_type")) or 0) > 0
-        or (_coerce_int(subtitle_item.get("ai_status")) or 0) > 0
-    )
-
-    track = SubtitleTrack(
-        cid=cid,
-        part=part,
-        lan=lan,
-        lan_doc=lan_doc,
-        is_ai_generated=is_ai_generated,
-        text="",
-    )
-    subtitle_url = subtitle_item.get("subtitle_url")
-    return track, subtitle_url
-
-
-def _append_track_with_budget(
-    track: SubtitleTrack,
-    raw_text: str,
-    selected_tracks: list[SubtitleTrack],
-    full_text_lines: list[str],
-    remaining_budget: int,
-) -> tuple[int, bool]:
-    text = raw_text or ""
-    was_truncated = False
-    if text:
-        separator_cost = 1 if full_text_lines else 0
-        if remaining_budget <= separator_cost:
-            text = ""
-            was_truncated = True
-        else:
-            remaining_budget -= separator_cost
-            if len(text) > remaining_budget:
-                text = text[:remaining_budget]
-                remaining_budget = 0
-                was_truncated = True
-            else:
-                remaining_budget -= len(text)
-
-    selected_tracks.append(track.model_copy(update={"text": text}))
-    if text:
-        full_text_lines.append(text)
-    return remaining_budget, was_truncated
-
-
-def _select_smart_subtitle_candidate(
-    candidates: list[dict[str, Any]],
-    requested_language: str,
-) -> tuple[dict[str, Any] | None, str | None]:
-    if not candidates:
-        return None, None
-
-    requested_raw = requested_language.strip() if isinstance(requested_language, str) else ""
-    requested_norm = _normalize_language_tag(requested_raw)
-    normalized_auto = _normalize_language_tag(DEFAULT_SUBTITLE_LANG)
-
-    if requested_norm and requested_norm != normalized_auto:
-        for candidate in candidates:
-            lan_norm = _normalize_language_tag(candidate["track"].lan)
-            if lan_norm == requested_norm:
-                return candidate, None
-
-        for candidate in candidates:
-            lan_norm = _normalize_language_tag(candidate["track"].lan)
-            if lan_norm and (
-                lan_norm.startswith(f"{requested_norm}-")
-                or requested_norm.startswith(f"{lan_norm}-")
-            ):
-                selected = candidate["track"].lan or "unknown"
-                return (
-                    candidate,
-                    f"requested '{requested_raw}' not exact; matched '{selected}'",
-                )
-
-    for preferred in DEFAULT_SUBTITLE_LANGUAGE_PRIORITY:
-        for candidate in candidates:
-            lan_norm = _normalize_language_tag(candidate["track"].lan)
-            if lan_norm == preferred:
-                if requested_norm and requested_norm != normalized_auto:
-                    selected = candidate["track"].lan or "unknown"
-                    return (
-                        candidate,
-                        f"requested '{requested_raw}' unavailable; fallback to '{selected}'",
-                    )
-                return candidate, None
-
-    fallback_candidate = candidates[0]
-    selected = fallback_candidate["track"].lan or "unknown"
-    if requested_norm and requested_norm != normalized_auto:
-        return (
-            fallback_candidate,
-            f"requested '{requested_raw}' unavailable; fallback to '{selected}'",
-        )
-    return fallback_candidate, "auto preference not matched; fallback to first available"
-
-
-async def _collect_subtitles(
-    video_client: video.Video,
-    pages: list[dict[str, Any]],
-    cred: Credential | None,
-    subtitle_mode: Literal["minimal", "smart", "full"] = DEFAULT_SUBTITLE_MODE,
-    subtitle_lang: str = DEFAULT_SUBTITLE_LANG,
-    subtitle_max_chars: int = DEFAULT_SUBTITLE_MAX_CHARS,
-) -> SubtitleResponse:
-    mode = subtitle_mode.strip().lower() if isinstance(subtitle_mode, str) else ""
-    if mode == "minimal":
-        normalized_mode: Literal["minimal", "smart", "full"] = "minimal"
-    elif mode == "full":
-        normalized_mode = "full"
-    else:
-        normalized_mode = "smart"
-
-    if normalized_mode == "minimal":
-        return SubtitleResponse(
-            enabled=True,
-            mode=normalized_mode,
-            requested_language=subtitle_lang if isinstance(subtitle_lang, str) else DEFAULT_SUBTITLE_LANG,
-            available_languages=[],
-            selected_language=None,
-            fallback_reason="subtitle metadata and text skipped by mode=minimal",
-            truncated=False,
-            returned_chars=0,
-            dropped_tracks=0,
-            track_count=0,
-            tracks=[],
-            full_text="",
-            errors=[],
-        )
-
-    char_budget = (
-        subtitle_max_chars
-        if isinstance(subtitle_max_chars, int)
-        else DEFAULT_SUBTITLE_MAX_CHARS
-    )
-    if char_budget < 1:
-        char_budget = DEFAULT_SUBTITLE_MAX_CHARS
-
-    candidates: list[dict[str, Any]] = []
-    errors: list[str] = []
-    semaphore = asyncio.Semaphore(SUBTITLE_FETCH_CONCURRENCY)
-
-    async def _timed_get_subtitle(cid: int) -> dict[str, Any]:
-        async with semaphore:
-            return await _timed_await(video_client.get_subtitle(cid=cid))
-
-    async def _timed_fetch_track_text(subtitle_url: Any) -> tuple[str, str | None]:
-        async with semaphore:
-            return await _fetch_subtitle_text(subtitle_url, cred)
-
-    async def _collect_page_tracks(
-        page: dict[str, Any],
-    ) -> tuple[list[dict[str, Any]], list[str]]:
-        page_tracks: list[dict[str, Any]] = []
-        page_errors: list[str] = []
-
-        cid = _coerce_int(page.get("cid"))
-        part = page.get("part")
-        part_value = part if isinstance(part, str) else None
-
-        if cid is None:
-            page_errors.append("page without cid")
-            return page_tracks, page_errors
-
-        try:
-            subtitle_data = await _timed_get_subtitle(cid)
-        except Exception as exc:
-            page_errors.append(f"cid {cid}: subtitle metadata failed: {exc}")
-            return page_tracks, page_errors
-
-        subtitle_items = (subtitle_data or {}).get("subtitles") or []
-        if not isinstance(subtitle_items, list):
-            page_errors.append(f"cid {cid}: invalid subtitle payload")
-            return page_tracks, page_errors
-
-        for subtitle_item in subtitle_items:
-            if not isinstance(subtitle_item, dict):
-                continue
-            track, subtitle_url = _build_track_metadata(
-                cid=cid,
-                part=part_value,
-                subtitle_item=subtitle_item,
-            )
-            page_tracks.append({"track": track, "subtitle_url": subtitle_url})
-
-        return page_tracks, page_errors
-
-    page_tasks = [_collect_page_tracks(page) for page in pages]
-    for page_tracks, page_errors in await asyncio.gather(*page_tasks):
-        candidates.extend(page_tracks)
-        errors.extend(page_errors)
-
-    available_languages: list[str] = []
-    seen_languages: set[str] = set()
-    for candidate in candidates:
-        lan = candidate["track"].lan
-        lan_norm = _normalize_language_tag(lan)
-        if not lan_norm or lan_norm in seen_languages:
+    for page in pages_raw:
+        if not isinstance(page, dict):
             continue
-        seen_languages.add(lan_norm)
-        available_languages.append(lan or lan_norm)
-
-    if not candidates:
-        return SubtitleResponse(
-            enabled=True,
-            mode=normalized_mode,
-            requested_language=subtitle_lang if isinstance(subtitle_lang, str) else DEFAULT_SUBTITLE_LANG,
-            available_languages=available_languages,
-            selected_language=None,
-            fallback_reason="No subtitle tracks available",
-            truncated=False,
-            returned_chars=0,
-            dropped_tracks=0,
-            track_count=0,
-            tracks=[],
-            full_text="",
-            errors=errors,
+        normalized_pages.append(
+            {
+                "cid": coerce_int(page.get("cid")),
+                "page": coerce_int(page.get("page")),
+                "part": page.get("part"),
+                "duration": coerce_int(page.get("duration")),
+            }
         )
 
-    selected_tracks: list[SubtitleTrack] = []
-    full_text_lines: list[str] = []
-    truncated = False
-    dropped_tracks = 0
-    selected_language: str | None = None
-    fallback_reason: str | None = None
+    return normalized_pages
 
-    if normalized_mode == "smart":
-        selected_candidate, fallback_reason = _select_smart_subtitle_candidate(
-            candidates=candidates,
-            requested_language=subtitle_lang,
-        )
-        if selected_candidate is None:
-            return SubtitleResponse(
-                enabled=True,
-                mode=normalized_mode,
-                requested_language=subtitle_lang if isinstance(subtitle_lang, str) else DEFAULT_SUBTITLE_LANG,
-                available_languages=available_languages,
-                selected_language=None,
-                fallback_reason="No subtitle tracks available",
-                truncated=False,
-                returned_chars=0,
-                dropped_tracks=0,
-                track_count=0,
-                tracks=[],
-                full_text="",
-                errors=errors,
-            )
 
-        text, error = await _timed_fetch_track_text(selected_candidate["subtitle_url"])
-        if error:
-            track = selected_candidate["track"]
-            errors.append(
-                f"cid {track.cid} {track.lan_doc or track.lan or 'unknown'}: {error}"
-            )
+def _filter_article_stats(raw_stats: Any) -> ArticleStatsResponse:
+    if not isinstance(raw_stats, dict):
+        return ArticleStatsResponse()
 
-        remaining_budget = char_budget
-        remaining_budget, was_truncated = _append_track_with_budget(
-            track=selected_candidate["track"],
-            raw_text=text,
-            selected_tracks=selected_tracks,
-            full_text_lines=full_text_lines,
-            remaining_budget=remaining_budget,
-        )
-        _ = remaining_budget
-        truncated = truncated or was_truncated
-        dropped_tracks = max(0, len(candidates) - len(selected_tracks))
-        selected_language = selected_candidate["track"].lan
-    else:
-        track_tasks = [
-            _timed_fetch_track_text(candidate["subtitle_url"]) for candidate in candidates
-        ]
-        track_results = await asyncio.gather(*track_tasks)
-        remaining_budget = char_budget
-        for candidate, (text, error) in zip(candidates, track_results):
-            track = candidate["track"]
-            if error:
-                errors.append(
-                    f"cid {track.cid} {track.lan_doc or track.lan or 'unknown'}: {error}"
-                )
-            remaining_budget, was_truncated = _append_track_with_budget(
-                track=track,
-                raw_text=text,
-                selected_tracks=selected_tracks,
-                full_text_lines=full_text_lines,
-                remaining_budget=remaining_budget,
-            )
-            truncated = truncated or was_truncated
-        dropped_tracks = max(0, len(candidates) - len(selected_tracks))
-
-    full_text = "\n".join(full_text_lines)
-
-    return SubtitleResponse(
-        enabled=True,
-        mode=normalized_mode,
-        requested_language=subtitle_lang if isinstance(subtitle_lang, str) else DEFAULT_SUBTITLE_LANG,
-        available_languages=available_languages,
-        selected_language=selected_language,
-        fallback_reason=fallback_reason,
-        truncated=truncated,
-        returned_chars=len(full_text),
-        dropped_tracks=dropped_tracks,
-        track_count=len(selected_tracks),
-        tracks=selected_tracks,
-        full_text=full_text,
-        errors=errors,
+    return ArticleStatsResponse(
+        view=coerce_int(raw_stats.get("view")),
+        like=coerce_int(raw_stats.get("like")),
+        reply=coerce_int(raw_stats.get("reply")),
+        coin=coerce_int(raw_stats.get("coin")),
+        share=coerce_int(raw_stats.get("share")),
     )
+
+
+# ──────────────────── public API ────────────────────
 
 
 @alru_cache(maxsize=128, ttl=3600)
@@ -517,7 +127,7 @@ async def _get_user_id_by_username_cached(username: str) -> int | None:
     if not username:
         return None
 
-    search_result = await _timed_await(
+    search_result = await timed_upstream_call(
         search.search_by_type(
             keyword=username,
             search_type=search.SearchObjectType.USER,
@@ -557,7 +167,7 @@ async def get_user_id_by_username(username: str) -> int | None:
 @with_retry(max_retries=3, base_delay=2.0)
 async def _fetch_user_info_cached(user_id: int, cred: Credential) -> dict[str, Any]:
     u = user.User(uid=user_id, credential=cred)
-    info = await _timed_await(u.get_user_info())
+    info = await timed_upstream_call(u.get_user_info())
     if not info or "mid" not in info:
         raise ValueError(f"Invalid response for user {user_id}")
 
@@ -572,21 +182,11 @@ async def _fetch_user_info_cached(user_id: int, cred: Credential) -> dict[str, A
     try:
         stat_url = "https://api.bilibili.com/x/relation/stat"
         params = {"vmid": user_id}
-        headers = DEFAULT_HEADERS.copy()
-        cookie = _build_cookie_header(cred)
-        if cookie:
-            headers["Cookie"] = cookie
-
-        stat_started = time.perf_counter()
-        response = await get_shared_http_client().get(
+        stat_data = await get_json(
             stat_url,
             params=params,
-            headers=headers,
+            cred=cred,
         )
-        add_upstream_duration_ms((time.perf_counter() - stat_started) * 1000)
-
-        response.raise_for_status()
-        stat_data = response.json()
 
         if stat_data.get("code") == 0 and "data" in stat_data:
             user_data["following"] = stat_data["data"].get("following")
@@ -597,6 +197,12 @@ async def _fetch_user_info_cached(user_id: int, cred: Credential) -> dict[str, A
                 user_id,
                 stat_data.get("message"),
             )
+    except RetryableBiliApiError as exc:
+        logger.warning(
+            "Relation stat request was blocked or rate-limited for uid %s: %s",
+            user_id,
+            exc,
+        )
     except Exception as exc:
         logger.warning("Relation stat request failed for uid %s: %s", user_id, exc)
 
@@ -622,34 +228,35 @@ async def fetch_user_videos(
     keyword: str = "",
 ) -> dict[str, Any]:
     u = user.User(uid=user_id, credential=cred)
-    video_list = await _timed_await(u.get_videos(pn=page, ps=limit, keyword=keyword))
+    video_list = await timed_upstream_call(u.get_videos(pn=page, ps=limit, keyword=keyword))
     raw_videos = (video_list.get("list") or {}).get("vlist") or []
 
     videos = []
     for video_data in raw_videos:
         videos.append(
             VideoListItem(
-                bvid=video_data.get("bvid") or _safe_aid_to_bvid(video_data.get("aid")),
-                aid=_coerce_int(video_data.get("aid")),
+                bvid=video_data.get("bvid") or safe_aid_to_bvid(video_data.get("aid")),
+                aid=coerce_int(video_data.get("aid")),
                 title=video_data.get("title"),
                 description=video_data.get("description"),
                 author=video_data.get("author"),
                 length=video_data.get("length"),
-                created_time=format_timestamp(_coerce_int(video_data.get("created"))),
-                play=_coerce_int(video_data.get("play")),
+                created_time=format_timestamp(coerce_int(video_data.get("created"))),
+                play=coerce_int(video_data.get("play")),
                 review=_select_video_review_count(video_data),
             )
         )
 
     payload = VideoListResponse(
         videos=videos,
-        total=_coerce_int((video_list.get("page") or {}).get("count")) or 0,
+        total=coerce_int((video_list.get("page") or {}).get("count")) or 0,
     )
     return payload.model_dump()
 
 
+@alru_cache(maxsize=64, ttl=180)
 @with_retry(max_retries=3, base_delay=2.0)
-async def fetch_video_detail(
+async def _fetch_video_detail_cached(
     bvid: str,
     fetch_subtitles: bool = False,
     cred: Credential | None = None,
@@ -660,356 +267,73 @@ async def fetch_video_detail(
 ) -> dict[str, Any]:
     v = video.Video(bvid=bvid, credential=cred)
 
-    video_info = await _timed_await(v.get_info())
-    pages_raw = await _timed_await(v.get_pages())
+    video_info = await timed_upstream_call(v.get_info())
+    video_data = video_info if isinstance(video_info, dict) else {}
+    normalized_pages = _normalize_video_pages(video_data.get("pages") or [])
 
-    normalized_pages: list[dict[str, Any]] = []
-    if isinstance(pages_raw, list):
-        for page in pages_raw:
-            if not isinstance(page, dict):
-                continue
-            normalized_pages.append(
-                {
-                    "cid": _coerce_int(page.get("cid")),
-                    "page": _coerce_int(page.get("page")),
-                    "part": page.get("part"),
-                    "duration": _coerce_int(page.get("duration")),
-                }
-            )
-
-    stat = video_info.get("stat") if isinstance(video_info, dict) else {}
+    stat = video_data.get("stat")
     if not isinstance(stat, dict):
         stat = {}
 
     video_item = VideoDetailItem(
-        bvid=(video_info.get("bvid") if isinstance(video_info, dict) else None) or bvid,
-        aid=_coerce_int(video_info.get("aid") if isinstance(video_info, dict) else None),
-        title=video_info.get("title") if isinstance(video_info, dict) else None,
-        desc=video_info.get("desc") if isinstance(video_info, dict) else None,
+        bvid=video_data.get("bvid") or bvid,
+        aid=coerce_int(video_data.get("aid")),
+        title=video_data.get("title"),
+        desc=video_data.get("desc"),
         publish_time=format_timestamp(
-            _coerce_int(video_info.get("pubdate") if isinstance(video_info, dict) else None)
+            coerce_int(video_data.get("pubdate"))
         ),
         stat=VideoStatResponse(
-            view=_coerce_int(stat.get("view")),
-            danmaku=_coerce_int(stat.get("danmaku")),
-            reply=_coerce_int(stat.get("reply")),
-            favorite=_coerce_int(stat.get("favorite")),
-            coin=_coerce_int(stat.get("coin")),
-            share=_coerce_int(stat.get("share")),
-            like=_coerce_int(stat.get("like")),
+            view=coerce_int(stat.get("view")),
+            danmaku=coerce_int(stat.get("danmaku")),
+            reply=coerce_int(stat.get("reply")),
+            favorite=coerce_int(stat.get("favorite")),
+            coin=coerce_int(stat.get("coin")),
+            share=coerce_int(stat.get("share")),
+            like=coerce_int(stat.get("like")),
         ),
-        tags=_extract_tags(video_info if isinstance(video_info, dict) else {}),
+        tags=_extract_tags(video_data),
         pages=normalized_pages,
     )
 
     if fetch_subtitles:
-        subtitles = await _collect_subtitles(
+        subtitles = await collect_subtitles(
             v,
             normalized_pages,
             cred,
             subtitle_mode=subtitle_mode,
             subtitle_lang=subtitle_lang,
             subtitle_max_chars=subtitle_max_chars,
+            video_info=video_data,
         )
     else:
-        subtitles = SubtitleResponse(
-            enabled=False,
-            mode="disabled",
-            requested_language=subtitle_lang if isinstance(subtitle_lang, str) else DEFAULT_SUBTITLE_LANG,
-            available_languages=[],
-            selected_language=None,
-            fallback_reason=None,
-            truncated=False,
-            returned_chars=0,
-            dropped_tracks=0,
-            track_count=0,
-            tracks=[],
-            full_text="",
-            errors=[],
-        )
+        subtitles = build_disabled_subtitles(subtitle_lang)
 
     payload = VideoDetailResponse(video=video_item, subtitles=subtitles)
     return payload.model_dump()
 
 
-def _filter_article_stats(raw_stats: Any) -> ArticleStatsResponse:
-    if not isinstance(raw_stats, dict):
-        return ArticleStatsResponse()
-
-    return ArticleStatsResponse(
-        view=_coerce_int(raw_stats.get("view")),
-        like=_coerce_int(raw_stats.get("like")),
-        reply=_coerce_int(raw_stats.get("reply")),
-        coin=_coerce_int(raw_stats.get("coin")),
-        share=_coerce_int(raw_stats.get("share")),
+async def fetch_video_detail(
+    bvid: str,
+    fetch_subtitles: bool = False,
+    cred: Credential | None = None,
+    *,
+    subtitle_mode: Literal["minimal", "smart", "full"] = DEFAULT_SUBTITLE_MODE,
+    subtitle_lang: str = DEFAULT_SUBTITLE_LANG,
+    subtitle_max_chars: int = DEFAULT_SUBTITLE_MAX_CHARS,
+) -> dict[str, Any]:
+    before = _fetch_video_detail_cached.cache_info()
+    payload = await _fetch_video_detail_cached(
+        bvid=bvid,
+        fetch_subtitles=fetch_subtitles,
+        cred=cred,
+        subtitle_mode=subtitle_mode,
+        subtitle_lang=subtitle_lang,
+        subtitle_max_chars=subtitle_max_chars,
     )
-
-
-def _build_article_fallback_markdown(
-    article_id: int,
-    article_info: dict[str, Any] | None,
-    reason: str,
-) -> str:
-    title = article_info.get("title") if isinstance(article_info, dict) else None
-    heading = f"# {title}" if isinstance(title, str) and title.strip() else f"# cv{article_id}"
-
-    lines = [
-        heading,
-        "",
-        "> Full markdown content is unavailable from the current upstream payload.",
-        f"> Reason: {reason}",
-    ]
-
-    if isinstance(article_info, dict):
-        video_url = article_info.get("video_url")
-        if isinstance(video_url, str) and video_url.strip():
-            lines.extend(["", f"Source: {video_url.strip()}"])
-
-    return "\n".join(lines)
-
-
-def _normalize_http_url(url: Any) -> str | None:
-    if not isinstance(url, str):
-        return None
-    value = url.strip()
-    if not value:
-        return None
-    if value.startswith("//"):
-        return f"https:{value}"
-    if value.startswith("http://") or value.startswith("https://"):
-        return value
-    return f"https://{value.lstrip('/')}"
-
-
-def _render_module_word_node(node: dict[str, Any]) -> str:
-    word = node.get("word")
-    if not isinstance(word, dict):
-        return ""
-
-    text = word.get("words")
-    if not isinstance(text, str):
-        return ""
-
-    style = word.get("style")
-    if not isinstance(style, dict):
-        style = {}
-
-    rendered = text
-    if style.get("strikethrough"):
-        rendered = f"~~{rendered}~~"
-    if style.get("underline"):
-        rendered = f"<u>{rendered}</u>"
-    if style.get("italic"):
-        rendered = f"*{rendered}*"
-    if style.get("bold"):
-        rendered = f"**{rendered}**"
-    return rendered
-
-
-def _render_module_rich_node(node: dict[str, Any]) -> str:
-    rich = node.get("rich")
-    if not isinstance(rich, dict):
-        return ""
-
-    label = rich.get("text")
-    if not isinstance(label, str) or not label.strip():
-        label = rich.get("orig_text")
-    if not isinstance(label, str) or not label.strip():
-        label = rich.get("jump_url")
-    if not isinstance(label, str):
-        label = ""
-    label = label.strip()
-
-    jump_url = _normalize_http_url(rich.get("jump_url"))
-    if jump_url and label:
-        return f"[{label}]({jump_url})"
-    if jump_url:
-        return jump_url
-    return label
-
-
-def _render_module_text_nodes(nodes: Any) -> str:
-    if not isinstance(nodes, list):
-        return ""
-
-    fragments: list[str] = []
-    for node in nodes:
-        if not isinstance(node, dict):
-            continue
-        node_type = node.get("type")
-        if node_type == "TEXT_NODE_TYPE_WORD":
-            fragments.append(_render_module_word_node(node))
-            continue
-        if node_type == "TEXT_NODE_TYPE_RICH":
-            fragments.append(_render_module_rich_node(node))
-
-    return "".join(fragments).replace("\r\n", "\n").replace("\r", "\n")
-
-
-def _render_module_text_block(block: Any) -> str:
-    if isinstance(block, str):
-        return block.strip()
-    if not isinstance(block, dict):
-        return ""
-
-    nodes = block.get("nodes")
-    if isinstance(nodes, list):
-        return _render_module_text_nodes(nodes).strip()
-
-    for key in ("text", "words", "content", "title"):
-        value = block.get(key)
-        if isinstance(value, str) and value.strip():
-            return value.strip()
-    return ""
-
-
-def _extract_title_from_initial_state(initial_state: dict[str, Any]) -> str | None:
-    detail = initial_state.get("detail")
-    if not isinstance(detail, dict):
-        return None
-
-    basic = detail.get("basic")
-    if isinstance(basic, dict):
-        basic_title = basic.get("title")
-        if isinstance(basic_title, str) and basic_title.strip():
-            return basic_title.strip()
-
-    modules = detail.get("modules")
-    if not isinstance(modules, list):
-        return None
-
-    for module in modules:
-        if not isinstance(module, dict):
-            continue
-        title_block = module.get("module_title")
-        if not isinstance(title_block, dict):
-            continue
-        module_title = title_block.get("text")
-        if isinstance(module_title, str) and module_title.strip():
-            return module_title.strip()
-    return None
-
-
-def _extract_content_paragraphs(initial_state: dict[str, Any]) -> list[dict[str, Any]]:
-    detail = initial_state.get("detail")
-    if not isinstance(detail, dict):
-        return []
-
-    modules = detail.get("modules")
-    if not isinstance(modules, list):
-        return []
-
-    for module in modules:
-        if not isinstance(module, dict):
-            continue
-        content_block = module.get("module_content")
-        if not isinstance(content_block, dict):
-            continue
-        paragraphs = content_block.get("paragraphs")
-        if isinstance(paragraphs, list):
-            return [p for p in paragraphs if isinstance(p, dict)]
-    return []
-
-
-def _render_content_paragraph(paragraph: dict[str, Any], *, has_top_title: bool) -> str | None:
-    para_type = _coerce_int(paragraph.get("para_type"))
-
-    if para_type == 1:
-        content = _render_module_text_block(paragraph.get("text")).strip("\n").strip()
-        return content or None
-
-    if para_type == 2:
-        pic_block = paragraph.get("pic")
-        if not isinstance(pic_block, dict):
-            return None
-        pics = pic_block.get("pics")
-        if not isinstance(pics, list):
-            return None
-        image_lines: list[str] = []
-        for pic in pics:
-            if not isinstance(pic, dict):
-                continue
-            url = _normalize_http_url(pic.get("url"))
-            if not url:
-                continue
-            image_lines.append(f"![]({url})")
-        if not image_lines:
-            return None
-        return "\n\n".join(image_lines)
-
-    if para_type == 3:
-        return "---"
-
-    if para_type == 8:
-        heading_block = paragraph.get("heading")
-        if not isinstance(heading_block, dict):
-            return None
-        heading_text = _render_module_text_block(heading_block).strip()
-        if not heading_text:
-            return None
-        heading_level = _coerce_int(heading_block.get("level")) or 1
-        if has_top_title and heading_level < 6:
-            heading_level += 1
-        heading_level = min(max(1, heading_level), 6)
-        return f"{'#' * heading_level} {heading_text}"
-
-    fallback = _render_module_text_block(paragraph.get("text")).strip()
-    return fallback or None
-
-
-def _build_markdown_from_initial_state(
-    initial_state: dict[str, Any],
-    preferred_title: str | None,
-) -> str | None:
-    paragraphs = _extract_content_paragraphs(initial_state)
-    if not paragraphs:
-        return None
-
-    title = preferred_title.strip() if isinstance(preferred_title, str) and preferred_title.strip() else None
-    if not title:
-        title = _extract_title_from_initial_state(initial_state)
-
-    sections: list[str] = []
-    has_top_title = bool(title)
-    if has_top_title and title is not None:
-        sections.append(f"# {title}")
-
-    for paragraph in paragraphs:
-        rendered = _render_content_paragraph(paragraph, has_top_title=has_top_title)
-        if not rendered:
-            continue
-        rendered = rendered.strip()
-        if rendered:
-            sections.append(rendered)
-
-    if not sections:
-        return None
-    return "\n\n".join(sections).strip()
-
-
-async def _extract_markdown_from_opus_initial_state(
-    article_id: int,
-    cred: Credential | None,
-    preferred_title: str | None,
-) -> str | None:
-    credential = cred if cred is not None else Credential()
-    url = f"https://www.bilibili.com/read/cv{article_id}/?jump_opus=1"
-
-    try:
-        initial_state, _ = await _timed_await(
-            get_initial_state(url=url, credential=credential)
-        )
-    except Exception as exc:
-        logger.warning(
-            "Article %s initial-state extraction failed: %s",
-            article_id,
-            exc,
-        )
-        return None
-
-    if not isinstance(initial_state, dict):
-        return None
-    return _build_markdown_from_initial_state(initial_state, preferred_title)
+    after = _fetch_video_detail_cached.cache_info()
+    record_cache_hit("video_detail", _cache_hit(before, after))
+    return payload
 
 
 @with_retry(max_retries=3, base_delay=2.0)
@@ -1020,7 +344,7 @@ async def fetch_user_articles(
     cred: Credential,
 ) -> dict[str, Any]:
     u = user.User(uid=user_id, credential=cred)
-    articles_data = await _timed_await(u.get_articles(pn=page, ps=limit))
+    articles_data = await timed_upstream_call(u.get_articles(pn=page, ps=limit))
 
     article_items = []
     for article_data in (articles_data.get("articles") or []):
@@ -1029,18 +353,18 @@ async def fetch_user_articles(
 
         article_items.append(
             ArticleListItem(
-                id=_coerce_int(article_data.get("id")),
+                id=coerce_int(article_data.get("id")),
                 title=article_data.get("title"),
                 summary=article_data.get("summary"),
-                publish_time_str=format_timestamp(_coerce_int(article_data.get("publish_time"))),
+                publish_time_str=format_timestamp(coerce_int(article_data.get("publish_time"))),
                 stats=_filter_article_stats(article_data.get("stats")),
             )
         )
 
     payload = ArticlesResponse(
         articles=article_items,
-        total=_coerce_int(articles_data.get("count"))
-        or _coerce_int(articles_data.get("total"))
+        total=coerce_int(articles_data.get("count"))
+        or coerce_int(articles_data.get("total"))
         or len(article_items),
     )
     return payload.model_dump()
@@ -1053,14 +377,14 @@ async def fetch_article_content(
 ) -> dict[str, Any]:
     article_client = article.Article(cvid=article_id, credential=cred)
 
-    article_info = await _timed_await(article_client.get_info())
+    article_info = await timed_upstream_call(article_client.get_info())
     article_title = article_info.get("title") if isinstance(article_info, dict) else None
     markdown_content: str | None = None
     parser_error_reason: str | None = None
 
     try:
         # bilibili_api requires parsing content first before markdown conversion.
-        await _timed_await(article_client.fetch_content())
+        await timed_upstream_call(article_client.fetch_content())
         markdown_content = article_client.markdown()
     except KeyError as exc:
         # New article schema in upstream may omit readInfo, breaking bilibili_api parser.
@@ -1084,14 +408,14 @@ async def fetch_article_content(
             raise
 
     if markdown_content is None:
-        markdown_content = await _extract_markdown_from_opus_initial_state(
+        markdown_content = await extract_markdown_from_opus_initial_state(
             article_id=article_id,
             cred=cred,
             preferred_title=article_title if isinstance(article_title, str) else None,
         )
 
     if markdown_content is None:
-        markdown_content = _build_article_fallback_markdown(
+        markdown_content = build_article_fallback_markdown(
             article_id=article_id,
             article_info=article_info if isinstance(article_info, dict) else None,
             reason=parser_error_reason or "upstream payload unavailable",
@@ -1114,22 +438,11 @@ async def fetch_user_followings(
 ) -> dict[str, Any]:
     api_url = "https://api.bilibili.com/x/relation/followings"
     params = {"vmid": user_id, "ps": limit, "pn": page}
-    headers = DEFAULT_HEADERS.copy()
-
-    cookie = _build_cookie_header(cred)
-    if cookie:
-        headers["Cookie"] = cookie
-
-    started = time.perf_counter()
-    response = await get_shared_http_client().get(
+    payload = await get_json(
         api_url,
         params=params,
-        headers=headers,
+        cred=cred,
     )
-    add_upstream_duration_ms((time.perf_counter() - started) * 1000)
-
-    response.raise_for_status()
-    payload = response.json()
 
     error_code = payload.get("code")
     if error_code == -509:

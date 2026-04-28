@@ -1,52 +1,84 @@
-﻿import contextvars
+import contextvars
 from typing import Any
 
-_request_id_var: contextvars.ContextVar[str | None] = contextvars.ContextVar(
-    "request_id",
+
+_metrics_state_var: contextvars.ContextVar[dict[str, Any] | None] = contextvars.ContextVar(
+    "metrics_state",
     default=None,
 )
-_retry_count_var: contextvars.ContextVar[int] = contextvars.ContextVar(
-    "retry_count",
-    default=0,
-)
-_upstream_ms_var: contextvars.ContextVar[float] = contextvars.ContextVar(
-    "upstream_ms",
-    default=0.0,
-)
-_cache_stats_var: contextvars.ContextVar[dict[str, dict[str, int]]] = contextvars.ContextVar(
-    "cache_stats",
-    default={},
-)
+
+
+def _new_state(request_id: str | None = None) -> dict[str, Any]:
+    return {
+        "request_id": request_id,
+        "retry_count": 0,
+        "upstream_duration_ms": 0.0,
+        "upstream_call_count": 0,
+        "throttle_sleep_ms": 0.0,
+        "lazy_pause_count": 0,
+        "lazy_pause_ms": 0.0,
+        "upstream_block_count": 0,
+        "upstream_rate_limit_count": 0,
+        "cache_stats": {},
+    }
+
+
+def _get_state() -> dict[str, Any]:
+    state = _metrics_state_var.get()
+    if state is None:
+        state = _new_state()
+        _metrics_state_var.set(state)
+    return state
 
 
 def begin_request(request_id: str) -> None:
-    _request_id_var.set(request_id)
-    _retry_count_var.set(0)
-    _upstream_ms_var.set(0.0)
-    _cache_stats_var.set({})
+    _metrics_state_var.set(_new_state(request_id=request_id))
 
 
 def get_request_id() -> str | None:
-    return _request_id_var.get()
+    return _get_state()["request_id"]
 
 
 def add_retry() -> None:
-    _retry_count_var.set(_retry_count_var.get() + 1)
+    _get_state()["retry_count"] += 1
+
+
+def register_upstream_call() -> int:
+    state = _get_state()
+    state["upstream_call_count"] += 1
+    return int(state["upstream_call_count"])
 
 
 def add_upstream_duration_ms(duration_ms: float) -> None:
-    _upstream_ms_var.set(_upstream_ms_var.get() + max(0.0, duration_ms))
+    _get_state()["upstream_duration_ms"] += max(0.0, duration_ms)
+
+
+def add_throttle_sleep_ms(duration_ms: float) -> None:
+    _get_state()["throttle_sleep_ms"] += max(0.0, duration_ms)
+
+
+def add_lazy_pause(duration_ms: float) -> None:
+    state = _get_state()
+    state["lazy_pause_count"] += 1
+    state["lazy_pause_ms"] += max(0.0, duration_ms)
+
+
+def record_upstream_block() -> None:
+    _get_state()["upstream_block_count"] += 1
+
+
+def record_upstream_rate_limit() -> None:
+    _get_state()["upstream_rate_limit_count"] += 1
 
 
 def record_cache_hit(cache_name: str, hit: bool) -> None:
-    stats = dict(_cache_stats_var.get())
-    item = dict(stats.get(cache_name, {"hit": 0, "miss": 0}))
+    state = _get_state()
+    stats = state["cache_stats"]
+    item = stats.setdefault(cache_name, {"hit": 0, "miss": 0})
     if hit:
         item["hit"] += 1
     else:
         item["miss"] += 1
-    stats[cache_name] = item
-    _cache_stats_var.set(stats)
 
 
 def _summarize_cache_stats(raw_stats: dict[str, dict[str, int]]) -> dict[str, dict[str, float | int]]:
@@ -66,10 +98,17 @@ def _summarize_cache_stats(raw_stats: dict[str, dict[str, int]]) -> dict[str, di
 
 
 def snapshot_metrics() -> dict[str, Any]:
-    cache_stats = _summarize_cache_stats(_cache_stats_var.get())
+    state = _get_state()
+    cache_stats = _summarize_cache_stats(state["cache_stats"])
     return {
-        "request_id": _request_id_var.get(),
-        "retry_count": _retry_count_var.get(),
-        "upstream_duration_ms": round(_upstream_ms_var.get(), 3),
+        "request_id": state["request_id"],
+        "retry_count": state["retry_count"],
+        "upstream_duration_ms": round(float(state["upstream_duration_ms"]), 3),
+        "upstream_call_count": int(state["upstream_call_count"]),
+        "throttle_sleep_ms": round(float(state["throttle_sleep_ms"]), 3),
+        "lazy_pause_count": int(state["lazy_pause_count"]),
+        "lazy_pause_ms": round(float(state["lazy_pause_ms"]), 3),
+        "upstream_block_count": int(state["upstream_block_count"]),
+        "upstream_rate_limit_count": int(state["upstream_rate_limit_count"]),
         "cache": cache_stats,
     }

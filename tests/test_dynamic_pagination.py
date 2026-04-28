@@ -1,6 +1,7 @@
 import pytest
 
 from bili_stalker_mcp import core
+from bili_stalker_mcp.observability import begin_request, snapshot_metrics
 
 
 def _build_text_card(dynamic_id: str, content: str) -> dict:
@@ -99,3 +100,61 @@ async def test_cursor_and_offset_cannot_be_combined():
             dynamic_type="TEXT",
             cursor=token,
         )
+
+
+@pytest.mark.asyncio
+async def test_dynamic_lazy_pause_triggers_between_batches(monkeypatch):
+    def build_page(start_id: int, count: int, next_offset: str | None, has_more: bool) -> dict:
+        cards = [
+            _build_text_card(str(dynamic_id), f"content-{dynamic_id}")
+            for dynamic_id in range(start_id, start_id + count)
+        ]
+        return {
+            "cards": cards,
+            "has_more": has_more,
+            "next_offset": next_offset,
+        }
+
+    pages = {
+        0: build_page(1, 30, "c2", True),
+        "c2": build_page(31, 30, "c3", True),
+        "c3": build_page(61, 5, None, False),
+    }
+    sleep_calls = []
+
+    class FakeUser:
+        def __init__(self, uid, credential):
+            self.uid = uid
+            self.credential = credential
+
+        async def get_dynamics(self, offset):
+            return pages[offset]
+
+    async def fake_sleep(delay: float) -> None:
+        sleep_calls.append(delay)
+
+    monkeypatch.setattr(core.user, "User", FakeUser)
+    monkeypatch.setattr("bili_stalker_mcp.services.dynamic_service.LAZY_ENABLED", True)
+    monkeypatch.setattr("bili_stalker_mcp.services.dynamic_service.LAZY_DYNAMICS_BATCH", 30)
+    monkeypatch.setattr("bili_stalker_mcp.services.dynamic_service.LAZY_SLEEP_MIN_SECONDS", 5)
+    monkeypatch.setattr("bili_stalker_mcp.services.dynamic_service.LAZY_SLEEP_MAX_SECONDS", 5)
+    monkeypatch.setattr("bili_stalker_mcp.services.dynamic_service.asyncio.sleep", fake_sleep)
+    monkeypatch.setattr("bili_stalker_mcp.infra.upstream.REQUEST_JITTER_MIN_MS", 0)
+    monkeypatch.setattr("bili_stalker_mcp.infra.upstream.REQUEST_JITTER_MAX_MS", 0)
+    begin_request("dynamic-lazy")
+
+    result = await core.fetch_user_dynamics(
+        user_id=1,
+        offset=0,
+        limit=65,
+        cred=object(),
+        dynamic_type="TEXT",
+    )
+
+    metrics = snapshot_metrics()
+
+    assert result["total_fetched"] == 65
+    assert result["has_more"] is False
+    assert sleep_calls == [5, 5]
+    assert metrics["lazy_pause_count"] == 2
+    assert metrics["lazy_pause_ms"] == 10000.0

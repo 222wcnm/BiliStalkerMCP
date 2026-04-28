@@ -1,14 +1,22 @@
-﻿import base64
+import asyncio
+import base64
 import json
 import logging
-import time
+import random
 from typing import Any
 
 from bilibili_api import Credential, user
 
-from ..config import DynamicType
+from ..config import (
+    DynamicType,
+    LAZY_DYNAMICS_BATCH,
+    LAZY_ENABLED,
+    LAZY_SLEEP_MAX_SECONDS,
+    LAZY_SLEEP_MIN_SECONDS,
+)
+from ..infra.upstream import timed_upstream_call
 from ..models import DynamicItemResponse, DynamicListResponse
-from ..observability import add_upstream_duration_ms
+from ..observability import add_lazy_pause
 from ..parsers.dynamic_parser import parse_dynamic_item
 from ..retry import with_retry
 
@@ -23,6 +31,36 @@ def _cursor_identity(cursor: Any) -> str:
         return json.dumps(cursor, ensure_ascii=True, sort_keys=True)
     except TypeError:
         return repr(cursor)
+
+
+async def _maybe_apply_lazy_pause(
+    *,
+    user_id: int,
+    processed_count: int,
+    next_lazy_threshold: int,
+) -> int:
+    if not LAZY_ENABLED or processed_count < next_lazy_threshold:
+        return next_lazy_threshold
+
+    while processed_count >= next_lazy_threshold:
+        sleep_seconds = random.uniform(LAZY_SLEEP_MIN_SECONDS, LAZY_SLEEP_MAX_SECONDS)
+        sleep_ms = sleep_seconds * 1000.0
+        logger.info(
+            "dynamic_lazy_pause",
+            extra={
+                "event": "dynamic_lazy_pause",
+                "uid": user_id,
+                "processed_count": processed_count,
+                "threshold": next_lazy_threshold,
+                "sleep_seconds": round(sleep_seconds, 3),
+            },
+        )
+        add_lazy_pause(sleep_ms)
+        if sleep_seconds > 0:
+            await asyncio.sleep(sleep_seconds)
+        next_lazy_threshold += LAZY_DYNAMICS_BATCH
+
+    return next_lazy_threshold
 
 
 def normalize_dynamic_type(dynamic_type: str) -> str:
@@ -138,6 +176,7 @@ async def fetch_user_dynamics(
     has_more = False
     scanned_pages = 0
     seen_offsets: set[str] = set()
+    next_lazy_threshold = LAZY_DYNAMICS_BATCH
 
     while len(processed_dynamics) < limit:
         scanned_pages += 1
@@ -163,9 +202,7 @@ async def fetch_user_dynamics(
             break
         seen_offsets.add(current_key)
 
-        call_started = time.perf_counter()
-        raw_dynamics_data = await u.get_dynamics(offset=current_cursor)
-        add_upstream_duration_ms((time.perf_counter() - call_started) * 1000)
+        raw_dynamics_data = await timed_upstream_call(u.get_dynamics(offset=current_cursor))
 
         cards = (raw_dynamics_data or {}).get("cards") or []
         page_next_offset = (raw_dynamics_data or {}).get("next_offset")
@@ -236,6 +273,11 @@ async def fetch_user_dynamics(
                 has_more = False
                 break
 
+            next_lazy_threshold = await _maybe_apply_lazy_pause(
+                user_id=user_id,
+                processed_count=len(processed_dynamics),
+                next_lazy_threshold=next_lazy_threshold,
+            )
             current_cursor = page_next_offset
             in_page_skip = 0
             next_cursor = encode_cursor_token(
