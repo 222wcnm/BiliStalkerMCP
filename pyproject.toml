@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "bili_stalker_mcp"
-version = "3.0.0"
+version = "3.0.1"
 description = "Bilibili MCP server for analyzing specific Bilibili users, with profile, video, dynamic, article, subtitle, and following tools"
 authors = [
     {name = "222wcnm", email = "2328072813li@gmail.com"},
