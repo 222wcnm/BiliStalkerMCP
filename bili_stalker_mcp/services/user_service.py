@@ -27,7 +27,7 @@ from ..retry import RetryableBiliApiError, with_retry
 from ..utils.converters import coerce_int, safe_aid_to_bvid
 from .article_renderer import (
     build_article_fallback_markdown,
-    extract_markdown_from_opus_initial_state,
+    fetch_opus_payload,
 )
 from .subtitle_service import (
     DEFAULT_SUBTITLE_LANG,
@@ -228,7 +228,9 @@ async def fetch_user_videos(
     keyword: str = "",
 ) -> dict[str, Any]:
     u = user.User(uid=user_id, credential=cred)
-    video_list = await timed_upstream_call(u.get_videos(pn=page, ps=limit, keyword=keyword))
+    video_list = await timed_upstream_call(
+        u.get_videos(pn=page, ps=limit, keyword=keyword)
+    )
     raw_videos = (video_list.get("list") or {}).get("vlist") or []
 
     videos = []
@@ -280,9 +282,7 @@ async def _fetch_video_detail_cached(
         aid=coerce_int(video_data.get("aid")),
         title=video_data.get("title"),
         desc=video_data.get("desc"),
-        publish_time=format_timestamp(
-            coerce_int(video_data.get("pubdate"))
-        ),
+        publish_time=format_timestamp(coerce_int(video_data.get("pubdate"))),
         stat=VideoStatResponse(
             view=coerce_int(stat.get("view")),
             danmaku=coerce_int(stat.get("danmaku")),
@@ -347,7 +347,7 @@ async def fetch_user_articles(
     articles_data = await timed_upstream_call(u.get_articles(pn=page, ps=limit))
 
     article_items = []
-    for article_data in (articles_data.get("articles") or []):
+    for article_data in articles_data.get("articles") or []:
         if len(article_items) >= limit:
             break
 
@@ -356,7 +356,9 @@ async def fetch_user_articles(
                 id=coerce_int(article_data.get("id")),
                 title=article_data.get("title"),
                 summary=article_data.get("summary"),
-                publish_time_str=format_timestamp(coerce_int(article_data.get("publish_time"))),
+                publish_time_str=format_timestamp(
+                    coerce_int(article_data.get("publish_time"))
+                ),
                 stats=_filter_article_stats(article_data.get("stats")),
             )
         )
@@ -370,63 +372,91 @@ async def fetch_user_articles(
     return payload.model_dump()
 
 
+# Bilibili dynamic/opus snowflake ids are 64-bit; cv ids stay well below 2^53.
+# Anything above this threshold is treated as a new-style opus id.
+_OPUS_ID_THRESHOLD = 1 << 53
+
+
+def _opus_page_url(numeric_id: int) -> str:
+    """Resolve the opus-rendered page URL for either a cv id or an opus id."""
+    if numeric_id >= _OPUS_ID_THRESHOLD:
+        return f"https://www.bilibili.com/opus/{numeric_id}"
+    return f"https://www.bilibili.com/read/cv{numeric_id}/?jump_opus=1"
+
+
+async def _legacy_cv_markdown(
+    cvid: int,
+    cred: Credential | None,
+) -> tuple[dict[str, Any] | None, str | None, str | None]:
+    """Try bilibili_api's legacy cv parser. Returns (info, markdown, error_reason)."""
+    client = article.Article(cvid=cvid, credential=cred)
+    info = await timed_upstream_call(client.get_info())
+    try:
+        await timed_upstream_call(client.fetch_content())
+        return info if isinstance(info, dict) else None, client.markdown(), None
+    except (KeyError, ApiException) as exc:
+        # Upstream schema for migrated articles drops readInfo or returns
+        # "未找到相关信息"; either way the opus-page fallback handles it.
+        logger.warning(
+            "CV %s legacy parser failed (%s); falling back to opus page", cvid, exc
+        )
+        reason = (
+            f"unsupported payload key: {exc}" if isinstance(exc, KeyError) else str(exc)
+        )
+        return info if isinstance(info, dict) else None, None, reason
+
+
 @with_retry(max_retries=3, base_delay=2.0)
 async def fetch_article_content(
-    article_id: int,
+    article_id: int | str,
     cred: Credential | None,
 ) -> dict[str, Any]:
-    article_client = article.Article(cvid=article_id, credential=cred)
-
-    article_info = await timed_upstream_call(article_client.get_info())
-    article_title = article_info.get("title") if isinstance(article_info, dict) else None
-    markdown_content: str | None = None
-    parser_error_reason: str | None = None
-
+    """Fetch markdown for a bilibili article. Accepts a cv id or an opus snowflake id."""
     try:
-        # bilibili_api requires parsing content first before markdown conversion.
-        await timed_upstream_call(article_client.fetch_content())
-        markdown_content = article_client.markdown()
-    except KeyError as exc:
-        # New article schema in upstream may omit readInfo, breaking bilibili_api parser.
-        logger.warning(
-            "Article %s markdown payload is unsupported by upstream schema: %s",
-            article_id,
-            exc,
-        )
-        parser_error_reason = f"unsupported payload key: {exc}"
-    except ApiException as exc:
-        # Keep compatibility when upstream parser state cannot be built.
-        exc_str = str(exc)
-        if "fetch_content" in exc_str or "readInfo" in exc_str:
-            logger.warning(
-                "Article %s markdown parsing failed after fetch_content: %s",
-                article_id,
-                exc,
-            )
-            parser_error_reason = exc_str
-        else:
-            raise
+        numeric_id = int(article_id)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"article_id must be numeric, got: {article_id!r}") from exc
 
-    if markdown_content is None:
-        markdown_content = await extract_markdown_from_opus_initial_state(
-            article_id=article_id,
+    article_info: dict[str, Any] | None = None
+    title: str | None = None
+    markdown: str | None = None
+    error_reason: str | None = None
+
+    if numeric_id < _OPUS_ID_THRESHOLD:
+        article_info, markdown, error_reason = await _legacy_cv_markdown(
+            numeric_id, cred
+        )
+        if isinstance(article_info, dict) and isinstance(
+            article_info.get("title"), str
+        ):
+            title = article_info["title"]
+
+    if not (isinstance(markdown, str) and markdown.strip()):
+        payload = await fetch_opus_payload(
+            url=_opus_page_url(numeric_id),
             cred=cred,
-            preferred_title=article_title if isinstance(article_title, str) else None,
+            preferred_title=title,
+        )
+        if payload:
+            title = title or (
+                payload.get("title") if isinstance(payload.get("title"), str) else None
+            )
+            candidate = payload.get("markdown_content")
+            if isinstance(candidate, str) and candidate.strip():
+                markdown = candidate
+
+    if not (isinstance(markdown, str) and markdown.strip()):
+        markdown = build_article_fallback_markdown(
+            article_id=numeric_id,
+            article_info=article_info or ({"title": title} if title else None),
+            reason=error_reason or "upstream payload unavailable",
         )
 
-    if markdown_content is None:
-        markdown_content = build_article_fallback_markdown(
-            article_id=article_id,
-            article_info=article_info if isinstance(article_info, dict) else None,
-            reason=parser_error_reason or "upstream payload unavailable",
-        )
-
-    payload = ArticleContentResponse(
-        id=article_id,
-        title=article_title if isinstance(article_title, str) else None,
-        markdown_content=markdown_content if isinstance(markdown_content, str) else str(markdown_content),
-    )
-    return payload.model_dump()
+    return ArticleContentResponse(
+        id=str(numeric_id),
+        title=title,
+        markdown_content=markdown,
+    ).model_dump()
 
 
 @with_retry(max_retries=3, base_delay=2.0)

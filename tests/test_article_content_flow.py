@@ -35,7 +35,7 @@ async def test_fetch_article_content_calls_fetch_content_before_markdown(monkeyp
 
     assert calls == ["get_info", "fetch_content", "markdown"]
     assert result == {
-        "id": 42,
+        "id": "42",
         "title": "demo article",
         "markdown_content": "# hello\n\ncontent",
     }
@@ -124,7 +124,7 @@ async def test_fetch_article_content_parses_opus_initial_state_when_readinfo_mis
 
     result = await fetch_article_content(article_id=44386142, cred=None)
 
-    assert result["id"] == 44386142
+    assert result["id"] == "44386142"
     assert result["title"] == "legacy article"
     assert result["markdown_content"].startswith("# legacy article")
     assert "**第一段**" in result["markdown_content"]
@@ -166,7 +166,7 @@ async def test_fetch_article_content_keeps_fallback_when_initial_state_also_fail
 
     result = await fetch_article_content(article_id=44386142, cred=None)
 
-    assert result["id"] == 44386142
+    assert result["id"] == "44386142"
     assert result["title"] == "legacy article"
     assert "Full markdown content is unavailable" in result["markdown_content"]
     assert "readInfo" in result["markdown_content"]

@@ -149,7 +149,7 @@ class ArticlesResponse(BaseModel):
 
 
 class ArticleContentResponse(BaseModel):
-    id: int
+    id: str
     title: str | None = None
     markdown_content: str = ""
 

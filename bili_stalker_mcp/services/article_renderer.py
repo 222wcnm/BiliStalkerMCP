@@ -254,26 +254,47 @@ def build_article_fallback_markdown(
     return "\n".join(lines)
 
 
-async def extract_markdown_from_opus_initial_state(
-    article_id: int,
+async def fetch_opus_payload(
+    url: str,
     cred: Credential | None,
-    preferred_title: str | None,
-) -> str | None:
+    preferred_title: str | None = None,
+) -> dict[str, Any] | None:
+    """Fetch an opus-rendered bilibili page and parse title/rid/uid/markdown.
+
+    Works for both new-style ``bilibili.com/opus/{snowflake}`` URLs and legacy
+    ``bilibili.com/read/cv{id}/?jump_opus=1`` redirects — they share the same
+    ``detail.modules.paragraphs`` payload shape.
+    """
     credential = cred if cred is not None else Credential()
-    url = f"https://www.bilibili.com/read/cv{article_id}/?jump_opus=1"
 
     try:
         initial_state, _ = await timed_upstream_call(
             get_initial_state(url=url, credential=credential)
         )
     except Exception as exc:
-        logger.warning(
-            "Article %s initial-state extraction failed: %s",
-            article_id,
-            exc,
-        )
+        logger.warning("Opus payload extraction failed for %s: %s", url, exc)
         return None
 
     if not isinstance(initial_state, dict):
         return None
-    return _build_markdown_from_initial_state(initial_state, preferred_title)
+
+    detail = initial_state.get("detail")
+    basic = detail.get("basic") if isinstance(detail, dict) else None
+    basic = basic if isinstance(basic, dict) else {}
+
+    fetched_title = basic.get("title") if isinstance(basic.get("title"), str) else None
+    title = (
+        preferred_title
+        if isinstance(preferred_title, str) and preferred_title.strip()
+        else fetched_title
+    )
+
+    rid_str = basic.get("rid_str") if isinstance(basic.get("rid_str"), str) else None
+    markdown = _build_markdown_from_initial_state(initial_state, preferred_title=title)
+
+    return {
+        "title": title,
+        "rid": coerce_int(rid_str) if rid_str else None,
+        "uid": coerce_int(basic.get("uid")),
+        "markdown_content": markdown,
+    }
