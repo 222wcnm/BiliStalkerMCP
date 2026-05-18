@@ -1,6 +1,10 @@
 import pytest
+from bilibili_api.exceptions import ResponseCodeException
 
-from bili_stalker_mcp.services.user_service import fetch_article_content
+from bili_stalker_mcp.services.user_service import (
+    _legacy_cv_markdown,
+    fetch_article_content,
+)
 
 
 @pytest.mark.asyncio
@@ -174,3 +178,34 @@ async def test_fetch_article_content_keeps_fallback_when_initial_state_also_fail
         "Source: https://www.bilibili.com/video/BV1xx411c7mD"
         in result["markdown_content"]
     )
+
+
+@pytest.mark.asyncio
+async def test_legacy_cv_markdown_reraises_retryable_api_errors(monkeypatch):
+    """Rate-limit / anti-bot errors must propagate so @with_retry can handle them.
+
+    Without re-raising, a transient -509 / -412 / 429 from the legacy SDK would
+    be silently converted into a fallback markdown response, masking the outage.
+    """
+
+    class FakeArticle:
+        def __init__(self, cvid, credential):
+            self.cvid = cvid
+            self.credential = credential
+
+        async def get_info(self):
+            return {"title": "rate-limited article"}
+
+        async def fetch_content(self):
+            # -509 is a retryable rate-limit code per DEFAULT_RETRYABLE_CODES.
+            raise ResponseCodeException(code=-509, msg="Request is rate-limited")
+
+        def markdown(self):
+            raise RuntimeError("should not be called")
+
+    monkeypatch.setattr(
+        "bili_stalker_mcp.services.user_service.article.Article", FakeArticle
+    )
+
+    with pytest.raises(ResponseCodeException):
+        await _legacy_cv_markdown(cvid=12345, cred=None)

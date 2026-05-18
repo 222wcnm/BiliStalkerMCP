@@ -23,7 +23,7 @@ from ..models import (
 )
 from ..observability import record_cache_hit
 from ..parsers.dynamic_parser import format_timestamp
-from ..retry import RetryableBiliApiError, with_retry
+from ..retry import RetryableBiliApiError, is_retryable_error, with_retry
 from ..utils.converters import coerce_int, safe_aid_to_bvid
 from .article_renderer import (
     build_article_fallback_markdown,
@@ -388,22 +388,36 @@ async def _legacy_cv_markdown(
     cvid: int,
     cred: Credential | None,
 ) -> tuple[dict[str, Any] | None, str | None, str | None]:
-    """Try bilibili_api's legacy cv parser. Returns (info, markdown, error_reason)."""
+    """Try bilibili_api's legacy cv parser. Returns (info, markdown, error_reason).
+
+    Schema-mismatch failures (KeyError, or non-retryable ApiException from a
+    payload the SDK can't parse) return ``markdown=None`` so the caller falls
+    back to the opus page. Retryable upstream errors (rate limit, anti-bot
+    block, transient network) are re-raised so ``@with_retry`` on
+    ``fetch_article_content`` can handle them — otherwise transient outages
+    would be silently turned into a synthetic "content unavailable" success.
+    """
     client = article.Article(cvid=cvid, credential=cred)
     info = await timed_upstream_call(client.get_info())
     try:
         await timed_upstream_call(client.fetch_content())
         return info if isinstance(info, dict) else None, client.markdown(), None
-    except (KeyError, ApiException) as exc:
-        # Upstream schema for migrated articles drops readInfo or returns
-        # "未找到相关信息"; either way the opus-page fallback handles it.
+    except KeyError as exc:
         logger.warning(
-            "CV %s legacy parser failed (%s); falling back to opus page", cvid, exc
+            "CV %s legacy parser missing key %s; falling back to opus page", cvid, exc
         )
-        reason = (
-            f"unsupported payload key: {exc}" if isinstance(exc, KeyError) else str(exc)
+        return (
+            info if isinstance(info, dict) else None,
+            None,
+            f"unsupported payload key: {exc}",
         )
-        return info if isinstance(info, dict) else None, None, reason
+    except ApiException as exc:
+        if is_retryable_error(exc):
+            raise
+        logger.warning(
+            "CV %s legacy parser raised %s; falling back to opus page", cvid, exc
+        )
+        return info if isinstance(info, dict) else None, None, str(exc)
 
 
 @with_retry(max_retries=3, base_delay=2.0)

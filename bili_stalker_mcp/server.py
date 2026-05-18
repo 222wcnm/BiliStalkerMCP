@@ -500,7 +500,7 @@ def create_server() -> FastMCP:
         async def _runner() -> Dict[str, Any]:
             cred = _get_credential_from_context(ctx)
             stripped = article_id.strip()
-            if not stripped.isdigit() or stripped == "0":
+            if not stripped.isdigit() or int(stripped) < 1:
                 raise ToolError(
                     f"article_id must be a positive numeric string, got: {article_id!r}"
                 )
