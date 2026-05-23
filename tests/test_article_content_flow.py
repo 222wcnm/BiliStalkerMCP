@@ -209,3 +209,150 @@ async def test_legacy_cv_markdown_reraises_retryable_api_errors(monkeypatch):
 
     with pytest.raises(ResponseCodeException):
         await _legacy_cv_markdown(cvid=12345, cred=None)
+
+
+# ── opus snowflake ID path tests ──────────────────────────────────────
+
+# A representative opus snowflake ID (>= 2^53) used across the tests below.
+_OPUS_SNOWFLAKE_ID = 748254891671027745
+
+
+@pytest.mark.asyncio
+async def test_opus_id_skips_legacy_parser_and_uses_opus_payload(monkeypatch):
+    """Opus snowflake IDs (>= 2^53) must bypass the legacy cv parser entirely
+    and fetch content via the opus page payload."""
+
+    legacy_called = False
+
+    original_legacy = _legacy_cv_markdown
+
+    async def spy_legacy(*args, **kwargs):
+        nonlocal legacy_called
+        legacy_called = True
+        return await original_legacy(*args, **kwargs)
+
+    async def fake_get_initial_state(url, credential):
+        # The URL must be the opus-style URL, not the cv-style URL.
+        assert f"/opus/{_OPUS_SNOWFLAKE_ID}" in url
+        assert "read/cv" not in url
+        return (
+            {
+                "detail": {
+                    "basic": {
+                        "title": "opus article title",
+                        "rid_str": str(_OPUS_SNOWFLAKE_ID),
+                    },
+                    "modules": [
+                        {
+                            "module_content": {
+                                "paragraphs": [
+                                    {
+                                        "para_type": 1,
+                                        "text": {
+                                            "nodes": [
+                                                {
+                                                    "type": "TEXT_NODE_TYPE_WORD",
+                                                    "word": {
+                                                        "words": "Opus content body",
+                                                        "style": {},
+                                                    },
+                                                }
+                                            ]
+                                        },
+                                    },
+                                ]
+                            }
+                        }
+                    ],
+                }
+            },
+            object(),
+        )
+
+    monkeypatch.setattr(
+        "bili_stalker_mcp.services.user_service._legacy_cv_markdown", spy_legacy
+    )
+    monkeypatch.setattr(
+        "bili_stalker_mcp.services.article_renderer.get_initial_state",
+        fake_get_initial_state,
+    )
+
+    result = await fetch_article_content(article_id=_OPUS_SNOWFLAKE_ID, cred=None)
+
+    assert not legacy_called, "Legacy cv parser should NOT be called for opus IDs"
+    assert result["id"] == str(_OPUS_SNOWFLAKE_ID)
+    assert result["title"] == "opus article title"
+    assert "Opus content body" in result["markdown_content"]
+
+
+@pytest.mark.asyncio
+async def test_opus_id_falls_back_when_opus_payload_fails(monkeypatch):
+    """When an opus snowflake ID is used but the opus page extraction fails,
+    the result should be a fallback markdown instead of raising."""
+
+    async def fake_get_initial_state(url, credential):
+        raise RuntimeError("simulated network failure")
+
+    monkeypatch.setattr(
+        "bili_stalker_mcp.services.article_renderer.get_initial_state",
+        fake_get_initial_state,
+    )
+
+    result = await fetch_article_content(article_id=_OPUS_SNOWFLAKE_ID, cred=None)
+
+    assert result["id"] == str(_OPUS_SNOWFLAKE_ID)
+    assert "Full markdown content is unavailable" in result["markdown_content"]
+    assert "upstream payload unavailable" in result["markdown_content"]
+
+
+@pytest.mark.asyncio
+async def test_opus_id_accepted_as_string(monkeypatch):
+    """Opus snowflake IDs passed as strings (the typical MCP tool input) must
+    work identically to integer input."""
+
+    async def fake_get_initial_state(url, credential):
+        assert f"/opus/{_OPUS_SNOWFLAKE_ID}" in url
+        return (
+            {
+                "detail": {
+                    "basic": {"title": "string-id article"},
+                    "modules": [
+                        {
+                            "module_content": {
+                                "paragraphs": [
+                                    {
+                                        "para_type": 1,
+                                        "text": {
+                                            "nodes": [
+                                                {
+                                                    "type": "TEXT_NODE_TYPE_WORD",
+                                                    "word": {
+                                                        "words": "Body text",
+                                                        "style": {},
+                                                    },
+                                                }
+                                            ]
+                                        },
+                                    },
+                                ]
+                            }
+                        }
+                    ],
+                }
+            },
+            object(),
+        )
+
+    monkeypatch.setattr(
+        "bili_stalker_mcp.services.article_renderer.get_initial_state",
+        fake_get_initial_state,
+    )
+
+    # Pass as string -- this is what the MCP tool layer sends after server.py validation.
+    result = await fetch_article_content(
+        article_id=str(_OPUS_SNOWFLAKE_ID), cred=None
+    )
+
+    assert result["id"] == str(_OPUS_SNOWFLAKE_ID)
+    assert result["title"] == "string-id article"
+    assert "Body text" in result["markdown_content"]
