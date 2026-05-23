@@ -483,18 +483,28 @@ def create_server() -> FastMCP:
     async def get_article_content(
         ctx: Context,
         article_id: Annotated[
-            int,
+            str,
             Field(
-                ge=1,
-                description="Article CV id.",
+                min_length=1,
+                description=(
+                    "Article id. Accepts a CV id (old format, e.g. 21032785) or "
+                    "an opus dynamic id from a bilibili.com/opus/{id} URL "
+                    "(e.g. 748254891671027745). Passed as a string because opus "
+                    "ids are 64-bit snowflake ids that overflow JS safe integers."
+                ),
             ),
         ],
     ) -> Dict[str, Any]:
-        """Get full article markdown content."""
+        """Get full article markdown content (supports both CV and opus ids)."""
 
         async def _runner() -> Dict[str, Any]:
             cred = _get_credential_from_context(ctx)
-            return await fetch_article_content(article_id=article_id, cred=cred)
+            stripped = article_id.strip()
+            if not stripped.isdigit() or int(stripped) < 1:
+                raise ToolError(
+                    f"article_id must be a positive numeric string, got: {article_id!r}"
+                )
+            return await fetch_article_content(article_id=stripped, cred=cred)
 
         try:
             return await _run_tool("get_article_content", _runner)

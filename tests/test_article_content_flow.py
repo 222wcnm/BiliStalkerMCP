@@ -1,6 +1,10 @@
 import pytest
+from bilibili_api.exceptions import ResponseCodeException
 
-from bili_stalker_mcp.services.user_service import fetch_article_content
+from bili_stalker_mcp.services.user_service import (
+    _legacy_cv_markdown,
+    fetch_article_content,
+)
 
 
 @pytest.mark.asyncio
@@ -35,7 +39,7 @@ async def test_fetch_article_content_calls_fetch_content_before_markdown(monkeyp
 
     assert calls == ["get_info", "fetch_content", "markdown"]
     assert result == {
-        "id": 42,
+        "id": "42",
         "title": "demo article",
         "markdown_content": "# hello\n\ncontent",
     }
@@ -124,7 +128,7 @@ async def test_fetch_article_content_parses_opus_initial_state_when_readinfo_mis
 
     result = await fetch_article_content(article_id=44386142, cred=None)
 
-    assert result["id"] == 44386142
+    assert result["id"] == "44386142"
     assert result["title"] == "legacy article"
     assert result["markdown_content"].startswith("# legacy article")
     assert "**第一段**" in result["markdown_content"]
@@ -166,7 +170,7 @@ async def test_fetch_article_content_keeps_fallback_when_initial_state_also_fail
 
     result = await fetch_article_content(article_id=44386142, cred=None)
 
-    assert result["id"] == 44386142
+    assert result["id"] == "44386142"
     assert result["title"] == "legacy article"
     assert "Full markdown content is unavailable" in result["markdown_content"]
     assert "readInfo" in result["markdown_content"]
@@ -174,3 +178,34 @@ async def test_fetch_article_content_keeps_fallback_when_initial_state_also_fail
         "Source: https://www.bilibili.com/video/BV1xx411c7mD"
         in result["markdown_content"]
     )
+
+
+@pytest.mark.asyncio
+async def test_legacy_cv_markdown_reraises_retryable_api_errors(monkeypatch):
+    """Rate-limit / anti-bot errors must propagate so @with_retry can handle them.
+
+    Without re-raising, a transient -509 / -412 / 429 from the legacy SDK would
+    be silently converted into a fallback markdown response, masking the outage.
+    """
+
+    class FakeArticle:
+        def __init__(self, cvid, credential):
+            self.cvid = cvid
+            self.credential = credential
+
+        async def get_info(self):
+            return {"title": "rate-limited article"}
+
+        async def fetch_content(self):
+            # -509 is a retryable rate-limit code per DEFAULT_RETRYABLE_CODES.
+            raise ResponseCodeException(code=-509, msg="Request is rate-limited")
+
+        def markdown(self):
+            raise RuntimeError("should not be called")
+
+    monkeypatch.setattr(
+        "bili_stalker_mcp.services.user_service.article.Article", FakeArticle
+    )
+
+    with pytest.raises(ResponseCodeException):
+        await _legacy_cv_markdown(cvid=12345, cred=None)
