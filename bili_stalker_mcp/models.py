@@ -163,3 +163,36 @@ class FollowingItemResponse(BaseModel):
 class FollowingsResponse(BaseModel):
     followings: list[FollowingItemResponse] = Field(default_factory=list)
     total: int = 0
+
+
+class CommentMemberResponse(BaseModel):
+    mid: int | None = None
+    uname: str | None = None
+
+
+class CommentItemResponse(BaseModel):
+    rpid: int | None = None
+    content: str | None = None
+    member: CommentMemberResponse = Field(default_factory=CommentMemberResponse)
+    like: int | None = None
+    reply_count: int | None = None
+    publish_time: str | None = None
+    replies: list["CommentItemResponse"] = Field(default_factory=list)
+
+
+CommentItemResponse.model_rebuild()
+
+
+class CommentsResponse(BaseModel):
+    comments: list[CommentItemResponse] = Field(default_factory=list)
+    top: CommentItemResponse | None = None
+    total: int = 0
+    page: int = 1
+    has_more: bool = False
+
+
+class CommentRepliesResponse(BaseModel):
+    replies: list[CommentItemResponse] = Field(default_factory=list)
+    total: int = 0
+    page: int = 1
+    has_more: bool = False

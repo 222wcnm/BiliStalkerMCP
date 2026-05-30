@@ -15,6 +15,7 @@ from .services.dynamic_service import (
     is_dynamic_type_match,
     normalize_dynamic_type,
 )
+from .services.comment_service import fetch_comment_replies, fetch_video_comments
 from .services.user_service import (
     fetch_article_content,
     fetch_user_articles,
@@ -100,6 +101,8 @@ __all__ = [
     "fetch_user_articles",
     "fetch_article_content",
     "fetch_user_followings",
+    "fetch_video_comments",
+    "fetch_comment_replies",
     "_format_timestamp",
     "_get_shared_http_client",
     "_normalize_dynamic_type",

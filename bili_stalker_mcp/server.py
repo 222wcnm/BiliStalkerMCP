@@ -13,11 +13,13 @@ from .config import DynamicType
 from .utils import extract_bvid
 from .core import (
     fetch_article_content,
+    fetch_comment_replies,
     fetch_user_articles,
     fetch_user_dynamics,
     fetch_user_followings,
     fetch_user_info,
     fetch_user_videos,
+    fetch_video_comments,
     fetch_video_detail,
     get_credential,
     get_user_id_by_username,
@@ -562,5 +564,96 @@ def create_server() -> FastMCP:
         except Exception as exc:
             logger.exception("get_user_followings failed")
             raise ToolError(f"Failed to fetch user followings: {exc}")
+
+    MAX_COMMENT_LIMIT = 20
+    CommentSortLiteral = Literal["hot", "time"]
+
+    @mcp.tool(
+        annotations={
+            "readOnlyHint": True,
+            "destructiveHint": False,
+            "idempotentHint": True,
+        }
+    )
+    async def get_video_comments(
+        ctx: Context,
+        bvid: Annotated[
+            str,
+            Field(
+                min_length=3,
+                description="Video BVID (e.g. BV1xx411c7mD), AV number (e.g. av170001), or a Bilibili video URL.",
+            ),
+        ],
+        page: Annotated[
+            int,
+            Field(ge=1, le=MAX_PAGE, description="Page number starting from 1."),
+        ] = 1,
+        limit: Annotated[
+            int,
+            Field(ge=1, le=MAX_COMMENT_LIMIT, description=f"Comments per page, 1-{MAX_COMMENT_LIMIT}."),
+        ] = 20,
+        sort: Annotated[
+            CommentSortLiteral,
+            Field(description="Sort order: hot (by likes) or time (newest first)."),
+        ] = "hot",
+    ) -> Dict[str, Any]:
+        """Get top-level comments for a video. Each comment includes up to 3 preview sub-replies."""
+
+        async def _runner() -> Dict[str, Any]:
+            cred = _get_credential_from_context(ctx)
+            resolved_bvid = await extract_bvid(bvid)
+            return await fetch_video_comments(resolved_bvid, page, limit, sort, cred)
+
+        try:
+            return await _run_tool("get_video_comments", _runner)
+        except ToolError:
+            raise
+        except Exception as exc:
+            logger.exception("get_video_comments failed")
+            raise ToolError(f"Failed to fetch video comments: {exc}")
+
+    @mcp.tool(
+        annotations={
+            "readOnlyHint": True,
+            "destructiveHint": False,
+            "idempotentHint": True,
+        }
+    )
+    async def get_video_comment_replies(
+        ctx: Context,
+        bvid: Annotated[
+            str,
+            Field(
+                min_length=3,
+                description="Video BVID (e.g. BV1xx411c7mD), AV number (e.g. av170001), or a Bilibili video URL.",
+            ),
+        ],
+        root_rpid: Annotated[
+            int,
+            Field(ge=1, description="The rpid of the top-level comment whose sub-replies to fetch."),
+        ],
+        page: Annotated[
+            int,
+            Field(ge=1, le=MAX_PAGE, description="Page number starting from 1."),
+        ] = 1,
+        limit: Annotated[
+            int,
+            Field(ge=1, le=MAX_COMMENT_LIMIT, description=f"Replies per page, 1-{MAX_COMMENT_LIMIT}."),
+        ] = 20,
+    ) -> Dict[str, Any]:
+        """Get sub-replies for a top-level video comment identified by its rpid."""
+
+        async def _runner() -> Dict[str, Any]:
+            cred = _get_credential_from_context(ctx)
+            resolved_bvid = await extract_bvid(bvid)
+            return await fetch_comment_replies(resolved_bvid, root_rpid, page, limit, cred)
+
+        try:
+            return await _run_tool("get_video_comment_replies", _runner)
+        except ToolError:
+            raise
+        except Exception as exc:
+            logger.exception("get_video_comment_replies failed")
+            raise ToolError(f"Failed to fetch comment replies: {exc}")
 
     return mcp
