@@ -105,6 +105,7 @@ async def fetch_video_comments(
     return CommentsResponse(
         comments=comments,
         top=top_comment,
+        count=len(comments),
         total=total,
         page=page,
         has_more=has_more,
@@ -144,6 +145,7 @@ async def fetch_comment_replies(
 
     return CommentRepliesResponse(
         replies=replies,
+        count=len(replies),
         total=total,
         page=page,
         has_more=(page * limit) < total,

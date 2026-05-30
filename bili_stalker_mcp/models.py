@@ -186,6 +186,7 @@ CommentItemResponse.model_rebuild()
 class CommentsResponse(BaseModel):
     comments: list[CommentItemResponse] = Field(default_factory=list)
     top: CommentItemResponse | None = None
+    count: int = 0
     total: int = 0
     page: int = 1
     has_more: bool = False
@@ -193,6 +194,7 @@ class CommentsResponse(BaseModel):
 
 class CommentRepliesResponse(BaseModel):
     replies: list[CommentItemResponse] = Field(default_factory=list)
+    count: int = 0
     total: int = 0
     page: int = 1
     has_more: bool = False
