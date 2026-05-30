@@ -67,12 +67,16 @@ def _check_comment_api_error(data: dict[str, Any], url: str) -> None:
 @with_retry(max_retries=3, base_delay=2.0)
 async def fetch_video_comments(
     bvid: str,
-    page: int,
+    cursor: str | None,
     limit: int,
     sort: str,
     cred: Credential | None,
 ) -> dict[str, Any]:
-    if page > 1:
+    # reply/main is cursor-paginated: the first page omits `next`, and each
+    # subsequent page must echo back the previous response's cursor. For the
+    # time sort the cursor is a content-derived value (not a page index), so a
+    # stateless page number cannot work — callers carry `cursor` forward.
+    if cursor:
         await asyncio.sleep(REQUEST_DELAY)
 
     aid = await _get_aid_cached(bvid, cred)
@@ -84,30 +88,34 @@ async def fetch_video_comments(
         "oid": aid,
         "mode": mode,
         "ps": limit,
-        "pn": page,
     }
+    if cursor:
+        params["next"] = cursor
+
     data = await get_json(url, params=params, cred=cred)
     _check_comment_api_error(data, url)
 
     payload_data = data.get("data") or {}
     raw_replies = payload_data.get("replies") or []
-    cursor = payload_data.get("cursor") or {}
+    cursor_info = payload_data.get("cursor") or {}
 
+    # `top` is only returned on the first page; preserve it when present.
     top_raw = (payload_data.get("top") or {}).get("upper") or (payload_data.get("top") or {}).get("admin")
     top_comment = _parse_comment(top_raw) if isinstance(top_raw, dict) else None
 
     comments = [_parse_comment(r) for r in raw_replies if isinstance(r, dict)]
-    total = coerce_int(cursor.get("all_count")) or len(comments)
+    total = coerce_int(cursor_info.get("all_count")) or len(comments)
 
-    is_end = cursor.get("is_end")
+    is_end = cursor_info.get("is_end")
     has_more = (not is_end) if is_end is not None else (len(comments) >= limit)
+    next_cursor = str(cursor_info.get("next")) if has_more and cursor_info.get("next") is not None else None
 
     return CommentsResponse(
         comments=comments,
         top=top_comment,
         count=len(comments),
         total=total,
-        page=page,
+        next_cursor=next_cursor,
         has_more=has_more,
     ).model_dump()
 

@@ -188,7 +188,7 @@ class CommentsResponse(BaseModel):
     top: CommentItemResponse | None = None
     count: int = 0
     total: int = 0
-    page: int = 1
+    next_cursor: str | None = None
     has_more: bool = False
 
 

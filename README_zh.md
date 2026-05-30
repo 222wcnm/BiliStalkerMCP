@@ -69,6 +69,8 @@ pip install bili-stalker-mcp
 | `get_user_articles` | 轻量专栏列表 | `user_id_or_username`, `page`, `limit` |
 | `get_article_content` | 专栏 Markdown 全文 | `article_id` |
 | `get_user_followings` | 用户关注列表分析 | `user_id_or_username`, `page`, `limit` |
+| `get_video_comments` | 视频主评论（Cursor 分页，每条附最多 3 条子回复预览 + 置顶 `top`） | `bvid`, `cursor`, `limit`, `sort`（`hot`/`time`） |
+| `get_video_comment_replies` | 某条主评论的完整子回复 | `bvid`, `root_rpid`, `page`, `limit` |
 
 ### 动态类型过滤 (`dynamic_type`)
 

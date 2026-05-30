@@ -584,10 +584,17 @@ def create_server() -> FastMCP:
                 description="Video BVID (e.g. BV1xx411c7mD), AV number (e.g. av170001), or a Bilibili video URL.",
             ),
         ],
-        page: Annotated[
-            int,
-            Field(ge=1, le=MAX_PAGE, description="Page number starting from 1."),
-        ] = 1,
+        cursor: Annotated[
+            str | None,
+            Field(
+                description=(
+                    "Pagination cursor. Omit (or null) for the first page. To get the "
+                    "next page, pass back the `next_cursor` returned by the previous call. "
+                    "Cursors are sequential only — you cannot jump to an arbitrary page, "
+                    "and a cursor is tied to its `sort`, so keep `sort` the same while paging."
+                ),
+            ),
+        ] = None,
         limit: Annotated[
             int,
             Field(ge=1, le=MAX_COMMENT_LIMIT, description=f"Comments per page, 1-{MAX_COMMENT_LIMIT}."),
@@ -597,12 +604,18 @@ def create_server() -> FastMCP:
             Field(description="Sort order: hot (by likes) or time (newest first)."),
         ] = "hot",
     ) -> Dict[str, Any]:
-        """Get top-level comments for a video. Each comment includes up to 3 preview sub-replies."""
+        """Get top-level comments for a video. Each comment includes up to 3 preview sub-replies.
+
+        Pagination is cursor-based: the first call returns `next_cursor`; pass it back as
+        `cursor` to fetch the following page, and stop when `has_more` is false (or
+        `next_cursor` is null). Use the same `sort` across a paging sequence. The pinned
+        `top` comment is only present on the first page.
+        """
 
         async def _runner() -> Dict[str, Any]:
             cred = _get_credential_from_context(ctx)
             resolved_bvid = await extract_bvid(bvid)
-            return await fetch_video_comments(resolved_bvid, page, limit, sort, cred)
+            return await fetch_video_comments(resolved_bvid, cursor, limit, sort, cred)
 
         try:
             return await _run_tool("get_video_comments", _runner)
