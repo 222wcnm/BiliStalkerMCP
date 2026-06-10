@@ -67,6 +67,8 @@ pip install bili-stalker-mcp
 | `get_user_articles` | Lightweight article list | `user_id_or_username`, `page`, `limit` |
 | `get_article_content` | Full article markdown content | `article_id` |
 | `get_user_followings` | Subscription list analysis | `user_id_or_username`, `page`, `limit` |
+| `get_video_comments` | Top-level comments with cursor pagination (each carries up to 3 preview sub-replies + pinned `top`) | `bvid`, `cursor`, `limit`, `sort` (`hot`/`time`) |
+| `get_video_comment_replies` | Full sub-replies of one top-level comment | `bvid`, `root_rpid`, `page`, `limit` |
 
 ### Dynamic Filtering (`dynamic_type`)
 
