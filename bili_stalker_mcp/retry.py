@@ -4,7 +4,16 @@ import asyncio
 import functools
 import logging
 import random
-from typing import Any, Callable, Optional, Set, Type, TypeVar
+from typing import (
+    Any,
+    Awaitable,
+    Callable,
+    Optional,
+    Set,
+    Type,
+    TypeVar,
+    cast,
+)
 
 import httpx
 from bilibili_api.exceptions import ApiException, NetworkException
@@ -15,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_RETRYABLE_CODES: Set[int] = {-412, -509, 403, 412, 429}
 
-T = TypeVar("T")
+AsyncCallable = TypeVar("AsyncCallable", bound=Callable[..., Awaitable[Any]])
 
 
 class RetryableBiliApiError(Exception):
@@ -68,14 +77,14 @@ def with_retry(
     on_retry: Optional[Callable[[int, Exception], None]] = None,
     default_on_exhaust: Optional[Any] = None,
     return_default: bool = False,
-) -> Callable:
+) -> Callable[[AsyncCallable], AsyncCallable]:
     """Retry async call with exponential backoff on deterministic transient failures."""
     codes = retryable_codes or DEFAULT_RETRYABLE_CODES
     exceptions = retryable_exceptions or (httpx.RequestError,)
 
-    def decorator(func: Callable[..., T]) -> Callable[..., T]:
+    def decorator(func: AsyncCallable) -> AsyncCallable:
         @functools.wraps(func)
-        async def wrapper(*args: Any, **kwargs: Any) -> T:
+        async def wrapper(*args: Any, **kwargs: Any) -> Any:
             last_exception: Exception | None = None
 
             for attempt in range(max_retries + 1):
@@ -177,7 +186,7 @@ def with_retry(
 
             raise RuntimeError(f"Unexpected retry state for {func.__name__}")
 
-        return wrapper
+        return cast(AsyncCallable, wrapper)
 
     return decorator
 

@@ -79,13 +79,13 @@ def is_dynamic_type_match(item_type_id: Any, dynamic_type: str) -> bool:
     if dynamic_type == DynamicType.ALL_RAW:
         return True
     if dynamic_type == DynamicType.VIDEO:
-        return item_type_id == 8
+        return bool(item_type_id == 8)
     if dynamic_type == DynamicType.ARTICLE:
-        return item_type_id == 64
+        return bool(item_type_id == 64)
     if dynamic_type == DynamicType.DRAW:
-        return item_type_id == 2
+        return bool(item_type_id == 2)
     if dynamic_type == DynamicType.TEXT:
-        return item_type_id == 4
+        return bool(item_type_id == 4)
     return False
 
 

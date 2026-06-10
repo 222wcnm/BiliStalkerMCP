@@ -15,7 +15,10 @@ from .services.dynamic_service import (
     is_dynamic_type_match,
     normalize_dynamic_type,
 )
-from .services.comment_service import fetch_comment_replies, fetch_video_comments
+from .services.comment_service import (
+    fetch_content_comment_replies,
+    fetch_content_comments,
+)
 from .services.user_service import (
     fetch_article_content,
     fetch_user_articles,
@@ -60,7 +63,9 @@ def get_credential() -> Optional[Credential]:
 
     try:
         if not buvid3 and not _missing_buvid3_warned:
-            logger.warning("BUVID3 is not set; anti-bot block risk is higher for raw requests")
+            logger.warning(
+                "BUVID3 is not set; anti-bot block risk is higher for raw requests"
+            )
             _missing_buvid3_warned = True
 
         if bili_jct and buvid3:
@@ -101,8 +106,8 @@ __all__ = [
     "fetch_user_articles",
     "fetch_article_content",
     "fetch_user_followings",
-    "fetch_video_comments",
-    "fetch_comment_replies",
+    "fetch_content_comments",
+    "fetch_content_comment_replies",
     "_format_timestamp",
     "_get_shared_http_client",
     "_normalize_dynamic_type",

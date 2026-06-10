@@ -9,6 +9,39 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
+function Get-PypiToken {
+    param(
+        [Parameter(Mandatory)]
+        [string]$Path,
+
+        [Parameter(Mandatory)]
+        [string]$Section
+    )
+
+    if (-not (Test-Path -LiteralPath $Path)) {
+        throw "PyPI credentials not found: $Path"
+    }
+
+    $currentSection = $null
+    foreach ($rawLine in Get-Content -LiteralPath $Path -Encoding UTF8) {
+        $line = $rawLine.Trim()
+
+        if ($line -match '^\[([^\]]+)\]$') {
+            $currentSection = $Matches[1].Trim()
+            continue
+        }
+
+        if (
+            $currentSection -eq $Section -and
+            $line -match '^password\s*[:=]\s*(.+)$'
+        ) {
+            return $Matches[1].Trim()
+        }
+    }
+
+    throw "No password found in [$Section] section of $Path"
+}
+
 $repoRoot = Split-Path -Parent $PSScriptRoot
 Set-Location $repoRoot
 
@@ -19,7 +52,7 @@ if (-not (Test-Path $pyprojectPath)) {
     throw "pyproject.toml not found: $pyprojectPath"
 }
 
-$pyprojectText = Get-Content -Raw $pyprojectPath
+$pyprojectText = Get-Content -LiteralPath $pyprojectPath -Raw -Encoding UTF8
 $versionMatch = [regex]::Match($pyprojectText, '(?m)^version\s*=\s*"([^"]+)"')
 if (-not $versionMatch.Success) {
     throw "Could not parse [project].version from pyproject.toml."
@@ -75,7 +108,7 @@ else {
     New-Item -ItemType Directory -Path "dist" | Out-Null
 }
 
-uv build
+uv build --no-sources
 uvx --from twine twine check dist/*
 
 if (-not $Upload) {
@@ -91,12 +124,45 @@ if (-not $Upload) {
     exit 0
 }
 
-
-if ($TestPyPI) {
-    uvx --from twine twine upload --repository testpypi dist/*
-    Write-Host "Upload completed: TestPyPI"
+$publishTokenWasSet = Test-Path Env:UV_PUBLISH_TOKEN
+$previousPublishToken = if ($publishTokenWasSet) {
+    $env:UV_PUBLISH_TOKEN
 }
 else {
-    uvx --from twine twine upload dist/*
-    Write-Host "Upload completed: PyPI"
+    $null
+}
+
+if (-not $publishTokenWasSet) {
+    $pypircPath = Join-Path $HOME ".pypirc"
+    $pypircSection = if ($TestPyPI) { "testpypi" } else { "pypi" }
+    $env:UV_PUBLISH_TOKEN = Get-PypiToken -Path $pypircPath -Section $pypircSection
+    Write-Host "Using [$pypircSection] credentials from $pypircPath"
+}
+
+try {
+    if ($TestPyPI) {
+        uv publish `
+            --publish-url "https://test.pypi.org/legacy/" `
+            --check-url "https://test.pypi.org/simple/" `
+            dist/*
+        if ($LASTEXITCODE -ne 0) {
+            throw "uv publish failed for TestPyPI (exit code $LASTEXITCODE)"
+        }
+        Write-Host "Upload completed: TestPyPI"
+    }
+    else {
+        uv publish dist/*
+        if ($LASTEXITCODE -ne 0) {
+            throw "uv publish failed for PyPI (exit code $LASTEXITCODE)"
+        }
+        Write-Host "Upload completed: PyPI"
+    }
+}
+finally {
+    if ($publishTokenWasSet) {
+        $env:UV_PUBLISH_TOKEN = $previousPublishToken
+    }
+    else {
+        Remove-Item Env:UV_PUBLISH_TOKEN -ErrorAction SilentlyContinue
+    }
 }

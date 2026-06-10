@@ -14,8 +14,9 @@ from ..utils.converters import coerce_int
 
 logger = logging.getLogger(__name__)
 
+SubtitleMode = Literal["minimal", "smart", "full"]
 SUBTITLE_FETCH_CONCURRENCY = 4
-DEFAULT_SUBTITLE_MODE = "smart"
+DEFAULT_SUBTITLE_MODE: SubtitleMode = "smart"
 DEFAULT_SUBTITLE_LANG = "auto"
 DEFAULT_SUBTITLE_MAX_CHARS = 12000
 DEFAULT_SUBTITLE_LANGUAGE_PRIORITY = (
@@ -29,8 +30,8 @@ DEFAULT_SUBTITLE_LANGUAGE_PRIORITY = (
 )
 
 
-def _normalize_subtitle_url(subtitle_url: Any) -> str | None:
-    if not subtitle_url or not isinstance(subtitle_url, str):
+def _normalize_subtitle_url(subtitle_url: object) -> str | None:
+    if not isinstance(subtitle_url, str) or not subtitle_url:
         return None
 
     value = subtitle_url.strip()
@@ -273,7 +274,7 @@ async def collect_subtitles(
     video_client: video.Video,
     pages: list[dict[str, Any]],
     cred: Credential | None,
-    subtitle_mode: Literal["minimal", "smart", "full"] = DEFAULT_SUBTITLE_MODE,
+    subtitle_mode: SubtitleMode = DEFAULT_SUBTITLE_MODE,
     subtitle_lang: str = DEFAULT_SUBTITLE_LANG,
     subtitle_max_chars: int = DEFAULT_SUBTITLE_MAX_CHARS,
     *,
@@ -281,7 +282,7 @@ async def collect_subtitles(
 ) -> SubtitleResponse:
     mode = subtitle_mode.strip().lower() if isinstance(subtitle_mode, str) else ""
     if mode == "minimal":
-        normalized_mode: Literal["minimal", "smart", "full"] = "minimal"
+        normalized_mode: SubtitleMode = "minimal"
     elif mode == "full":
         normalized_mode = "full"
     else:

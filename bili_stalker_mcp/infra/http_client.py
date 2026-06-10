@@ -1,3 +1,4 @@
+import importlib
 import logging
 from typing import Any, Mapping
 from urllib.parse import urlparse
@@ -18,7 +19,7 @@ from .upstream import timed_upstream_call
 logger = logging.getLogger(__name__)
 
 try:  # pragma: no cover - exercised indirectly in runtime environments
-    from curl_cffi import requests as curl_requests
+    curl_requests: Any = importlib.import_module("curl_cffi.requests")
 except ImportError:  # pragma: no cover - fallback path for environments without curl_cffi
     curl_requests = None
 
@@ -107,7 +108,7 @@ class SharedRawHttpClient:
             headers=DEFAULT_HEADERS.copy(),
             timeout=httpx.Timeout(CONNECT_TIMEOUT, read=READ_TIMEOUT),
         )
-        self._curl_session = None
+        self._curl_session: Any | None = None
         self._closed = False
 
         if curl_requests is not None:

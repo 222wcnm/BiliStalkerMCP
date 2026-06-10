@@ -2,6 +2,7 @@
 
 import logging
 import os
+from typing import Literal
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +38,7 @@ REQUEST_TIMEOUT = 60.0
 CONNECT_TIMEOUT = 15.0
 READ_TIMEOUT = 45.0
 DEFAULT_TIMEZONE = os.environ.get("BILI_TIMEZONE", "Asia/Shanghai")
-DEFAULT_IMPERSONATE = "chrome131"
+DEFAULT_IMPERSONATE: Literal["chrome131"] = "chrome131"
 
 
 def _get_env_int(name: str, default: int) -> int:
@@ -122,12 +123,12 @@ def initialize_bilibili_request_settings() -> None:
 class DynamicType:
     """Supported dynamic filter values exposed by the MCP tool contract."""
 
-    ALL = "ALL"
-    ALL_RAW = "ALL_RAW"
-    VIDEO = "VIDEO"
-    ARTICLE = "ARTICLE"
-    DRAW = "DRAW"
-    TEXT = "TEXT"
+    ALL: Literal["ALL"] = "ALL"
+    ALL_RAW: Literal["ALL_RAW"] = "ALL_RAW"
+    VIDEO: Literal["VIDEO"] = "VIDEO"
+    ARTICLE: Literal["ARTICLE"] = "ARTICLE"
+    DRAW: Literal["DRAW"] = "DRAW"
+    TEXT: Literal["TEXT"] = "TEXT"
 
     VALID_TYPES = (ALL, ALL_RAW, VIDEO, ARTICLE, DRAW, TEXT)
 

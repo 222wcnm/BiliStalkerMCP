@@ -36,7 +36,8 @@ def begin_request(request_id: str) -> None:
 
 
 def get_request_id() -> str | None:
-    return _get_state()["request_id"]
+    request_id = _get_state()["request_id"]
+    return request_id if isinstance(request_id, str) else None
 
 
 def add_retry() -> None:

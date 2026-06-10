@@ -1,7 +1,16 @@
 import logging
 import time
 import uuid
-from typing import Annotated, Any, Awaitable, Callable, Dict, Literal, Optional, Tuple
+from typing import (
+    Annotated,
+    Any,
+    Awaitable,
+    Callable,
+    Dict,
+    Literal,
+    Optional,
+    Tuple,
+)
 
 from bilibili_api import Credential
 from fastmcp import Context, FastMCP
@@ -13,13 +22,13 @@ from .config import DynamicType
 from .utils import extract_bvid
 from .core import (
     fetch_article_content,
-    fetch_comment_replies,
+    fetch_content_comment_replies,
+    fetch_content_comments,
     fetch_user_articles,
     fetch_user_dynamics,
     fetch_user_followings,
     fetch_user_info,
     fetch_user_videos,
-    fetch_video_comments,
     fetch_video_detail,
     get_credential,
     get_user_id_by_username,
@@ -29,6 +38,7 @@ from .observability import begin_request, snapshot_metrics
 
 DynamicTypeLiteral = Literal["ALL", "ALL_RAW", "VIDEO", "ARTICLE", "DRAW", "TEXT"]
 SubtitleModeLiteral = Literal["minimal", "smart", "full"]
+CommentContentTypeLiteral = Literal["video", "article", "dynamic"]
 
 MAX_PAGE = 1000
 MAX_VIDEO_LIMIT = 30
@@ -41,16 +51,36 @@ def _get_credential_from_context(_ctx: Context) -> Credential:
     """Get credential from environment or raise protocol-level tool error."""
     cred = get_credential()
     if cred is None:
-        raise ToolError("Missing SESSDATA. Please provide SESSDATA in environment variables.")
+        raise ToolError(
+            "Missing SESSDATA. Please provide SESSDATA in environment variables."
+        )
     return cred
 
 
-def _parse_user_identifier(user_id_or_username: str) -> Tuple[Optional[int], Optional[str]]:
+def _parse_user_identifier(
+    user_id_or_username: str,
+) -> Tuple[Optional[int], Optional[str]]:
     """Parse a user identifier string into (user_id, username)."""
     try:
         return int(user_id_or_username), None
     except ValueError:
         return None, user_id_or_username
+
+
+async def _normalize_comment_content_id(
+    content_type: CommentContentTypeLiteral,
+    content_id: str,
+) -> str:
+    if content_type == "video":
+        return await extract_bvid(content_id)
+
+    stripped = content_id.strip()
+    if not stripped.isdigit() or int(stripped) < 1:
+        raise ToolError(
+            f"{content_type} content_id must be a positive numeric string, "
+            f"got: {content_id!r}"
+        )
+    return stripped
 
 
 def create_server() -> FastMCP:
@@ -575,55 +605,81 @@ def create_server() -> FastMCP:
             "idempotentHint": True,
         }
     )
-    async def get_video_comments(
+    async def get_content_comments(
         ctx: Context,
-        bvid: Annotated[
+        content_type: Annotated[
+            CommentContentTypeLiteral,
+            Field(
+                description=(
+                    "Content type: video, article, or dynamic. Dynamic IDs are "
+                    "resolved to Bilibili's actual comment type and oid."
+                )
+            ),
+        ],
+        content_id: Annotated[
             str,
             Field(
-                min_length=3,
-                description="Video BVID (e.g. BV1xx411c7mD), AV number (e.g. av170001), or a Bilibili video URL.",
+                min_length=1,
+                description=(
+                    "Video BVID/AV/URL, article CV id or opus id, or dynamic/opus "
+                    "id. Keep 64-bit IDs as strings."
+                ),
             ),
         ],
         cursor: Annotated[
             str | None,
             Field(
                 description=(
-                    "Pagination cursor. Omit (or null) for the first page. To get the "
-                    "next page, pass back the `next_cursor` returned by the previous call. "
-                    "Cursors are sequential only — you cannot jump to an arbitrary page, "
-                    "and a cursor is tied to its `sort`, so keep `sort` the same while paging."
-                ),
+                    "Pagination cursor from the previous response. Omit for the "
+                    "first page and keep sort unchanged while paging."
+                )
             ),
         ] = None,
         limit: Annotated[
             int,
-            Field(ge=1, le=MAX_COMMENT_LIMIT, description=f"Comments per page, 1-{MAX_COMMENT_LIMIT}."),
+            Field(
+                ge=1,
+                le=MAX_COMMENT_LIMIT,
+                description=f"Comments per page, 1-{MAX_COMMENT_LIMIT}.",
+            ),
         ] = 20,
         sort: Annotated[
             CommentSortLiteral,
-            Field(description="Sort order: hot (by likes) or time (newest first)."),
+            Field(description="Sort order: hot or time."),
         ] = "hot",
     ) -> Dict[str, Any]:
-        """Get top-level comments for a video. Each comment includes up to 3 preview sub-replies.
+        """Get top-level comments for a video, article, or dynamic.
 
-        Pagination is cursor-based: the first call returns `next_cursor`; pass it back as
-        `cursor` to fetch the following page, and stop when `has_more` is false (or
-        `next_cursor` is null). Use the same `sort` across a paging sequence. The pinned
-        `top` comment is only present on the first page.
+        Each comment includes up to 3 preview sub-replies, image metadata, and note
+        metadata. Use the comment's `rpid` as `root_rpid` with
+        `get_content_comment_replies` to retrieve the complete reply thread. Pagination
+        is cursor-based; keep `sort` unchanged while paging. The pinned `top` comment is
+        only present on the first page. For a note, pass `note.cvid` to
+        `get_article_content` to retrieve its full content; the comment API may return
+        only a preview.
         """
 
         async def _runner() -> Dict[str, Any]:
             cred = _get_credential_from_context(ctx)
-            resolved_bvid = await extract_bvid(bvid)
-            return await fetch_video_comments(resolved_bvid, cursor, limit, sort, cred)
+            normalized_id = await _normalize_comment_content_id(
+                content_type, content_id
+            )
+            return await fetch_content_comments(
+                content_type=content_type,
+                content_id=normalized_id,
+                cursor=cursor,
+                limit=limit,
+                sort=sort,
+                cred=cred,
+            )
 
         try:
-            return await _run_tool("get_video_comments", _runner)
+            return await _run_tool("get_content_comments", _runner)
         except ToolError:
             raise
         except Exception as exc:
-            logger.exception("get_video_comments failed")
-            raise ToolError(f"Failed to fetch video comments: {exc}")
+            logger.exception("get_content_comments failed")
+            raise ToolError(f"Failed to fetch content comments: {exc}")
 
     @mcp.tool(
         annotations={
@@ -632,18 +688,30 @@ def create_server() -> FastMCP:
             "idempotentHint": True,
         }
     )
-    async def get_video_comment_replies(
+    async def get_content_comment_replies(
         ctx: Context,
-        bvid: Annotated[
+        content_type: Annotated[
+            CommentContentTypeLiteral,
+            Field(description="Content type: video, article, or dynamic."),
+        ],
+        content_id: Annotated[
             str,
             Field(
-                min_length=3,
-                description="Video BVID (e.g. BV1xx411c7mD), AV number (e.g. av170001), or a Bilibili video URL.",
+                min_length=1,
+                description=(
+                    "Video BVID/AV/URL, article CV id or opus id, or dynamic/opus "
+                    "id. Keep 64-bit IDs as strings."
+                ),
             ),
         ],
         root_rpid: Annotated[
             int,
-            Field(ge=1, description="The rpid of the top-level comment whose sub-replies to fetch."),
+            Field(
+                ge=1,
+                description=(
+                    "Top-level comment rpid returned by `get_content_comments`."
+                ),
+            ),
         ],
         page: Annotated[
             int,
@@ -651,22 +719,35 @@ def create_server() -> FastMCP:
         ] = 1,
         limit: Annotated[
             int,
-            Field(ge=1, le=MAX_COMMENT_LIMIT, description=f"Replies per page, 1-{MAX_COMMENT_LIMIT}."),
+            Field(
+                ge=1,
+                le=MAX_COMMENT_LIMIT,
+                description=f"Replies per page, 1-{MAX_COMMENT_LIMIT}.",
+            ),
         ] = 20,
     ) -> Dict[str, Any]:
-        """Get sub-replies for a top-level video comment identified by its rpid."""
+        """Get paginated replies under one top-level video, article, or dynamic comment."""
 
         async def _runner() -> Dict[str, Any]:
             cred = _get_credential_from_context(ctx)
-            resolved_bvid = await extract_bvid(bvid)
-            return await fetch_comment_replies(resolved_bvid, root_rpid, page, limit, cred)
+            normalized_id = await _normalize_comment_content_id(
+                content_type, content_id
+            )
+            return await fetch_content_comment_replies(
+                content_type=content_type,
+                content_id=normalized_id,
+                root_rpid=root_rpid,
+                page=page,
+                limit=limit,
+                cred=cred,
+            )
 
         try:
-            return await _run_tool("get_video_comment_replies", _runner)
+            return await _run_tool("get_content_comment_replies", _runner)
         except ToolError:
             raise
         except Exception as exc:
-            logger.exception("get_video_comment_replies failed")
-            raise ToolError(f"Failed to fetch comment replies: {exc}")
+            logger.exception("get_content_comment_replies failed")
+            raise ToolError(f"Failed to fetch content comment replies: {exc}")
 
     return mcp

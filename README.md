@@ -67,8 +67,15 @@ pip install bili-stalker-mcp
 | `get_user_articles` | Lightweight article list | `user_id_or_username`, `page`, `limit` |
 | `get_article_content` | Full article markdown content | `article_id` |
 | `get_user_followings` | Subscription list analysis | `user_id_or_username`, `page`, `limit` |
-| `get_video_comments` | Top-level comments with cursor pagination (each carries up to 3 preview sub-replies + pinned `top`) | `bvid`, `cursor`, `limit`, `sort` (`hot`/`time`) |
-| `get_video_comment_replies` | Full sub-replies of one top-level comment | `bvid`, `root_rpid`, `page`, `limit` |
+| `get_content_comments` | Comments for a video, article, or dynamic (including images and note metadata) | `content_type`, `content_id`, `cursor`, `limit`, `sort` |
+| `get_content_comment_replies` | Full sub-replies for a video, article, or dynamic comment | `content_type`, `content_id`, `root_rpid`, `page`, `limit` |
+
+Comment `pictures` contain the original image URLs. Regular long comments retain the
+full text returned by Bilibili. Note-style comments may contain only a preview; use
+the returned `note.cvid` with `get_article_content` to retrieve the full note.
+For video comments, pass `content_type="video"` and a BVID, AV number, or video URL
+as `content_id`. Use a top-level comment's `rpid` as `root_rpid` when fetching its
+complete reply thread.
 
 ### Dynamic Filtering (`dynamic_type`)
 
@@ -137,10 +144,11 @@ uv run python scripts/perf_baseline.py -u <UID> --tools dynamics -n 3
 
 ## Release (Maintainers)
 
-> **Prerequisite**: Ensure that a `.pypirc` file is configured in your user home directory to provide PyPI credentials.
+> **Credentials**: The release script uses `UV_PUBLISH_TOKEN` when set; otherwise it reads the matching `[pypi]` or `[testpypi]` token from `$HOME\.pypirc`.
+> Twine is invoked transiently through `uvx` only for package metadata validation and is not a project dependency.
 
 ```powershell
-# Build + test + twine check (no upload)
+# Build + test + package metadata validation (no upload)
 .\scripts\pypi_release.ps1
 
 # Upload to TestPyPI

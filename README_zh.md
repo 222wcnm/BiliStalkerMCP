@@ -69,8 +69,13 @@ pip install bili-stalker-mcp
 | `get_user_articles` | 轻量专栏列表 | `user_id_or_username`, `page`, `limit` |
 | `get_article_content` | 专栏 Markdown 全文 | `article_id` |
 | `get_user_followings` | 用户关注列表分析 | `user_id_or_username`, `page`, `limit` |
-| `get_video_comments` | 视频主评论（Cursor 分页，每条附最多 3 条子回复预览 + 置顶 `top`） | `bvid`, `cursor`, `limit`, `sort`（`hot`/`time`） |
-| `get_video_comment_replies` | 某条主评论的完整子回复 | `bvid`, `root_rpid`, `page`, `limit` |
+| `get_content_comments` | 视频、专栏或动态的评论（含图片和笔记元数据） | `content_type`, `content_id`, `cursor`, `limit`, `sort` |
+| `get_content_comment_replies` | 视频、专栏或动态评论的完整楼中楼回复 | `content_type`, `content_id`, `root_rpid`, `page`, `limit` |
+
+评论中的 `pictures` 会保留原始图片 URL。普通长评论保留 B 站接口返回的完整文本；
+笔记类型长评可能只返回预览，可将返回的 `note.cvid` 交给 `get_article_content` 获取全文。
+获取视频评论时，将 `content_type` 设为 `video`，并把 BVID、AV 号或视频 URL 作为
+`content_id`。需要完整楼中楼时，将主评论的 `rpid` 作为 `root_rpid` 传入。
 
 ### 动态类型过滤 (`dynamic_type`)
 
@@ -139,10 +144,11 @@ uv run python scripts/perf_baseline.py -u <UID> --tools dynamics -n 3
 
 ## 📦 发布 (维护者)
 
-> **前置要求**: 请确保系统用户目录下已配置 `.pypirc` 文件以提供 PyPI 凭证。
+> **凭据**: 发布脚本优先使用 `UV_PUBLISH_TOKEN`；未设置时，会自动读取 `$HOME\.pypirc` 中对应的 `[pypi]` 或 `[testpypi]` Token。
+> Twine 仅通过 `uvx` 临时执行包元数据校验，不作为项目依赖。
 
 ```powershell
-# 构建 + 测试 + twine 检查（不上传）
+# 构建 + 测试 + 包元数据校验（不上传）
 .\scripts\pypi_release.ps1
 
 # 上传到 TestPyPI

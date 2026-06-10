@@ -275,8 +275,10 @@ async def fetch_opus_payload(
         logger.warning("Opus payload extraction failed for %s: %s", url, exc)
         return None
 
-    if not isinstance(initial_state, dict):
+    raw_initial_state: Any = initial_state
+    if not isinstance(raw_initial_state, dict):
         return None
+    initial_state = raw_initial_state
 
     detail = initial_state.get("detail")
     basic = detail.get("basic") if isinstance(detail, dict) else None

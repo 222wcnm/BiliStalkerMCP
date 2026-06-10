@@ -170,13 +170,32 @@ class CommentMemberResponse(BaseModel):
     uname: str | None = None
 
 
+class CommentPictureResponse(BaseModel):
+    url: str
+    width: float | None = None
+    height: float | None = None
+    size_kb: float | None = None
+
+
+class CommentNoteResponse(BaseModel):
+    cvid: str | None = None
+    summary: str | None = None
+    images: list[str] = Field(default_factory=list)
+    url: str | None = None
+    content_is_preview: bool = True
+
+
 class CommentItemResponse(BaseModel):
     rpid: int | None = None
+    root_rpid: int | None = None
+    parent_rpid: int | None = None
     content: str | None = None
     member: CommentMemberResponse = Field(default_factory=CommentMemberResponse)
     like: int | None = None
     reply_count: int | None = None
     publish_time: str | None = None
+    pictures: list[CommentPictureResponse] = Field(default_factory=list)
+    note: CommentNoteResponse | None = None
     replies: list["CommentItemResponse"] = Field(default_factory=list)
 
 

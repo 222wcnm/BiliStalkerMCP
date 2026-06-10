@@ -145,14 +145,14 @@ async def _get_user_id_by_username_cached(username: str) -> int | None:
     for user_item in result_list:
         uname = (user_item.get("uname") or "").lower()
         if uname == username_lower:
-            return user_item.get("mid")
+            return coerce_int(user_item.get("mid"))
 
     logger.warning(
         "No exact match for '%s', using first result '%s'",
         username,
         result_list[0].get("uname"),
     )
-    return result_list[0].get("mid")
+    return coerce_int(result_list[0].get("mid"))
 
 
 async def get_user_id_by_username(username: str) -> int | None:
@@ -346,7 +346,7 @@ async def fetch_user_articles(
     u = user.User(uid=user_id, credential=cred)
     articles_data = await timed_upstream_call(u.get_articles(pn=page, ps=limit))
 
-    article_items = []
+    article_items: list[ArticleListItem] = []
     for article_data in articles_data.get("articles") or []:
         if len(article_items) >= limit:
             break
