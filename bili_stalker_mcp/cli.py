@@ -1,5 +1,5 @@
-﻿import json
-import asyncio
+﻿import asyncio
+import json
 import logging
 import os
 import sys
@@ -57,7 +57,9 @@ class JsonLogFormatter(logging.Formatter):
 
 
 def _configure_logging() -> None:
-    log_level = getattr(logging, os.environ.get("BILI_LOG_LEVEL", "INFO").upper(), logging.INFO)
+    log_level = getattr(
+        logging, os.environ.get("BILI_LOG_LEVEL", "INFO").upper(), logging.INFO
+    )
 
     handler = logging.StreamHandler(stream=sys.stderr)
     handler.setFormatter(JsonLogFormatter())
@@ -76,14 +78,16 @@ def _close_http_client_sync() -> None:
         pass
 
 
-def main() -> None:
+def main() -> int:
     """CLI entrypoint for MCP stdio transport."""
     try:
         from bili_stalker_mcp.server import create_server
 
         _configure_logging()
 
-        logger.info("server_starting", extra={"event": "server_starting", "transport": "stdio"})
+        logger.info(
+            "server_starting", extra={"event": "server_starting", "transport": "stdio"}
+        )
 
         mcp = create_server()
         mcp.run(transport="stdio")
@@ -91,11 +95,15 @@ def main() -> None:
     except ImportError as exc:
         print(f"Import error: {exc}", file=sys.stderr)
         print("Ensure the project is installed (uv pip install -e .)", file=sys.stderr)
+        return 1
     except Exception:
         logger.exception("server_start_failed", extra={"event": "server_start_failed"})
+        return 1
     finally:
         _close_http_client_sync()
 
+    return 0
+
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

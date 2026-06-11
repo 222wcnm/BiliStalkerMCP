@@ -1,29 +1,31 @@
-import os
-import sys
-import json
-import logging
 import argparse
 import asyncio
+import logging
+import os
 import subprocess
+import sys
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Any, Dict
+
+from dotenv import load_dotenv
 
 # 将项目根目录添加到 sys.path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from dotenv import load_dotenv
-
 
 # --- 配置日志 ---
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+)
 logger = logging.getLogger("BiliStalkerTestSuite")
+
 
 # 确保使用 uv 环境
 def ensure_uv_environment():
     """确保项目在 uv 环境中运行"""
     try:
-        result = subprocess.run(['uv', '--version'], capture_output=True, text=True)
+        result = subprocess.run(["uv", "--version"], capture_output=True, text=True)
         if result.returncode != 0:
             logger.error("uv 未安装或不可用。请先安装 uv: pip install uv")
             return False
@@ -33,13 +35,18 @@ def ensure_uv_environment():
         logger.error("uv 命令未找到。请先安装 uv: pip install uv")
         return False
 
+
 def install_dependencies():
     """使用 uv 安装项目依赖"""
     logger.info("使用 uv 安装项目依赖...")
     try:
         os.chdir(project_root)
-        result = subprocess.run(['uv', 'pip', 'install', '-e', '.'], 
-                              capture_output=True, text=True, check=True)
+        subprocess.run(
+            ["uv", "pip", "install", "-e", "."],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
         logger.info("依赖安装成功")
         return True
     except subprocess.CalledProcessError as e:
@@ -48,6 +55,7 @@ def install_dependencies():
     except Exception as e:
         logger.error(f"安装依赖时出错: {e}")
         return False
+
 
 # 现在导入项目模块
 try:
@@ -59,70 +67,78 @@ except ImportError as e:
     else:
         sys.exit(1)
 
+
 def validate_user_info_fields(user_info: Dict[str, Any]) -> bool:
     """验证用户信息字段的完整性"""
-    required_fields = ['mid', 'name']
+    required_fields = ["mid", "name"]
     # optional_fields 已大部分移除，仅保留 following/follower (虽然返回时设为了None，但也保留检查key是否存在)
-    optional_fields = ['following', 'follower']
-    
+    optional_fields = ["following", "follower"]
+
     missing_required = [field for field in required_fields if field not in user_info]
     if missing_required:
         logger.warning(f"缺少必需字段: {missing_required}")
         return False
-    
+
     present_optional = [field for field in optional_fields if field in user_info]
     logger.info(f"同时存在的字段: {present_optional}")
-    
+
     # 验证关键字段类型
-    if not isinstance(user_info.get('mid'), int):
+    if not isinstance(user_info.get("mid"), int):
         logger.warning(f"mid 字段类型错误: {type(user_info.get('mid'))}")
-    
+
     return True
+
 
 def validate_video_fields(video: Dict[str, Any]) -> bool:
     """验证视频字段的完整性"""
     # aid, url, pic 已移除
-    required_fields = ['title', 'bvid', 'created', 'play']
-    
+    required_fields = ["title", "bvid", "created_time", "play"]
+
     missing_required = [field for field in required_fields if field not in video]
     if missing_required:
         logger.warning(f"视频缺少必需字段: {missing_required}")
         return False
-    
+
     # 验证字幕信息 (结构已简化)
-    if 'subtitle' in video:
-        subtitle = video['subtitle']
+    if "subtitle" in video:
+        subtitle = video["subtitle"]
         if isinstance(subtitle, dict):
-            subtitle_keys = ['has_subtitle', 'subtitle_summary']
+            subtitle_keys = ["has_subtitle", "subtitle_summary"]
             missing_sub_keys = [key for key in subtitle_keys if key not in subtitle]
             if missing_sub_keys:
-                 logger.warning(f"字幕信息缺少字段: {missing_sub_keys}")
-            
+                logger.warning(f"字幕信息缺少字段: {missing_sub_keys}")
+
             logger.info(f"字幕概览: {subtitle.get('subtitle_summary')}")
-    
+
     return True
+
 
 def validate_dynamic_fields(dynamic: Dict[str, Any]) -> bool:
     """验证动态字段的完整性"""
     # author_mid, stats, images, origin_* 已移除
-    required_fields = ['dynamic_id', 'type', 'timestamp']
-    optional_fields = ['text_content', 'video', 'article']
-    
+    required_fields = ["dynamic_id", "type", "timestamp"]
+    optional_fields = ["text_content", "video", "article"]
+
     missing_required = [field for field in required_fields if field not in dynamic]
     if missing_required:
         logger.warning(f"动态缺少必需字段: {missing_required}")
         return False
-    
-    present_optional = [field for field in optional_fields if field in dynamic and dynamic[field] is not None]
+
+    present_optional = [
+        field
+        for field in optional_fields
+        if field in dynamic and dynamic[field] is not None
+    ]
     if present_optional:
         logger.info(f"动态存在的可选字段: {present_optional}")
-    
+
     return True
+
 
 def load_credentials():
     """从环境变量加载凭证。支持 .env 文件。"""
     # 加载 .env 文件
-    env_path = project_root / '.env'
+    env_path = project_root / ".env"
     if env_path.exists():
         logger.info(f"正在加载环境变量: {env_path}")
         load_dotenv(dotenv_path=env_path)
@@ -137,13 +153,16 @@ def load_credentials():
 
     if not sessdata:
         logger.error("缺少 SESSDATA 环境变量。请设置环境变量后运行测试。")
-        logger.info("示例: $env:SESSDATA='your_sessdata'; $env:BILI_JCT='your_bili_jct'; $env:BUVID3='your_buvid3'")
+        logger.info(
+            "示例: $env:SESSDATA='your_sessdata'; $env:BILI_JCT='your_bili_jct'; $env:BUVID3='your_buvid3'"
+        )
         return None
-    
+
     if not bili_jct or not buvid3:
         logger.warning("BILI_JCT 或 BUVID3 未设置，部分功能可能受限。")
-        
+
     return core.get_credential()
+
 
 async def test_user_info(cred, user_id, username):
     """测试用户信息获取并验证字段"""
@@ -179,6 +198,7 @@ async def test_user_info(cred, user_id, username):
 
     return target_uid
 
+
 async def test_videos(cred, user_id, limit):
     """测试视频和字幕获取并验证字段"""
     logger.info(f"--- 测试: 获取最新 {limit} 个视频 ---")
@@ -189,25 +209,31 @@ async def test_videos(cred, user_id, limit):
 
     videos = video_result.get("videos", [])
     logger.info(f"成功获取 {len(videos)} 个视频。")
-    
+
     for i, video in enumerate(videos[:3]):  # 只验证前3个
         logger.info(f"  验证第 {i+1} 个视频字段...")
         validate_video_fields(video)
-        
-        bvid = video.get('bvid', 'None')
-        subtitle_info = video.get('subtitle', {})
-        has_subtitle = subtitle_info.get('has_subtitle', False)
-        subtitle_summary = subtitle_info.get('subtitle_summary', '无')
-        
+
+        bvid = video.get("bvid", "None")
+        subtitle_info = video.get("subtitle", {})
+        has_subtitle = subtitle_info.get("has_subtitle", False)
+        subtitle_summary = subtitle_info.get("subtitle_summary", "无")
+
         logger.info(f"  - [视频] {video['title']}")
         logger.info(f"    BVID: {bvid}")
         logger.info(f"    字幕: {has_subtitle} ({subtitle_summary})")
+
 
 async def test_dynamics(cred, user_id, limit):
     """测试动态获取和解析并验证字段"""
     logger.info(f"--- 测试: 获取最新 {limit} 条动态 (所有类型) ---")
     try:
-        dynamics_result = await core.fetch_user_dynamics(user_id, 0, limit, cred, dynamic_type="ALL")
+        dynamics_result = await core.fetch_user_dynamics(
+            user_id=user_id,
+            limit=limit,
+            cred=cred,
+            dynamic_type="ALL",
+        )
     except Exception as e:
         logger.error(f"获取动态失败: {e}")
         return
@@ -218,20 +244,27 @@ async def test_dynamics(cred, user_id, limit):
     for i, dynamic_item in enumerate(dynamics[:3]):  # 只验证前3个
         logger.info(f"  验证第 {i+1} 个动态字段...")
         validate_dynamic_fields(dynamic_item)
-        
-        dynamic_type = dynamic_item.get('type', 'UNKNOWN')
-        text = dynamic_item.get('text_content', '(无文本)')
-        text_preview = text.replace('\n', ' ').strip()[:30] + "..." if text != '(无文本)' else "(无文本)"
-        
+
+        dynamic_type = dynamic_item.get("type", "UNKNOWN")
+        text = dynamic_item.get("text_content", "(无文本)")
+        text_preview = (
+            text.replace("\n", " ").strip()[:30] + "..."
+            if text != "(无文本)"
+            else "(无文本)"
+        )
+
         logger.info(f"  - [动态] 类型: {dynamic_type}, 内容: {text_preview}")
-        
+
         # 显示特殊字段
         # images 已移除，不显示
-        if 'video' in dynamic_item:
-            video_info = dynamic_item['video']
-            logger.info(f"    视频: {video_info.get('title', 'N/A')} (BVID: {video_info.get('bvid', 'N/A')})")
-        if 'error' in dynamic_item:
+        if "video" in dynamic_item:
+            video_info = dynamic_item["video"]
+            logger.info(
+                f"    视频: {video_info.get('title', 'N/A')} (BVID: {video_info.get('bvid', 'N/A')})"
+            )
+        if "error" in dynamic_item:
             logger.warning(f"    解析错误: {dynamic_item['error']}")
+
 
 async def test_articles(cred, user_id, limit):
     """测试专栏文章获取"""
@@ -247,6 +280,7 @@ async def test_articles(cred, user_id, limit):
     for article in articles:
         logger.info(f"  - [文章] {article['title']}")
 
+
 async def test_followings(cred, user_id, limit):
     """测试关注列表获取"""
     logger.info(f"--- 测试: 获取最新 {limit} 个关注 ---")
@@ -260,21 +294,31 @@ async def test_followings(cred, user_id, limit):
         logger.error(f"获取关注列表失败: {e}")
         return
 
-
     followings = followings_result.get("followings", [])
     logger.info(f"成功获取 {len(followings)} 个关注。")
     for following in followings:
         logger.info(f"  - [关注] {following['uname']}")
 
+
 async def main():
     # 确保 uv 环境
     if not ensure_uv_environment():
         sys.exit(1)
-    
+
     parser = argparse.ArgumentParser(description="BiliStalkerMCP 测试套件")
-    parser.add_argument("-u", "--user", help="要测试的用户名或用户ID", default="35847683")
-    parser.add_argument("-l", "--limit", type=int, help="获取内容的数量限制", default=10)
-    parser.add_argument("-t", "--tests", nargs='+', help="指定要运行的测试模块 (all, user, video, dynamic, article, followings)", default=["all"])
+    parser.add_argument(
+        "-u", "--user", help="要测试的用户名或用户ID", default="35847683"
+    )
+    parser.add_argument(
+        "-l", "--limit", type=int, help="获取内容的数量限制", default=10
+    )
+    parser.add_argument(
+        "-t",
+        "--tests",
+        nargs="+",
+        help="指定要运行的测试模块 (all, user, video, dynamic, article, followings)",
+        default=["all"],
+    )
     args = parser.parse_args()
 
     cred = load_credentials()
@@ -310,6 +354,7 @@ async def main():
         await test_followings(cred, target_uid, args.limit)
 
     logger.info("--- 测试套件运行完毕 ---")
+
 
 if __name__ == "__main__":
     asyncio.run(main())

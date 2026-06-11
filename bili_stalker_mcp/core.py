@@ -2,22 +2,22 @@
 import os
 from typing import Optional
 
-from bilibili_api import Credential
 from bilibili_api import user  # compatibility export for tests/monkeypatching
+from bilibili_api import Credential
 
 from .config import initialize_bilibili_request_settings
 from .infra.http_client import get_shared_http_client
 from .parsers.dynamic_parser import format_timestamp, parse_dynamic_item
+from .services.comment_service import (
+    fetch_content_comment_replies,
+    fetch_content_comments,
+)
 from .services.dynamic_service import (
     decode_cursor_token,
     encode_cursor_token,
     fetch_user_dynamics,
     is_dynamic_type_match,
     normalize_dynamic_type,
-)
-from .services.comment_service import (
-    fetch_content_comment_replies,
-    fetch_content_comments,
 )
 from .services.user_service import (
     fetch_article_content,
@@ -28,7 +28,6 @@ from .services.user_service import (
     fetch_video_detail,
     get_user_id_by_username,
 )
-
 
 initialize_bilibili_request_settings()
 
@@ -97,6 +96,7 @@ _parse_dynamic_item = parse_dynamic_item
 
 
 __all__ = [
+    "user",
     "get_credential",
     "get_user_id_by_username",
     "fetch_user_info",

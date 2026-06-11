@@ -1,7 +1,7 @@
 from bili_stalker_mcp.observability import (
-    add_upstream_duration_ms,
     add_lazy_pause,
     add_throttle_sleep_ms,
+    add_upstream_duration_ms,
     begin_request,
     record_cache_hit,
     record_upstream_block,

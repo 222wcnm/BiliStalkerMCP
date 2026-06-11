@@ -131,6 +131,9 @@ cython_debug/
 
 # Project specific files
 BILI_COOKIE.txt
+cookie.json
+.mcp.json
+.claude/
 
 # IDE and tool-specific directories
 .qoder/

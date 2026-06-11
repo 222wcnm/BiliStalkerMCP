@@ -42,6 +42,43 @@ function Get-PypiToken {
     throw "No password found in [$Section] section of $Path"
 }
 
+function Assert-SafeSourceDistribution {
+    param(
+        [Parameter(Mandatory)]
+        [string]$DistDirectory
+    )
+
+    $sdists = @(Get-ChildItem -LiteralPath $DistDirectory -Filter "*.tar.gz" -File)
+    if ($sdists.Count -ne 1) {
+        throw "Expected exactly one source distribution, found $($sdists.Count)."
+    }
+
+    $entries = @(& tar -tf $sdists[0].FullName)
+    if ($LASTEXITCODE -ne 0) {
+        throw "Unable to inspect source distribution: $($sdists[0].FullName)"
+    }
+
+    $forbiddenPatterns = @(
+        '(^|/)\.claude/',
+        '(^|/)\.codex/',
+        '(^|/)\.env$',
+        '(^|/)\.mcp\.json$',
+        '(^|/)cookie\.json$'
+    )
+    $forbiddenEntries = @(
+        $entries | Where-Object {
+            $entry = $_
+            $forbiddenPatterns | Where-Object { $entry -match $_ }
+        }
+    )
+
+    if ($forbiddenEntries.Count -gt 0) {
+        throw "Source distribution contains forbidden local files: $($forbiddenEntries -join ', ')"
+    }
+
+    Write-Host "Source distribution content check passed."
+}
+
 $repoRoot = Split-Path -Parent $PSScriptRoot
 Set-Location $repoRoot
 
@@ -109,6 +146,7 @@ else {
 }
 
 uv build --no-sources
+Assert-SafeSourceDistribution -DistDirectory (Join-Path $repoRoot "dist")
 uvx --from twine twine check dist/*
 
 if (-not $Upload) {

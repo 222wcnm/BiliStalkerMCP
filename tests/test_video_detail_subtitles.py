@@ -269,7 +269,9 @@ async def test_fetch_video_detail_invalid_inline_subtitles_fall_back_to_subtitle
 
 
 @pytest.mark.asyncio
-async def test_fetch_video_detail_marks_blocked_subtitle_downloads_in_errors(monkeypatch):
+async def test_fetch_video_detail_marks_blocked_subtitle_downloads_in_errors(
+    monkeypatch,
+):
     class FakeVideo:
         def __init__(self, bvid, credential):
             self.bvid = bvid

@@ -191,17 +191,21 @@ def _parse_origin(desc: dict[str, Any], card: dict[str, Any]) -> dict[str, Any] 
     origin_type = origin_desc.get("type")
     origin_user_raw = card.get("origin_user")
     origin_user = (
-        (origin_user_raw or {}).get("info")
-        if isinstance(origin_user_raw, dict)
-        else {}
+        (origin_user_raw or {}).get("info") if isinstance(origin_user_raw, dict) else {}
     )
 
     origin: dict[str, Any] = {
         "type": None,
         "text_content": None,
         "image_count": 0,
-        "user_name": origin_user.get("uname") if isinstance(origin_user, dict) else None,
-        "user_id": _coerce_int((origin_user or {}).get("uid")) if isinstance(origin_user, dict) else None,
+        "user_name": (
+            origin_user.get("uname") if isinstance(origin_user, dict) else None
+        ),
+        "user_id": (
+            _coerce_int((origin_user or {}).get("uid"))
+            if isinstance(origin_user, dict)
+            else None
+        ),
         "video": None,
         "article": None,
     }
@@ -211,7 +215,8 @@ def _parse_origin(desc: dict[str, Any], card: dict[str, Any]) -> dict[str, Any] 
         origin["text_content"] = origin_card.get("dynamic")
         origin["video"] = {
             "title": origin_card.get("title"),
-            "bvid": origin_card.get("bvid") or _safe_aid_to_bvid(origin_card.get("aid")),
+            "bvid": origin_card.get("bvid")
+            or _safe_aid_to_bvid(origin_card.get("aid")),
         }
     elif origin_type == 2:
         origin_item = origin_card.get("item")

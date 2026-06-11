@@ -79,7 +79,10 @@ async def test_cursor_pagination_has_no_duplicates_or_missing(monkeypatch):
         cursor=second["next_cursor"],
     )
 
-    ids = [item["dynamic_id"] for item in first["dynamics"] + second["dynamics"] + third["dynamics"]]
+    ids = [
+        item["dynamic_id"]
+        for item in first["dynamics"] + second["dynamics"] + third["dynamics"]
+    ]
 
     assert first["has_more"] is True
     assert second["has_more"] is True
@@ -110,7 +113,9 @@ async def test_cursor_and_offset_cannot_be_combined():
 
 @pytest.mark.asyncio
 async def test_dynamic_lazy_pause_triggers_between_batches(monkeypatch):
-    def build_page(start_id: int, count: int, next_offset: str | None, has_more: bool) -> dict:
+    def build_page(
+        start_id: int, count: int, next_offset: str | None, has_more: bool
+    ) -> dict:
         cards = [
             _build_text_card(str(dynamic_id), f"content-{dynamic_id}")
             for dynamic_id in range(start_id, start_id + count)
@@ -141,10 +146,18 @@ async def test_dynamic_lazy_pause_triggers_between_batches(monkeypatch):
 
     monkeypatch.setattr(core.user, "User", FakeUser)
     monkeypatch.setattr("bili_stalker_mcp.services.dynamic_service.LAZY_ENABLED", True)
-    monkeypatch.setattr("bili_stalker_mcp.services.dynamic_service.LAZY_DYNAMICS_BATCH", 30)
-    monkeypatch.setattr("bili_stalker_mcp.services.dynamic_service.LAZY_SLEEP_MIN_SECONDS", 5)
-    monkeypatch.setattr("bili_stalker_mcp.services.dynamic_service.LAZY_SLEEP_MAX_SECONDS", 5)
-    monkeypatch.setattr("bili_stalker_mcp.services.dynamic_service.asyncio.sleep", fake_sleep)
+    monkeypatch.setattr(
+        "bili_stalker_mcp.services.dynamic_service.LAZY_DYNAMICS_BATCH", 30
+    )
+    monkeypatch.setattr(
+        "bili_stalker_mcp.services.dynamic_service.LAZY_SLEEP_MIN_SECONDS", 5
+    )
+    monkeypatch.setattr(
+        "bili_stalker_mcp.services.dynamic_service.LAZY_SLEEP_MAX_SECONDS", 5
+    )
+    monkeypatch.setattr(
+        "bili_stalker_mcp.services.dynamic_service.asyncio.sleep", fake_sleep
+    )
     monkeypatch.setattr("bili_stalker_mcp.infra.upstream.REQUEST_JITTER_MIN_MS", 0)
     monkeypatch.setattr("bili_stalker_mcp.infra.upstream.REQUEST_JITTER_MAX_MS", 0)
     begin_request("dynamic-lazy")
@@ -164,3 +177,50 @@ async def test_dynamic_lazy_pause_triggers_between_batches(monkeypatch):
     assert sleep_calls == [5, 5]
     assert metrics["lazy_pause_count"] == 2
     assert metrics["lazy_pause_ms"] == 10000.0
+
+
+@pytest.mark.asyncio
+async def test_scan_limit_preserves_cursor_for_continuation(monkeypatch):
+    class FakeUser:
+        def __init__(self, uid, credential):
+            self.uid = uid
+            self.credential = credential
+
+        async def get_dynamics_new(self, offset):
+            page_number = int(offset or 0)
+            return {
+                "items": [{"type": "DYNAMIC_TYPE_AV"}],
+                "has_more": True,
+                "offset": str(page_number + 1),
+            }
+
+    monkeypatch.setattr(core.user, "User", FakeUser)
+    monkeypatch.setattr(
+        "bili_stalker_mcp.services.dynamic_service.MAX_SCAN_PAGES",
+        2,
+    )
+    monkeypatch.setattr(
+        "bili_stalker_mcp.infra.upstream.REQUEST_JITTER_MIN_MS",
+        0,
+    )
+    monkeypatch.setattr(
+        "bili_stalker_mcp.infra.upstream.REQUEST_JITTER_MAX_MS",
+        0,
+    )
+
+    first = await core.fetch_user_dynamics(
+        user_id=1,
+        limit=1,
+        cred=object(),
+        dynamic_type="TEXT",
+    )
+    next_api_cursor, skip_matches = core._decode_cursor_token(
+        first["next_cursor"],
+        user_id=1,
+        dynamic_type="TEXT",
+    )
+
+    assert first["dynamics"] == []
+    assert first["has_more"] is True
+    assert next_api_cursor == "2"
+    assert skip_matches == 0

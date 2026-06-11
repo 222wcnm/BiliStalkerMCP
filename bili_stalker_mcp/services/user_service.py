@@ -10,8 +10,8 @@ from ..infra.upstream import timed_upstream_call
 from ..models import (
     ArticleContentResponse,
     ArticleListItem,
-    ArticleStatsResponse,
     ArticlesResponse,
+    ArticleStatsResponse,
     FollowingItemResponse,
     FollowingsResponse,
     UserInfoResponse,
@@ -414,10 +414,13 @@ async def _legacy_cv_markdown(
     except ApiException as exc:
         if is_retryable_error(exc):
             raise
+        error_reason = repr(exc)
         logger.warning(
-            "CV %s legacy parser raised %s; falling back to opus page", cvid, exc
+            "CV %s legacy parser raised %s; falling back to opus page",
+            cvid,
+            error_reason,
         )
-        return info if isinstance(info, dict) else None, None, str(exc)
+        return info if isinstance(info, dict) else None, None, error_reason
 
 
 @with_retry(max_retries=3, base_delay=2.0)

@@ -155,7 +155,9 @@ def _extract_content_paragraphs(initial_state: dict[str, Any]) -> list[dict[str,
     return []
 
 
-def _render_content_paragraph(paragraph: dict[str, Any], *, has_top_title: bool) -> str | None:
+def _render_content_paragraph(
+    paragraph: dict[str, Any], *, has_top_title: bool
+) -> str | None:
     para_type = coerce_int(paragraph.get("para_type"))
 
     if para_type == 1:
@@ -209,7 +211,11 @@ def _build_markdown_from_initial_state(
     if not paragraphs:
         return None
 
-    title = preferred_title.strip() if isinstance(preferred_title, str) and preferred_title.strip() else None
+    title = (
+        preferred_title.strip()
+        if isinstance(preferred_title, str) and preferred_title.strip()
+        else None
+    )
     if not title:
         title = _extract_title_from_initial_state(initial_state)
 
@@ -237,7 +243,11 @@ def build_article_fallback_markdown(
     reason: str,
 ) -> str:
     title = article_info.get("title") if isinstance(article_info, dict) else None
-    heading = f"# {title}" if isinstance(title, str) and title.strip() else f"# cv{article_id}"
+    heading = (
+        f"# {title}"
+        if isinstance(title, str) and title.strip()
+        else f"# cv{article_id}"
+    )
 
     lines = [
         heading,

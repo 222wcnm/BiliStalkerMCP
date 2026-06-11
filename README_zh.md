@@ -132,7 +132,7 @@ skills/bili-content-analysis/
 # 初始化
 git clone https://github.com/222wcnm/BiliStalkerMCP.git
 cd BiliStalkerMCP
-uv pip install -e .[dev]
+uv sync --dev
 
 # 单元测试
 uv run pytest -q

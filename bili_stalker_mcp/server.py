@@ -19,7 +19,6 @@ from pydantic import Field
 
 from . import __version__
 from .config import DynamicType
-from .utils import extract_bvid
 from .core import (
     fetch_article_content,
     fetch_content_comment_replies,
@@ -34,7 +33,7 @@ from .core import (
     get_user_id_by_username,
 )
 from .observability import begin_request, snapshot_metrics
-
+from .utils import extract_bvid
 
 DynamicTypeLiteral = Literal["ALL", "ALL_RAW", "VIDEO", "ARTICLE", "DRAW", "TEXT"]
 SubtitleModeLiteral = Literal["minimal", "smart", "full"]

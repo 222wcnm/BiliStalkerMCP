@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "bili_stalker_mcp"
-version = "3.1.0"
+version = "3.2.0"
 description = "Bilibili MCP server for analyzing specific Bilibili users, with profile, video, dynamic, article, subtitle, and following tools"
 authors = [
     {name = "222wcnm", email = "2328072813li@gmail.com"},
@@ -12,6 +12,7 @@ authors = [
 readme = {file = "README.md", content-type = "text/markdown"}
 requires-python = ">=3.12"
 license = "MIT"
+license-files = ["LICENSE"]
 keywords = ["bilibili", "mcp", "mcp-server", "model-context-protocol", "fastmcp", "creator-analysis", "user-analysis", "video", "dynamics", "subtitles"]
 classifiers = [
     "Development Status :: 4 - Beta",
@@ -47,18 +48,8 @@ dev = [
     "mypy>=1.0.0",
 ]
 
-[project.scripts]
-bili-stalker-mcp = "bili_stalker_mcp.cli:main"
-
-[project.urls]
-Homepage = "https://github.com/222wcnm/BiliStalkerMCP"
-Documentation = "https://github.com/222wcnm/BiliStalkerMCP#readme"
-Repository = "https://github.com/222wcnm/BiliStalkerMCP"
-Issues = "https://github.com/222wcnm/BiliStalkerMCP/issues"
-Changelog = "https://github.com/222wcnm/BiliStalkerMCP/releases"
-
-[tool.uv]
-dev-dependencies = [
+[dependency-groups]
+dev = [
     "pytest>=7.0.0",
     "pytest-asyncio>=0.23.0",
     "pytest-cov>=4.0.0",
@@ -69,13 +60,39 @@ dev-dependencies = [
     "mypy>=1.0.0",
 ]
 
+[project.scripts]
+bili-stalker-mcp = "bili_stalker_mcp.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/222wcnm/BiliStalkerMCP"
+Documentation = "https://github.com/222wcnm/BiliStalkerMCP#readme"
+Repository = "https://github.com/222wcnm/BiliStalkerMCP"
+Issues = "https://github.com/222wcnm/BiliStalkerMCP/issues"
+Changelog = "https://github.com/222wcnm/BiliStalkerMCP/releases"
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "/bili_stalker_mcp",
+    "/LICENSE",
+    "/README.md",
+    "/README_zh.md",
+    "/pyproject.toml",
+]
+exclude = [
+    "/.claude",
+    "/.codex",
+    "/.env",
+    "/.mcp.json",
+    "/cookie.json",
+]
+
 [tool.hatch.build.targets.wheel]
 packages = ["bili_stalker_mcp"]
 
 [tool.black]
 line-length = 88
 target-version = ['py312']
-include = '''\.pyi?'''
+include = '''\.pyi?$'''
 
 extend-exclude = '''
 /(
@@ -84,6 +101,7 @@ extend-exclude = '''
   | \.git
   | \.hg
   | \.mypy_cache
+  | __pycache__
   | \.tox
   | \.venv
   | build
@@ -111,4 +129,3 @@ warn_unused_ignores = true
 warn_no_return = true
 warn_unreachable = true
 strict_equality = true
-

@@ -79,20 +79,24 @@ def with_retry(
     return_default: bool = False,
 ) -> Callable[[AsyncCallable], AsyncCallable]:
     """Retry async call with exponential backoff on deterministic transient failures."""
-    codes = retryable_codes or DEFAULT_RETRYABLE_CODES
-    exceptions = retryable_exceptions or (httpx.RequestError,)
+    codes = DEFAULT_RETRYABLE_CODES if retryable_codes is None else retryable_codes
+    exceptions = (
+        (httpx.RequestError,) if retryable_exceptions is None else retryable_exceptions
+    )
 
     def decorator(func: AsyncCallable) -> AsyncCallable:
         @functools.wraps(func)
         async def wrapper(*args: Any, **kwargs: Any) -> Any:
             last_exception: Exception | None = None
+            retry_exhausted = False
 
             for attempt in range(max_retries + 1):
                 try:
                     # First attempt is immediate. Backoff applies only to retries.
                     if attempt > 0:
                         delay = min(
-                            base_delay * (2 ** (attempt - 1)) + random.uniform(0.0, 0.5),
+                            base_delay * (2 ** (attempt - 1))
+                            + random.uniform(0.0, 0.5),
                             max_delay,
                         )
                         logger.warning(
@@ -120,6 +124,7 @@ def with_retry(
                         )
                         continue
                     if code in codes:
+                        retry_exhausted = True
                         logger.error(
                             "Retryable API error exhausted in %s (code=%s)",
                             func.__name__,
@@ -127,7 +132,7 @@ def with_retry(
                         )
                     else:
                         logger.error(
-                            "Non-retryable API error in %s (code=%s): %s",
+                            "Non-retryable API error in %s (code=%s): %r",
                             func.__name__,
                             code,
                             exc,
@@ -147,12 +152,20 @@ def with_retry(
                             code,
                         )
                         continue
-                    logger.error(
-                        "Non-retryable HTTP status in %s (status=%s): %s",
-                        func.__name__,
-                        code,
-                        exc,
-                    )
+                    if code in codes:
+                        retry_exhausted = True
+                        logger.error(
+                            "Retryable HTTP status exhausted in %s (status=%s)",
+                            func.__name__,
+                            code,
+                        )
+                    else:
+                        logger.error(
+                            "Non-retryable HTTP status in %s (status=%s): %s",
+                            func.__name__,
+                            code,
+                            exc,
+                        )
                     break
 
                 except exceptions as exc:
@@ -172,9 +185,10 @@ def with_retry(
                         func.__name__,
                         exc,
                     )
+                    retry_exhausted = True
                     break
 
-            if return_default:
+            if return_default and retry_exhausted:
                 logger.warning(
                     "All retries exhausted for %s, returning default value",
                     func.__name__,

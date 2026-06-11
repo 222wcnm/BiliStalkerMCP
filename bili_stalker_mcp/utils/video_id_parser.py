@@ -1,6 +1,7 @@
 import logging
 import re
 from typing import Any
+from urllib.parse import urlparse
 
 from bilibili_api import aid2bvid
 
@@ -10,6 +11,14 @@ logger = logging.getLogger(__name__)
 
 _BV_PATTERN = re.compile(r"BV[a-zA-Z0-9_]+")
 _AV_PATTERN = re.compile(r"(?:^|/)av(\d+)", re.IGNORECASE)
+
+
+def _is_b23_short_url(value: str) -> bool:
+    parsed = urlparse(value)
+    return (
+        parsed.scheme.lower() in {"http", "https"}
+        and (parsed.hostname or "").lower() == "b23.tv"
+    )
 
 
 def _safe_aid_to_bvid(aid: Any) -> str | None:
@@ -47,7 +56,7 @@ async def extract_bvid(raw: str) -> str:
         if converted:
             return converted
 
-    if "b23.tv" in text:
+    if _is_b23_short_url(text):
         try:
             response = await get_shared_http_client().head(
                 text,

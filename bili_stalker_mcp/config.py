@@ -49,7 +49,9 @@ def _get_env_int(name: str, default: int) -> int:
     try:
         return int(raw)
     except ValueError:
-        logger.warning("Invalid integer value for %s=%r, falling back to %s", name, raw, default)
+        logger.warning(
+            "Invalid integer value for %s=%r, falling back to %s", name, raw, default
+        )
         return default
 
 
@@ -64,7 +66,9 @@ def _get_env_bool(name: str, default: bool) -> bool:
     if normalized in {"0", "false", "no", "off"}:
         return False
 
-    logger.warning("Invalid boolean value for %s=%r, falling back to %s", name, raw, default)
+    logger.warning(
+        "Invalid boolean value for %s=%r, falling back to %s", name, raw, default
+    )
     return default
 
 
@@ -103,7 +107,9 @@ def initialize_bilibili_request_settings() -> None:
     try:
         from bilibili_api import request_settings, select_client
     except ImportError:
-        logger.warning("bilibili_api is not installed, skipping request settings initialization")
+        logger.warning(
+            "bilibili_api is not installed, skipping request settings initialization"
+        )
         return
 
     request_settings.set_enable_auto_buvid(True)
@@ -113,7 +119,9 @@ def initialize_bilibili_request_settings() -> None:
     try:
         select_client("curl_cffi")
         request_settings.set("impersonate", DEFAULT_IMPERSONATE)
-        logger.debug("Using curl_cffi client with %s impersonation", DEFAULT_IMPERSONATE)
+        logger.debug(
+            "Using curl_cffi client with %s impersonation", DEFAULT_IMPERSONATE
+        )
     except Exception as exc:
         logger.debug("curl_cffi client unavailable, using default client: %s", exc)
 

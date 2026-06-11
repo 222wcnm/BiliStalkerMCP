@@ -28,7 +28,9 @@ async def timed_upstream_call(awaitable: Awaitable[T]) -> T:
         and REQUEST_JITTER_MAX_MS >= REQUEST_JITTER_MIN_MS
     ):
         sleep_ms = random.uniform(REQUEST_JITTER_MIN_MS, REQUEST_JITTER_MAX_MS)
-        logger.debug("Applying upstream jitter before call %s: %.0fms", call_count, sleep_ms)
+        logger.debug(
+            "Applying upstream jitter before call %s: %.0fms", call_count, sleep_ms
+        )
         add_throttle_sleep_ms(sleep_ms)
         await asyncio.sleep(sleep_ms / 1000.0)
 

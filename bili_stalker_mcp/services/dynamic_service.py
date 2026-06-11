@@ -8,11 +8,11 @@ from typing import Any
 from bilibili_api import Credential, user
 
 from ..config import (
-    DynamicType,
     LAZY_DYNAMICS_BATCH,
     LAZY_ENABLED,
     LAZY_SLEEP_MAX_SECONDS,
     LAZY_SLEEP_MIN_SECONDS,
+    DynamicType,
 )
 from ..infra.upstream import timed_upstream_call
 from ..models import DynamicItemResponse, DynamicListResponse
@@ -195,8 +195,13 @@ async def fetch_user_dynamics(
                 user_id,
                 MAX_SCAN_PAGES,
             )
-            next_cursor = None
-            has_more = False
+            next_cursor = encode_cursor_token(
+                api_cursor=current_cursor,
+                skip_matches=in_page_skip,
+                user_id=user_id,
+                dynamic_type=dynamic_type,
+            )
+            has_more = True
             break
 
         current_key = _cursor_identity(current_cursor)

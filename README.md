@@ -132,7 +132,7 @@ The agent will automatically activate the skill when user requests involve Bilib
 # Setup
 git clone https://github.com/222wcnm/BiliStalkerMCP.git
 cd BiliStalkerMCP
-uv pip install -e .[dev]
+uv sync --dev
 
 # Test
 uv run pytest -q

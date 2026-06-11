@@ -1,5 +1,5 @@
 import pytest
-from bilibili_api.exceptions import ResponseCodeException
+from bilibili_api.exceptions import ApiException, ResponseCodeException
 
 from bili_stalker_mcp.services.user_service import (
     _legacy_cv_markdown,
@@ -211,6 +211,31 @@ async def test_legacy_cv_markdown_reraises_retryable_api_errors(monkeypatch):
         await _legacy_cv_markdown(cvid=12345, cred=None)
 
 
+@pytest.mark.asyncio
+async def test_legacy_cv_markdown_handles_api_exception_with_broken_str(monkeypatch):
+    class FakeArticle:
+        def __init__(self, cvid, credential):
+            self.cvid = cvid
+            self.credential = credential
+
+        async def get_info(self):
+            return {"title": "legacy article"}
+
+        async def fetch_content(self):
+            raise ApiException({"code": -400, "message": "bad request"})
+
+    monkeypatch.setattr(
+        "bili_stalker_mcp.services.user_service.article.Article", FakeArticle
+    )
+
+    info, markdown, error_reason = await _legacy_cv_markdown(cvid=12345, cred=None)
+
+    assert info == {"title": "legacy article"}
+    assert markdown is None
+    assert error_reason is not None
+    assert "ApiException" in error_reason
+
+
 # ── opus snowflake ID path tests ──────────────────────────────────────
 
 # A representative opus snowflake ID (>= 2^53) used across the tests below.
@@ -349,9 +374,7 @@ async def test_opus_id_accepted_as_string(monkeypatch):
     )
 
     # Pass as string -- this is what the MCP tool layer sends after server.py validation.
-    result = await fetch_article_content(
-        article_id=str(_OPUS_SNOWFLAKE_ID), cred=None
-    )
+    result = await fetch_article_content(article_id=str(_OPUS_SNOWFLAKE_ID), cred=None)
 
     assert result["id"] == str(_OPUS_SNOWFLAKE_ID)
     assert result["title"] == "string-id article"

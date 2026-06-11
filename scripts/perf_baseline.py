@@ -11,7 +11,6 @@ from typing import Any, Awaitable, Callable
 from bili_stalker_mcp import core
 from bili_stalker_mcp.observability import begin_request, snapshot_metrics
 
-
 ToolRunner = Callable[[int, int, Any], Awaitable[dict[str, Any]]]
 
 
@@ -24,16 +23,32 @@ class Sample:
 
 
 def _parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Run lightweight performance baseline for BiliStalkerMCP tools.")
+    parser = argparse.ArgumentParser(
+        description="Run lightweight performance baseline for BiliStalkerMCP tools."
+    )
     parser.add_argument("-u", "--user", required=True, help="UID or username")
-    parser.add_argument("-n", "--iterations", type=int, default=3, help="iterations per tool (default: 3)")
-    parser.add_argument("-l", "--limit", type=int, default=10, help="limit/page size for list tools (default: 10)")
+    parser.add_argument(
+        "-n",
+        "--iterations",
+        type=int,
+        default=3,
+        help="iterations per tool (default: 3)",
+    )
+    parser.add_argument(
+        "-l",
+        "--limit",
+        type=int,
+        default=10,
+        help="limit/page size for list tools (default: 10)",
+    )
     parser.add_argument(
         "--tools",
         default="videos,dynamics",
         help="comma-separated tools: user_info,videos,dynamics,articles,followings (default: videos,dynamics)",
     )
-    parser.add_argument("--warmup", type=int, default=1, help="warmup runs per tool (default: 1)")
+    parser.add_argument(
+        "--warmup", type=int, default=1, help="warmup runs per tool (default: 1)"
+    )
     return parser.parse_args()
 
 
@@ -41,9 +56,15 @@ def _available_tools() -> dict[str, ToolRunner]:
     return {
         "user_info": lambda uid, limit, cred: core.fetch_user_info(uid, cred),
         "videos": lambda uid, limit, cred: core.fetch_user_videos(uid, 1, limit, cred),
-        "dynamics": lambda uid, limit, cred: core.fetch_user_dynamics(uid, 0, limit, cred, "ALL"),
-        "articles": lambda uid, limit, cred: core.fetch_user_articles(uid, 1, limit, cred),
-        "followings": lambda uid, limit, cred: core.fetch_user_followings(uid, 1, limit, cred),
+        "dynamics": lambda uid, limit, cred: core.fetch_user_dynamics(
+            uid, 0, limit, cred, "ALL"
+        ),
+        "articles": lambda uid, limit, cred: core.fetch_user_articles(
+            uid, 1, limit, cred
+        ),
+        "followings": lambda uid, limit, cred: core.fetch_user_followings(
+            uid, 1, limit, cred
+        ),
     }
 
 
@@ -59,7 +80,9 @@ def _merge_cache(samples: list[Sample]) -> dict[str, dict[str, float | int]]:
     merged: dict[str, dict[str, float | int]] = {}
     for sample in samples:
         for cache_name, item in sample.cache.items():
-            stats = merged.setdefault(cache_name, {"hit": 0, "miss": 0, "total": 0, "hit_rate": 0.0})
+            stats = merged.setdefault(
+                cache_name, {"hit": 0, "miss": 0, "total": 0, "hit_rate": 0.0}
+            )
             stats["hit"] = int(stats["hit"]) + int(item.get("hit", 0))
             stats["miss"] = int(stats["miss"]) + int(item.get("miss", 0))
 
@@ -82,7 +105,9 @@ async def _resolve_uid(user_input: str) -> int:
     return uid
 
 
-async def _run_once(tool_name: str, runner: ToolRunner, uid: int, limit: int, cred: Any) -> Sample:
+async def _run_once(
+    tool_name: str, runner: ToolRunner, uid: int, limit: int, cred: Any
+) -> Sample:
     begin_request(uuid.uuid4().hex)
     started = time.perf_counter()
     await runner(uid, limit, cred)
@@ -135,7 +160,9 @@ async def _benchmark_tool(
         "failure_count": failures,
         "failure_examples": failure_examples,
         "avg_duration_ms": round(mean(durations), 3) if durations else None,
-        "p95_duration_ms": round(_percentile(durations, 0.95), 3) if durations else None,
+        "p95_duration_ms": (
+            round(_percentile(durations, 0.95), 3) if durations else None
+        ),
         "avg_upstream_duration_ms": round(mean(upstreams), 3) if upstreams else None,
         "avg_retry_count": round(mean(retries), 3) if retries else None,
         "cache": _merge_cache(samples),

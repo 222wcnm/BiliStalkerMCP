@@ -84,7 +84,9 @@ def _build_track_metadata(
     part: str | None,
     subtitle_item: dict[str, Any],
 ) -> tuple[SubtitleTrack, str | None]:
-    lan = subtitle_item.get("lan") if isinstance(subtitle_item.get("lan"), str) else None
+    lan = (
+        subtitle_item.get("lan") if isinstance(subtitle_item.get("lan"), str) else None
+    )
     lan_doc = (
         subtitle_item.get("lan_doc")
         if isinstance(subtitle_item.get("lan_doc"), str)
@@ -162,11 +164,15 @@ def _build_subtitle_candidates(
         )
         normalized_url = _normalize_subtitle_url(subtitle_url)
         if require_complete and (
-            not isinstance(track.lan, str) or not track.lan.strip() or normalized_url is None
+            not isinstance(track.lan, str)
+            or not track.lan.strip()
+            or normalized_url is None
         ):
             return None
 
-        candidates.append({"track": track, "subtitle_url": normalized_url or subtitle_url})
+        candidates.append(
+            {"track": track, "subtitle_url": normalized_url or subtitle_url}
+        )
 
     if require_complete and not candidates:
         return None
@@ -208,7 +214,9 @@ def _select_smart_subtitle_candidate(
     if not candidates:
         return None, None
 
-    requested_raw = requested_language.strip() if isinstance(requested_language, str) else ""
+    requested_raw = (
+        requested_language.strip() if isinstance(requested_language, str) else ""
+    )
     requested_norm = _normalize_language_tag(requested_raw)
     normalized_auto = _normalize_language_tag(DEFAULT_SUBTITLE_LANG)
 
@@ -249,14 +257,19 @@ def _select_smart_subtitle_candidate(
             fallback_candidate,
             f"requested '{requested_raw}' unavailable; fallback to '{selected}'",
         )
-    return fallback_candidate, "auto preference not matched; fallback to first available"
+    return (
+        fallback_candidate,
+        "auto preference not matched; fallback to first available",
+    )
 
 
 def build_disabled_subtitles(subtitle_lang: str) -> SubtitleResponse:
     return SubtitleResponse(
         enabled=False,
         mode="disabled",
-        requested_language=subtitle_lang if isinstance(subtitle_lang, str) else DEFAULT_SUBTITLE_LANG,
+        requested_language=(
+            subtitle_lang if isinstance(subtitle_lang, str) else DEFAULT_SUBTITLE_LANG
+        ),
         available_languages=[],
         selected_language=None,
         fallback_reason=None,
@@ -292,7 +305,11 @@ async def collect_subtitles(
         return SubtitleResponse(
             enabled=True,
             mode=normalized_mode,
-            requested_language=subtitle_lang if isinstance(subtitle_lang, str) else DEFAULT_SUBTITLE_LANG,
+            requested_language=(
+                subtitle_lang
+                if isinstance(subtitle_lang, str)
+                else DEFAULT_SUBTITLE_LANG
+            ),
             available_languages=[],
             selected_language=None,
             fallback_reason="subtitle metadata and text skipped by mode=minimal",
@@ -388,7 +405,11 @@ async def collect_subtitles(
         return SubtitleResponse(
             enabled=True,
             mode=normalized_mode,
-            requested_language=subtitle_lang if isinstance(subtitle_lang, str) else DEFAULT_SUBTITLE_LANG,
+            requested_language=(
+                subtitle_lang
+                if isinstance(subtitle_lang, str)
+                else DEFAULT_SUBTITLE_LANG
+            ),
             available_languages=available_languages,
             selected_language=None,
             fallback_reason="No subtitle tracks available",
@@ -417,7 +438,11 @@ async def collect_subtitles(
             return SubtitleResponse(
                 enabled=True,
                 mode=normalized_mode,
-                requested_language=subtitle_lang if isinstance(subtitle_lang, str) else DEFAULT_SUBTITLE_LANG,
+                requested_language=(
+                    subtitle_lang
+                    if isinstance(subtitle_lang, str)
+                    else DEFAULT_SUBTITLE_LANG
+                ),
                 available_languages=available_languages,
                 selected_language=None,
                 fallback_reason="No subtitle tracks available",
@@ -451,7 +476,8 @@ async def collect_subtitles(
         selected_language = selected_candidate["track"].lan
     else:
         track_tasks = [
-            _timed_fetch_track_text(candidate["subtitle_url"]) for candidate in candidates
+            _timed_fetch_track_text(candidate["subtitle_url"])
+            for candidate in candidates
         ]
         track_results = await asyncio.gather(*track_tasks)
         remaining_budget = char_budget
@@ -476,7 +502,9 @@ async def collect_subtitles(
     return SubtitleResponse(
         enabled=True,
         mode=normalized_mode,
-        requested_language=subtitle_lang if isinstance(subtitle_lang, str) else DEFAULT_SUBTITLE_LANG,
+        requested_language=(
+            subtitle_lang if isinstance(subtitle_lang, str) else DEFAULT_SUBTITLE_LANG
+        ),
         available_languages=available_languages,
         selected_language=selected_language,
         fallback_reason=fallback_reason,

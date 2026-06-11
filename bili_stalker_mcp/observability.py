@@ -1,10 +1,11 @@
 import contextvars
 from typing import Any
 
-
-_metrics_state_var: contextvars.ContextVar[dict[str, Any] | None] = contextvars.ContextVar(
-    "metrics_state",
-    default=None,
+_metrics_state_var: contextvars.ContextVar[dict[str, Any] | None] = (
+    contextvars.ContextVar(
+        "metrics_state",
+        default=None,
+    )
 )
 
 
@@ -82,7 +83,9 @@ def record_cache_hit(cache_name: str, hit: bool) -> None:
         item["miss"] += 1
 
 
-def _summarize_cache_stats(raw_stats: dict[str, dict[str, int]]) -> dict[str, dict[str, float | int]]:
+def _summarize_cache_stats(
+    raw_stats: dict[str, dict[str, int]],
+) -> dict[str, dict[str, float | int]]:
     summary: dict[str, dict[str, float | int]] = {}
     for cache_name, item in raw_stats.items():
         hit = int(item.get("hit", 0))

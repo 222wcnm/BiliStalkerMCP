@@ -20,7 +20,9 @@ logger = logging.getLogger(__name__)
 
 try:  # pragma: no cover - exercised indirectly in runtime environments
     curl_requests: Any = importlib.import_module("curl_cffi.requests")
-except ImportError:  # pragma: no cover - fallback path for environments without curl_cffi
+except (
+    ImportError
+):  # pragma: no cover - fallback path for environments without curl_cffi
     curl_requests = None
 
 
@@ -48,7 +50,9 @@ def build_request_headers(
 ) -> dict[str, str]:
     merged_headers = DEFAULT_HEADERS.copy()
     if headers:
-        merged_headers.update({key: value for key, value in headers.items() if value is not None})
+        merged_headers.update(
+            {key: value for key, value in headers.items() if value is not None}
+        )
 
     if "Cookie" not in merged_headers:
         cookie_header = build_cookie_header(cred)
@@ -119,7 +123,9 @@ class SharedRawHttpClient:
                 raise_for_status=False,
             )
         else:
-            logger.debug("curl_cffi is unavailable, raw requests will use httpx fallback only")
+            logger.debug(
+                "curl_cffi is unavailable, raw requests will use httpx fallback only"
+            )
 
     @property
     def is_closed(self) -> bool:
@@ -231,11 +237,15 @@ async def request_json(
 
     try:
         payload = response.json()
-    except Exception as exc:  # pragma: no cover - defensive against malformed upstream payloads
+    except (
+        Exception
+    ) as exc:  # pragma: no cover - defensive against malformed upstream payloads
         raise ValueError(f"Invalid JSON response from {url}") from exc
 
     if not isinstance(payload, dict):
-        raise ValueError(f"Unexpected JSON response type from {url}: {type(payload).__name__}")
+        raise ValueError(
+            f"Unexpected JSON response type from {url}: {type(payload).__name__}"
+        )
 
     return payload
 
