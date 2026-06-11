@@ -57,7 +57,10 @@ def _available_tools() -> dict[str, ToolRunner]:
         "user_info": lambda uid, limit, cred: core.fetch_user_info(uid, cred),
         "videos": lambda uid, limit, cred: core.fetch_user_videos(uid, 1, limit, cred),
         "dynamics": lambda uid, limit, cred: core.fetch_user_dynamics(
-            uid, 0, limit, cred, "ALL"
+            user_id=uid,
+            limit=limit,
+            cred=cred,
+            dynamic_type="ALL",
         ),
         "articles": lambda uid, limit, cred: core.fetch_user_articles(
             uid, 1, limit, cred

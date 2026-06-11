@@ -116,7 +116,7 @@ def validate_video_fields(video: Dict[str, Any]) -> bool:
 def validate_dynamic_fields(dynamic: Dict[str, Any]) -> bool:
     """验证动态字段的完整性"""
     # author_mid, stats, images, origin_* 已移除
-    required_fields = ["dynamic_id", "type", "timestamp"]
+    required_fields = ["dynamic_id", "type", "publish_time"]
     optional_fields = ["text_content", "video", "article"]
 
     missing_required = [field for field in required_fields if field not in dynamic]
@@ -246,7 +246,7 @@ async def test_dynamics(cred, user_id, limit):
         validate_dynamic_fields(dynamic_item)
 
         dynamic_type = dynamic_item.get("type", "UNKNOWN")
-        text = dynamic_item.get("text_content", "(无文本)")
+        text = dynamic_item.get("text_content") or "(无文本)"
         text_preview = (
             text.replace("\n", " ").strip()[:30] + "..."
             if text != "(无文本)"
@@ -257,8 +257,8 @@ async def test_dynamics(cred, user_id, limit):
 
         # 显示特殊字段
         # images 已移除，不显示
-        if "video" in dynamic_item:
-            video_info = dynamic_item["video"]
+        video_info = dynamic_item.get("video")
+        if isinstance(video_info, dict):
             logger.info(
                 f"    视频: {video_info.get('title', 'N/A')} (BVID: {video_info.get('bvid', 'N/A')})"
             )
