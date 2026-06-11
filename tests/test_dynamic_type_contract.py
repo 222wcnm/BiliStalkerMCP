@@ -4,6 +4,7 @@ from bili_stalker_mcp.config import DynamicType
 from bili_stalker_mcp.core import (
     _decode_cursor_token,
     _encode_cursor_token,
+    _is_dynamic_type_match,
     _normalize_dynamic_type,
 )
 
@@ -27,6 +28,20 @@ def test_normalize_dynamic_type_is_case_insensitive():
 def test_normalize_dynamic_type_rejects_invalid_value():
     with pytest.raises(ValueError, match="Invalid dynamic_type"):
         _normalize_dynamic_type("INVALID")
+
+
+@pytest.mark.parametrize(
+    ("item_type", "dynamic_type"),
+    [
+        ("DYNAMIC_TYPE_FORWARD", DynamicType.ALL),
+        ("DYNAMIC_TYPE_DRAW", DynamicType.DRAW),
+        ("DYNAMIC_TYPE_WORD", DynamicType.TEXT),
+        ("DYNAMIC_TYPE_AV", DynamicType.VIDEO),
+        ("DYNAMIC_TYPE_ARTICLE", DynamicType.ARTICLE),
+    ],
+)
+def test_dynamic_type_matching_supports_polymer_types(item_type, dynamic_type):
+    assert _is_dynamic_type_match(item_type, dynamic_type) is True
 
 
 def test_cursor_token_round_trip():

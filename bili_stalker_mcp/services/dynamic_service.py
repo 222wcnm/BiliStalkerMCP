@@ -20,8 +20,8 @@ from ..observability import add_lazy_pause
 from ..parsers.dynamic_parser import parse_dynamic_item
 from ..retry import with_retry
 
-CURSOR_VERSION = 1
-FIRST_PAGE_CURSOR = 0
+CURSOR_VERSION = 2
+FIRST_PAGE_CURSOR = ""
 MAX_SCAN_PAGES = 20
 logger = logging.getLogger(__name__)
 
@@ -75,17 +75,24 @@ def normalize_dynamic_type(dynamic_type: str) -> str:
 
 def is_dynamic_type_match(item_type_id: Any, dynamic_type: str) -> bool:
     if dynamic_type == DynamicType.ALL:
-        return item_type_id in {1, 2, 4}
+        return item_type_id in {
+            1,
+            2,
+            4,
+            "DYNAMIC_TYPE_FORWARD",
+            "DYNAMIC_TYPE_DRAW",
+            "DYNAMIC_TYPE_WORD",
+        }
     if dynamic_type == DynamicType.ALL_RAW:
         return True
     if dynamic_type == DynamicType.VIDEO:
-        return bool(item_type_id == 8)
+        return item_type_id in {8, "DYNAMIC_TYPE_AV"}
     if dynamic_type == DynamicType.ARTICLE:
-        return bool(item_type_id == 64)
+        return item_type_id in {64, "DYNAMIC_TYPE_ARTICLE"}
     if dynamic_type == DynamicType.DRAW:
-        return bool(item_type_id == 2)
+        return item_type_id in {2, "DYNAMIC_TYPE_DRAW"}
     if dynamic_type == DynamicType.TEXT:
-        return bool(item_type_id == 4)
+        return item_type_id in {4, "DYNAMIC_TYPE_WORD"}
     return False
 
 
@@ -156,7 +163,7 @@ async def fetch_user_dynamics(
 
     dynamic_type = normalize_dynamic_type(dynamic_type)
 
-    if cursor and offset not in (None, FIRST_PAGE_CURSOR):
+    if cursor and offset not in (None, FIRST_PAGE_CURSOR, 0):
         raise ValueError("cursor and offset cannot be combined")
 
     u = user.User(uid=user_id, credential=cred)
@@ -171,6 +178,8 @@ async def fetch_user_dynamics(
     else:
         current_cursor = offset if offset is not None else FIRST_PAGE_CURSOR
         in_page_skip = 0
+    if current_cursor == 0:
+        current_cursor = FIRST_PAGE_CURSOR
 
     next_cursor: str | None = None
     has_more = False
@@ -202,11 +211,15 @@ async def fetch_user_dynamics(
             break
         seen_offsets.add(current_key)
 
-        raw_dynamics_data = await timed_upstream_call(u.get_dynamics(offset=current_cursor))
+        raw_dynamics_data = await timed_upstream_call(
+            u.get_dynamics_new(offset=str(current_cursor))
+        )
 
-        cards = (raw_dynamics_data or {}).get("cards") or []
-        page_next_offset = (raw_dynamics_data or {}).get("next_offset")
-        page_has_more = bool((raw_dynamics_data or {}).get("has_more") and page_next_offset)
+        cards = (raw_dynamics_data or {}).get("items") or []
+        page_next_offset = (raw_dynamics_data or {}).get("offset")
+        page_has_more = bool(
+            (raw_dynamics_data or {}).get("has_more") and page_next_offset
+        )
 
         if not cards:
             next_cursor = None
@@ -218,7 +231,7 @@ async def fetch_user_dynamics(
         remaining_match_in_page = False
 
         for index, card in enumerate(cards):
-            item_type_id = (card.get("desc") or {}).get("type")
+            item_type_id = card.get("type")
             if not is_dynamic_type_match(item_type_id, dynamic_type):
                 continue
 
@@ -232,7 +245,7 @@ async def fetch_user_dynamics(
             if len(processed_dynamics) >= limit:
                 remaining_match_in_page = any(
                     is_dynamic_type_match(
-                        (tail.get("desc") or {}).get("type"),
+                        tail.get("type"),
                         dynamic_type,
                     )
                     for tail in cards[index + 1 :]

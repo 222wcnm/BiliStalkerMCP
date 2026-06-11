@@ -6,13 +6,19 @@ from bili_stalker_mcp.observability import begin_request, snapshot_metrics
 
 def _build_text_card(dynamic_id: str, content: str) -> dict:
     return {
-        "desc": {
-            "dynamic_id_str": dynamic_id,
-            "timestamp": 1771601421,
-            "type": 4,
-        },
-        "card": {
-            "item": {"content": content},
+        "id_str": dynamic_id,
+        "type": "DYNAMIC_TYPE_WORD",
+        "modules": {
+            "module_author": {"pub_ts": "1771601421"},
+            "module_dynamic": {
+                "desc": {"text": content},
+                "major": None,
+            },
+            "module_stat": {
+                "like": {"count": 0},
+                "comment": {"count": 0},
+                "forward": {"count": 0},
+            },
         },
     }
 
@@ -20,22 +26,22 @@ def _build_text_card(dynamic_id: str, content: str) -> dict:
 @pytest.mark.asyncio
 async def test_cursor_pagination_has_no_duplicates_or_missing(monkeypatch):
     pages = {
-        0: {
-            "cards": [
+        "": {
+            "items": [
                 _build_text_card("1", "a"),
                 _build_text_card("2", "b"),
                 _build_text_card("3", "c"),
             ],
             "has_more": True,
-            "next_offset": "c2",
+            "offset": "c2",
         },
         "c2": {
-            "cards": [
+            "items": [
                 _build_text_card("4", "d"),
                 _build_text_card("5", "e"),
             ],
             "has_more": False,
-            "next_offset": None,
+            "offset": "",
         },
     }
 
@@ -44,8 +50,8 @@ async def test_cursor_pagination_has_no_duplicates_or_missing(monkeypatch):
             self.uid = uid
             self.credential = credential
 
-        async def get_dynamics(self, offset):
-            return pages.get(offset, {"cards": [], "has_more": False, "next_offset": None})
+        async def get_dynamics_new(self, offset):
+            return pages.get(offset, {"items": [], "has_more": False, "offset": ""})
 
     monkeypatch.setattr(core.user, "User", FakeUser)
 
@@ -110,13 +116,13 @@ async def test_dynamic_lazy_pause_triggers_between_batches(monkeypatch):
             for dynamic_id in range(start_id, start_id + count)
         ]
         return {
-            "cards": cards,
+            "items": cards,
             "has_more": has_more,
-            "next_offset": next_offset,
+            "offset": next_offset or "",
         }
 
     pages = {
-        0: build_page(1, 30, "c2", True),
+        "": build_page(1, 30, "c2", True),
         "c2": build_page(31, 30, "c3", True),
         "c3": build_page(61, 5, None, False),
     }
@@ -127,7 +133,7 @@ async def test_dynamic_lazy_pause_triggers_between_batches(monkeypatch):
             self.uid = uid
             self.credential = credential
 
-        async def get_dynamics(self, offset):
+        async def get_dynamics_new(self, offset):
             return pages[offset]
 
     async def fake_sleep(delay: float) -> None:

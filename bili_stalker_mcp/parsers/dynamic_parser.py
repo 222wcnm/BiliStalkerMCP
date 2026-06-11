@@ -60,6 +60,125 @@ def _extract_image_count(raw_pictures: Any) -> int:
     return sum(1 for picture in raw_pictures if isinstance(picture, dict))
 
 
+def _extract_module_stats(modules: dict[str, Any]) -> dict[str, int]:
+    stat = _ensure_mapping(modules.get("module_stat"))
+
+    def count(name: str) -> int:
+        return _coerce_int(_ensure_mapping(stat.get(name)).get("count")) or 0
+
+    return {
+        "like": count("like"),
+        "comment": count("comment"),
+        "forward": count("forward"),
+    }
+
+
+def _extract_dynamic_text(module_dynamic: dict[str, Any]) -> str | None:
+    desc_text = _ensure_mapping(module_dynamic.get("desc")).get("text")
+    if isinstance(desc_text, str) and desc_text:
+        return desc_text
+
+    major = _ensure_mapping(module_dynamic.get("major"))
+    opus = _ensure_mapping(major.get("opus"))
+    summary_text = _ensure_mapping(opus.get("summary")).get("text")
+    if isinstance(summary_text, str) and summary_text:
+        return summary_text
+
+    for key in ("archive", "article", "common", "draw"):
+        payload = _ensure_mapping(major.get(key))
+        for field in ("desc", "summary", "title"):
+            value = payload.get(field)
+            if isinstance(value, str) and value:
+                return value
+
+    return None
+
+
+def _parse_new_dynamic_item(
+    item: dict[str, Any],
+    *,
+    include_origin: bool = True,
+) -> dict[str, Any]:
+    modules = _ensure_mapping(item.get("modules"))
+    author = _ensure_mapping(modules.get("module_author"))
+    module_dynamic = _ensure_mapping(modules.get("module_dynamic"))
+    major = _ensure_mapping(module_dynamic.get("major"))
+    item_type = item.get("type")
+    dynamic_id = item.get("id_str")
+
+    parsed: dict[str, Any] = {
+        "dynamic_id": str(dynamic_id) if dynamic_id is not None else None,
+        "publish_time": format_timestamp(_coerce_int(author.get("pub_ts"))),
+        "type": None,
+        "text_content": _extract_dynamic_text(module_dynamic),
+        "image_count": 0,
+        "stats": _extract_module_stats(modules),
+        "video": None,
+        "article": None,
+        "origin": None,
+    }
+
+    if item_type == "DYNAMIC_TYPE_FORWARD":
+        parsed["type"] = "REPOST"
+        if include_origin:
+            origin_item = _ensure_mapping(item.get("orig"))
+            if origin_item:
+                origin_parsed = _parse_new_dynamic_item(
+                    origin_item,
+                    include_origin=False,
+                )
+                origin_modules = _ensure_mapping(origin_item.get("modules"))
+                origin_author = _ensure_mapping(origin_modules.get("module_author"))
+                parsed["origin"] = {
+                    "type": origin_parsed.get("type"),
+                    "text_content": origin_parsed.get("text_content"),
+                    "image_count": origin_parsed.get("image_count", 0),
+                    "user_name": origin_author.get("name"),
+                    "user_id": _coerce_int(origin_author.get("mid")),
+                    "video": origin_parsed.get("video"),
+                    "article": origin_parsed.get("article"),
+                }
+    elif item_type == "DYNAMIC_TYPE_DRAW":
+        opus = _ensure_mapping(major.get("opus"))
+        draw = _ensure_mapping(major.get("draw"))
+        pictures = opus.get("pics")
+        if not isinstance(pictures, list):
+            pictures = draw.get("items")
+        parsed["type"] = "DRAW"
+        parsed["image_count"] = _extract_image_count(pictures)
+    elif item_type == "DYNAMIC_TYPE_WORD":
+        parsed["type"] = "TEXT"
+    elif item_type == "DYNAMIC_TYPE_AV":
+        archive = _ensure_mapping(major.get("archive"))
+        parsed["type"] = "VIDEO"
+        parsed["video"] = {
+            "title": archive.get("title"),
+            "bvid": archive.get("bvid") or _safe_aid_to_bvid(archive.get("aid")),
+        }
+    elif item_type == "DYNAMIC_TYPE_ARTICLE":
+        article = _ensure_mapping(major.get("article"))
+        opus = _ensure_mapping(major.get("opus"))
+        article_id = (
+            article.get("id")
+            or article.get("id_str")
+            or article.get("cvid")
+            or opus.get("id")
+        )
+        parsed["type"] = "ARTICLE"
+        parsed["article"] = {
+            "id": _coerce_int(article_id),
+            "title": article.get("title") or opus.get("title"),
+        }
+    else:
+        type_suffix = str(item_type or "UNKNOWN").removeprefix("DYNAMIC_TYPE_")
+        parsed["type"] = f"UNKNOWN_{type_suffix}"
+
+    if parsed.get("origin") is None:
+        parsed.pop("origin", None)
+
+    return parsed
+
+
 def _parse_origin(desc: dict[str, Any], card: dict[str, Any]) -> dict[str, Any] | None:
     origin_card = _ensure_mapping(card.get("origin"))
     if not origin_card:
@@ -131,7 +250,10 @@ def _parse_origin(desc: dict[str, Any], card: dict[str, Any]) -> dict[str, Any] 
 
 
 def parse_dynamic_item(item: dict[str, Any]) -> dict[str, Any]:
-    """Parse one raw dynamic card into v3 stable output format."""
+    """Parse one legacy or polymer dynamic item into the stable output format."""
+    if isinstance(item.get("modules"), dict):
+        return _parse_new_dynamic_item(item)
+
     desc = _ensure_mapping(item.get("desc"))
     card = _ensure_mapping(item.get("card"))
     timestamp = _coerce_int(desc.get("timestamp"))

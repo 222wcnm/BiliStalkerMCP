@@ -1,6 +1,39 @@
 from bili_stalker_mcp.parsers.dynamic_parser import parse_dynamic_item
 
 
+def test_parse_polymer_draw_extracts_content_stats_and_images():
+    item = {
+        "id_str": "3001",
+        "type": "DYNAMIC_TYPE_DRAW",
+        "modules": {
+            "module_author": {"pub_ts": "1771601421"},
+            "module_dynamic": {
+                "desc": None,
+                "major": {
+                    "opus": {
+                        "summary": {"text": "polymer draw"},
+                        "pics": [{"url": "1.jpg"}, {"url": "2.jpg"}],
+                    }
+                },
+            },
+            "module_stat": {
+                "like": {"count": 11},
+                "comment": {"count": "7"},
+                "forward": {"count": 3},
+            },
+        },
+    }
+
+    parsed = parse_dynamic_item(item)
+
+    assert parsed["dynamic_id"] == "3001"
+    assert parsed["publish_time"] == "2026-02-20 23:30"
+    assert parsed["type"] == "DRAW"
+    assert parsed["text_content"] == "polymer draw"
+    assert parsed["image_count"] == 2
+    assert parsed["stats"] == {"like": 11, "comment": 7, "forward": 3}
+
+
 def test_parse_draw_extracts_stats_and_image_count():
     item = {
         "desc": {
