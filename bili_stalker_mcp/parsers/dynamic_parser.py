@@ -54,10 +54,40 @@ def _extract_stats(desc: dict[str, Any]) -> dict[str, int]:
     }
 
 
-def _extract_image_count(raw_pictures: Any) -> int:
+def _extract_images(raw_pictures: Any) -> list[dict[str, Any]]:
     if not isinstance(raw_pictures, list):
-        return 0
-    return sum(1 for picture in raw_pictures if isinstance(picture, dict))
+        return []
+
+    images: list[dict[str, Any]] = []
+    for picture in raw_pictures:
+        if not isinstance(picture, dict):
+            continue
+
+        url = None
+        for field in ("url", "src", "img_src"):
+            value = picture.get(field)
+            if isinstance(value, str) and value.strip():
+                url = value.strip()
+                break
+        if url is None:
+            continue
+
+        width = _coerce_int(picture.get("width"))
+        if width is None:
+            width = _coerce_int(picture.get("img_width"))
+        height = _coerce_int(picture.get("height"))
+        if height is None:
+            height = _coerce_int(picture.get("img_height"))
+
+        images.append(
+            {
+                "url": url,
+                "width": width,
+                "height": height,
+            }
+        )
+
+    return images
 
 
 def _extract_module_stats(modules: dict[str, Any]) -> dict[str, int]:
@@ -112,6 +142,7 @@ def _parse_new_dynamic_item(
         "type": None,
         "text_content": _extract_dynamic_text(module_dynamic),
         "image_count": 0,
+        "images": [],
         "stats": _extract_module_stats(modules),
         "video": None,
         "article": None,
@@ -133,6 +164,7 @@ def _parse_new_dynamic_item(
                     "type": origin_parsed.get("type"),
                     "text_content": origin_parsed.get("text_content"),
                     "image_count": origin_parsed.get("image_count", 0),
+                    "images": origin_parsed.get("images", []),
                     "user_name": origin_author.get("name"),
                     "user_id": _coerce_int(origin_author.get("mid")),
                     "video": origin_parsed.get("video"),
@@ -141,11 +173,12 @@ def _parse_new_dynamic_item(
     elif item_type == "DYNAMIC_TYPE_DRAW":
         opus = _ensure_mapping(major.get("opus"))
         draw = _ensure_mapping(major.get("draw"))
-        pictures = opus.get("pics")
-        if not isinstance(pictures, list):
-            pictures = draw.get("items")
+        images = _extract_images(opus.get("pics"))
+        if not images:
+            images = _extract_images(draw.get("items"))
         parsed["type"] = "DRAW"
-        parsed["image_count"] = _extract_image_count(pictures)
+        parsed["images"] = images
+        parsed["image_count"] = len(images)
     elif item_type == "DYNAMIC_TYPE_WORD":
         parsed["type"] = "TEXT"
     elif item_type == "DYNAMIC_TYPE_AV":
@@ -198,6 +231,7 @@ def _parse_origin(desc: dict[str, Any], card: dict[str, Any]) -> dict[str, Any] 
         "type": None,
         "text_content": None,
         "image_count": 0,
+        "images": [],
         "user_name": (
             origin_user.get("uname") if isinstance(origin_user, dict) else None
         ),
@@ -223,10 +257,11 @@ def _parse_origin(desc: dict[str, Any], card: dict[str, Any]) -> dict[str, Any] 
         if not isinstance(origin_item, dict):
             origin_item = {}
 
-        image_count = _extract_image_count(origin_item.get("pictures"))
-        origin["type"] = "DRAW" if image_count > 0 else "TEXT"
+        images = _extract_images(origin_item.get("pictures"))
+        origin["type"] = "DRAW" if images else "TEXT"
         origin["text_content"] = origin_item.get("description")
-        origin["image_count"] = image_count
+        origin["images"] = images
+        origin["image_count"] = len(images)
     elif origin_type == 4:
         origin["type"] = "TEXT"
         origin_item = origin_card.get("item")
@@ -270,6 +305,7 @@ def parse_dynamic_item(item: dict[str, Any]) -> dict[str, Any]:
         "type": None,
         "text_content": None,
         "image_count": 0,
+        "images": [],
         "stats": _extract_stats(desc),
         "video": None,
         "article": None,
@@ -284,11 +320,12 @@ def parse_dynamic_item(item: dict[str, Any]) -> dict[str, Any]:
 
         elif item_type_id == 2:
             item_data = _ensure_mapping(card.get("item"))
-            image_count = _extract_image_count(item_data.get("pictures"))
+            images = _extract_images(item_data.get("pictures"))
 
-            parsed["type"] = "DRAW" if image_count > 0 else "TEXT"
+            parsed["type"] = "DRAW" if images else "TEXT"
             parsed["text_content"] = item_data.get("description")
-            parsed["image_count"] = image_count
+            parsed["images"] = images
+            parsed["image_count"] = len(images)
 
         elif item_type_id == 4:
             parsed["type"] = "TEXT"

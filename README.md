@@ -63,7 +63,7 @@ pip install bili-stalker-mcp
 | `get_user_videos` | Lightweight video list | `user_id_or_username`, `page`, `limit` |
 | `search_user_videos` | Keyword search in one user's video list | `user_id_or_username`, `keyword`, `page`, `limit` |
 | `get_video_detail` | Full video detail + optional subtitles | `bvid`, `fetch_subtitles` (default: `false`), `subtitle_mode` (`smart`/`full`/`minimal`), `subtitle_lang` (default: `auto`), `subtitle_max_chars` |
-| `get_user_dynamics` | Structured dynamics with cursor pagination | `user_id_or_username`, `cursor`, `limit`, `dynamic_type` |
+| `get_user_dynamics` | Structured dynamics with image metadata and cursor pagination | `user_id_or_username`, `cursor`, `limit`, `dynamic_type` |
 | `get_user_articles` | Lightweight article list | `user_id_or_username`, `page`, `limit` |
 | `get_article_content` | Full article markdown content | `article_id` |
 | `get_user_followings` | Subscription list analysis | `user_id_or_username`, `page`, `limit` |
@@ -82,6 +82,12 @@ complete reply thread.
 - `ALL` (default): Text, Draw, and Reposts.
 - `ALL_RAW`: Unfiltered (includes Videos & Articles).
 - `VIDEO`, `ARTICLE`, `DRAW`, `TEXT`: Specific category filtering.
+
+Each dynamic item includes an `images` list. Every image contains `url`, `width`,
+and `height`; invalid URLs are omitted, and unavailable dimensions are `null`.
+`image_count` always equals the number of returned images. Reposts expose the same
+fields under `origin.images` and `origin.image_count`. Non-image dynamics return
+an empty `images` list.
 
 **Pagination**: Responses include `next_cursor`. Pass this to subsequent requests for seamless scrolling.
 

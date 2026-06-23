@@ -65,7 +65,7 @@ pip install bili-stalker-mcp
 | `get_user_videos` | 轻量视频列表 | `user_id_or_username`, `page`, `limit` |
 | `search_user_videos` | 指定用户视频关键词检索 | `user_id_or_username`, `keyword`, `page`, `limit` |
 | `get_video_detail` | 视频详情与可选字幕聚合 | `bvid`, `fetch_subtitles`（默认：`false`）, `subtitle_mode`（`smart`/`full`/`minimal`）, `subtitle_lang`（默认：`auto`）, `subtitle_max_chars` |
-| `get_user_dynamics` | 结构化动态流（Cursor 分页） | `user_id_or_username`, `cursor`, `limit`, `dynamic_type` |
+| `get_user_dynamics` | 含图片元数据的结构化动态流（Cursor 分页） | `user_id_or_username`, `cursor`, `limit`, `dynamic_type` |
 | `get_user_articles` | 轻量专栏列表 | `user_id_or_username`, `page`, `limit` |
 | `get_article_content` | 专栏 Markdown 全文 | `article_id` |
 | `get_user_followings` | 用户关注列表分析 | `user_id_or_username`, `page`, `limit` |
@@ -82,6 +82,11 @@ pip install bili-stalker-mcp
 - `ALL` (默认): 仅文本、图文（DRAW）、转发（最适合 AI 分析）。
 - `ALL_RAW`: 原始全量数据（包含视频及专栏）。
 - `VIDEO`, `ARTICLE`, `DRAW`, `TEXT`: 特定分类过滤。
+
+每条动态都包含 `images` 列表，图片对象提供 `url`、`width` 和 `height`；
+无有效 URL 的图片会被过滤，无法解析的尺寸返回 `null`。`image_count` 始终等于
+实际返回的图片数量。转发动态在 `origin.images` 和 `origin.image_count` 中提供
+相同字段；无图片动态的 `images` 为空列表。
 
 **分页机制**: 响应包含 `next_cursor`。后续请求传入此参数可实现连续拉取。
 

@@ -23,6 +23,68 @@ def _build_text_card(dynamic_id: str, content: str) -> dict:
     }
 
 
+def _build_draw_card(dynamic_id: str) -> dict:
+    return {
+        "id_str": dynamic_id,
+        "type": "DYNAMIC_TYPE_DRAW",
+        "modules": {
+            "module_author": {"pub_ts": "1771601421"},
+            "module_dynamic": {
+                "major": {
+                    "opus": {
+                        "summary": {"text": "draw"},
+                        "pics": [
+                            {
+                                "url": "https://example.com/image.jpg",
+                                "width": "1280",
+                                "height": "720",
+                            }
+                        ],
+                    }
+                }
+            },
+            "module_stat": {
+                "like": {"count": 0},
+                "comment": {"count": 0},
+                "forward": {"count": 0},
+            },
+        },
+    }
+
+
+@pytest.mark.asyncio
+async def test_dynamic_service_serializes_images(monkeypatch):
+    class FakeUser:
+        def __init__(self, uid, credential):
+            self.uid = uid
+            self.credential = credential
+
+        async def get_dynamics_new(self, offset):
+            return {
+                "items": [_build_draw_card("image-1")],
+                "has_more": False,
+                "offset": "",
+            }
+
+    monkeypatch.setattr(core.user, "User", FakeUser)
+
+    result = await core.fetch_user_dynamics(
+        user_id=1,
+        limit=1,
+        cred=object(),
+        dynamic_type="DRAW",
+    )
+
+    assert result["dynamics"][0]["image_count"] == 1
+    assert result["dynamics"][0]["images"] == [
+        {
+            "url": "https://example.com/image.jpg",
+            "width": 1280,
+            "height": 720,
+        }
+    ]
+
+
 @pytest.mark.asyncio
 async def test_cursor_pagination_has_no_duplicates_or_missing(monkeypatch):
     pages = {

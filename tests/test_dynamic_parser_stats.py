@@ -12,7 +12,20 @@ def test_parse_polymer_draw_extracts_content_stats_and_images():
                 "major": {
                     "opus": {
                         "summary": {"text": "polymer draw"},
-                        "pics": [{"url": "1.jpg"}, {"url": "2.jpg"}],
+                        "pics": [
+                            {
+                                "url": "https://example.com/1.jpg",
+                                "width": "1920",
+                                "height": 1080,
+                            },
+                            {"url": "   ", "width": 100, "height": 100},
+                            {
+                                "url": "https://example.com/2.jpg",
+                                "width": "invalid",
+                                "height": 720.9,
+                            },
+                            {"url": None},
+                        ],
                     }
                 },
             },
@@ -31,7 +44,56 @@ def test_parse_polymer_draw_extracts_content_stats_and_images():
     assert parsed["type"] == "DRAW"
     assert parsed["text_content"] == "polymer draw"
     assert parsed["image_count"] == 2
+    assert parsed["images"] == [
+        {
+            "url": "https://example.com/1.jpg",
+            "width": 1920,
+            "height": 1080,
+        },
+        {
+            "url": "https://example.com/2.jpg",
+            "width": None,
+            "height": 720,
+        },
+    ]
     assert parsed["stats"] == {"like": 11, "comment": 7, "forward": 3}
+
+
+def test_parse_polymer_draw_items_extracts_images():
+    item = {
+        "id_str": "3002",
+        "type": "DYNAMIC_TYPE_DRAW",
+        "modules": {
+            "module_author": {"pub_ts": "1771601421"},
+            "module_dynamic": {
+                "major": {
+                    "draw": {
+                        "items": [
+                            {
+                                "src": "https://example.com/draw.jpg",
+                                "width": "640",
+                                "height": "480",
+                            },
+                            {"src": 123, "width": 320, "height": 240},
+                        ]
+                    }
+                }
+            },
+            "module_stat": {},
+        },
+    }
+
+    parsed = parse_dynamic_item(item)
+
+    assert parsed["type"] == "DRAW"
+    assert parsed["image_count"] == 1
+    assert parsed["images"] == [
+        {
+            "url": "https://example.com/draw.jpg",
+            "width": 640,
+            "height": 480,
+        }
+    ]
 
 
 def test_parse_draw_extracts_stats_and_image_count():
@@ -48,8 +110,18 @@ def test_parse_draw_extracts_stats_and_image_count():
             "item": {
                 "description": "draw content",
                 "pictures": [
-                    {"img_src": "https://example.com/1.jpg"},
-                    {"img_src": "https://example.com/2.jpg"},
+                    {
+                        "img_src": "https://example.com/1.jpg",
+                        "img_width": "1280",
+                        "img_height": 720,
+                    },
+                    {
+                        "img_src": "https://example.com/2.jpg",
+                        "img_width": None,
+                        "img_height": "bad",
+                    },
+                    {"img_src": ""},
+                    {"img_src": 123},
                     None,
                 ],
             }
@@ -62,7 +134,18 @@ def test_parse_draw_extracts_stats_and_image_count():
     assert parsed["text_content"] == "draw content"
     assert parsed["image_count"] == 2
     assert parsed["stats"] == {"like": 11, "comment": 7, "forward": 3}
-    assert "images" not in parsed
+    assert parsed["images"] == [
+        {
+            "url": "https://example.com/1.jpg",
+            "width": 1280,
+            "height": 720,
+        },
+        {
+            "url": "https://example.com/2.jpg",
+            "width": None,
+            "height": None,
+        },
+    ]
 
 
 def test_parse_repost_origin_keeps_structured_origin_and_forward_fallback():
@@ -82,7 +165,13 @@ def test_parse_repost_origin_keeps_structured_origin_and_forward_fallback():
             "origin": {
                 "item": {
                     "description": "origin draw",
-                    "pictures": [{"img_src": "https://example.com/a.jpg"}],
+                    "pictures": [
+                        {
+                            "img_src": "https://example.com/a.jpg",
+                            "img_width": "800",
+                            "img_height": "600",
+                        }
+                    ],
                 }
             },
         },
@@ -97,4 +186,63 @@ def test_parse_repost_origin_keeps_structured_origin_and_forward_fallback():
     assert parsed["origin"]["image_count"] == 1
     assert parsed["origin"]["user_name"] == "alice"
     assert parsed["origin"]["user_id"] == 1001
-    assert "images" not in parsed["origin"]
+    assert parsed["origin"]["images"] == [
+        {
+            "url": "https://example.com/a.jpg",
+            "width": 800,
+            "height": 600,
+        }
+    ]
+
+
+def test_parse_polymer_repost_origin_keeps_images():
+    item = {
+        "id_str": "3003",
+        "type": "DYNAMIC_TYPE_FORWARD",
+        "modules": {
+            "module_author": {"pub_ts": "1771601421"},
+            "module_dynamic": {"desc": {"text": "forward text"}},
+            "module_stat": {},
+        },
+        "orig": {
+            "id_str": "3004",
+            "type": "DYNAMIC_TYPE_DRAW",
+            "modules": {
+                "module_author": {
+                    "pub_ts": "1771601400",
+                    "name": "bob",
+                    "mid": "1002",
+                },
+                "module_dynamic": {
+                    "major": {
+                        "opus": {
+                            "pics": [
+                                {
+                                    "url": "https://example.com/origin.jpg",
+                                    "width": "1024",
+                                    "height": "768",
+                                }
+                            ]
+                        }
+                    }
+                },
+                "module_stat": {},
+            },
+        },
+    }
+
+    parsed = parse_dynamic_item(item)
+
+    assert parsed["type"] == "REPOST"
+    assert parsed["images"] == []
+    assert parsed["origin"]["type"] == "DRAW"
+    assert parsed["origin"]["image_count"] == 1
+    assert parsed["origin"]["images"] == [
+        {
+            "url": "https://example.com/origin.jpg",
+            "width": 1024,
+            "height": 768,
+        }
+    ]
+    assert parsed["origin"]["user_name"] == "bob"
+    assert parsed["origin"]["user_id"] == 1002

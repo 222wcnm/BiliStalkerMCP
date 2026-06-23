@@ -54,23 +54,27 @@ async def test_fetch_video_detail_falls_back_to_subtitle_api_for_multi_page_smar
                 ],
             }
 
-        async def get_subtitle(self, cid):
+        async def get_player_info(self, cid):
             calls["get_subtitle"] += 1
             if cid == 101:
                 return {
-                    "subtitles": [
-                        {
-                            "lan": "zh-CN",
-                            "lan_doc": "Chinese",
-                            "subtitle_url": "https://example.com/zh.json",
-                        },
-                        {
-                            "lan": "ai-en",
-                            "lan_doc": "English",
-                            "subtitle_url": "https://example.com/en.json",
-                            "ai_type": 1,
-                        },
-                    ]
+                    "login_mid": 123,
+                    "need_login_subtitle": True,
+                    "subtitle": {
+                        "subtitles": [
+                            {
+                                "lan": "zh-CN",
+                                "lan_doc": "Chinese",
+                                "subtitle_url": "https://example.com/zh.json",
+                            },
+                            {
+                                "lan": "ai-en",
+                                "lan_doc": "English",
+                                "subtitle_url": "https://example.com/en.json",
+                                "ai_type": 1,
+                            },
+                        ]
+                    },
                 }
             raise RuntimeError("metadata unavailable")
 
@@ -164,9 +168,9 @@ async def test_fetch_video_detail_smart_mode_short_circuits_single_page_inline_s
                 },
             }
 
-        async def get_subtitle(self, cid):
+        async def get_player_info(self, cid):
             calls["get_subtitle"] += 1
-            return {"subtitles": []}
+            return {"subtitle": {"subtitles": []}}
 
     async def fake_fetch_subtitle_text(subtitle_url, cred):
         calls["subtitle_text"].append(subtitle_url)
@@ -231,16 +235,20 @@ async def test_fetch_video_detail_invalid_inline_subtitles_fall_back_to_subtitle
                 },
             }
 
-        async def get_subtitle(self, cid):
+        async def get_player_info(self, cid):
             calls["get_subtitle"] += 1
             return {
-                "subtitles": [
-                    {
-                        "lan": "zh-CN",
-                        "lan_doc": "Chinese",
-                        "subtitle_url": "https://example.com/fallback.json",
-                    }
-                ]
+                "login_mid": 123,
+                "need_login_subtitle": True,
+                "subtitle": {
+                    "subtitles": [
+                        {
+                            "lan": "zh-CN",
+                            "lan_doc": "Chinese",
+                            "subtitle_url": "https://example.com/fallback.json",
+                        }
+                    ]
+                },
             }
 
     async def fake_fetch_subtitle_text(subtitle_url, cred):
@@ -269,6 +277,45 @@ async def test_fetch_video_detail_invalid_inline_subtitles_fall_back_to_subtitle
 
 
 @pytest.mark.asyncio
+async def test_fetch_video_detail_reports_unauthenticated_subtitle_metadata(
+    monkeypatch,
+):
+    class FakeVideo:
+        def __init__(self, bvid, credential):
+            self.bvid = bvid
+            self.credential = credential
+
+        async def get_info(self):
+            return {
+                "bvid": "BV1login1111",
+                "aid": 654,
+                "stat": {},
+                "pages": [{"cid": 101, "page": 1, "part": "P1", "duration": 30}],
+            }
+
+        async def get_player_info(self, cid):
+            return {
+                "login_mid": 0,
+                "need_login_subtitle": True,
+                "subtitle": {"subtitles": []},
+            }
+
+    monkeypatch.setattr("bili_stalker_mcp.services.user_service.video.Video", FakeVideo)
+
+    result = await fetch_video_detail(
+        bvid="BV1login1111",
+        fetch_subtitles=True,
+        cred=None,
+    )
+
+    subtitles = result["subtitles"]
+    assert subtitles["track_count"] == 0
+    assert "valid login" in subtitles["fallback_reason"]
+    assert "SESSDATA was not authenticated" in subtitles["fallback_reason"]
+    assert any("cid 101" in error for error in subtitles["errors"])
+
+
+@pytest.mark.asyncio
 async def test_fetch_video_detail_marks_blocked_subtitle_downloads_in_errors(
     monkeypatch,
 ):
@@ -294,8 +341,8 @@ async def test_fetch_video_detail_marks_blocked_subtitle_downloads_in_errors(
                 },
             }
 
-        async def get_subtitle(self, cid):
-            return {"subtitles": []}
+        async def get_player_info(self, cid):
+            return {"subtitle": {"subtitles": []}}
 
     async def fake_get_json(*args, **kwargs):
         raise RetryableBiliApiError(429, "HTTP rate limit from upstream")
@@ -347,21 +394,25 @@ async def test_fetch_video_detail_full_mode_keeps_all_tracks(monkeypatch):
                 },
             }
 
-        async def get_subtitle(self, cid):
+        async def get_player_info(self, cid):
             calls["get_subtitle"] += 1
             return {
-                "subtitles": [
-                    {
-                        "lan": "zh-CN",
-                        "lan_doc": "Chinese",
-                        "subtitle_url": "https://example.com/zh.json",
-                    },
-                    {
-                        "lan": "en-US",
-                        "lan_doc": "English",
-                        "subtitle_url": "https://example.com/en.json",
-                    },
-                ]
+                "login_mid": 123,
+                "need_login_subtitle": True,
+                "subtitle": {
+                    "subtitles": [
+                        {
+                            "lan": "zh-CN",
+                            "lan_doc": "Chinese",
+                            "subtitle_url": "https://example.com/zh.json",
+                        },
+                        {
+                            "lan": "en-US",
+                            "lan_doc": "English",
+                            "subtitle_url": "https://example.com/en.json",
+                        },
+                    ]
+                },
             }
 
     async def fake_fetch_subtitle_text(subtitle_url, cred):

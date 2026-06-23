@@ -95,10 +95,17 @@ class DynamicArticleRef(BaseModel):
     title: str | None = None
 
 
+class DynamicImageResponse(BaseModel):
+    url: str
+    width: int | None = None
+    height: int | None = None
+
+
 class DynamicOriginResponse(BaseModel):
     type: str | None = None
     text_content: str | None = None
     image_count: int = 0
+    images: list[DynamicImageResponse] = Field(default_factory=list)
     user_name: str | None = None
     user_id: int | None = None
     video: DynamicVideoRef | None = None
@@ -111,6 +118,7 @@ class DynamicItemResponse(BaseModel):
     type: str | None = None
     text_content: str | None = None
     image_count: int = 0
+    images: list[DynamicImageResponse] = Field(default_factory=list)
     stats: DynamicStatsResponse = Field(default_factory=DynamicStatsResponse)
     video: DynamicVideoRef | None = None
     article: DynamicArticleRef | None = None

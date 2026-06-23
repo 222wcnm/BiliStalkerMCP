@@ -28,6 +28,10 @@ DEFAULT_SUBTITLE_LANGUAGE_PRIORITY = (
     "en",
     "ai-en",
 )
+SUBTITLE_LOGIN_REQUIRED_REASON = (
+    "Bilibili requires a valid login to return subtitle tracks; "
+    "configured SESSDATA was not authenticated"
+)
 
 
 def _normalize_subtitle_url(subtitle_url: object) -> str | None:
@@ -334,9 +338,9 @@ async def collect_subtitles(
     errors: list[str] = []
     semaphore = asyncio.Semaphore(SUBTITLE_FETCH_CONCURRENCY)
 
-    async def _timed_get_subtitle(cid: int) -> dict[str, Any]:
+    async def _timed_get_player_info(cid: int) -> dict[str, Any]:
         async with semaphore:
-            return await timed_upstream_call(video_client.get_subtitle(cid=cid))
+            return await timed_upstream_call(video_client.get_player_info(cid=cid))
 
     async def _timed_fetch_track_text(subtitle_url: Any) -> tuple[str, str | None]:
         async with semaphore:
@@ -344,7 +348,7 @@ async def collect_subtitles(
 
     async def _collect_page_tracks(
         page: dict[str, Any],
-    ) -> tuple[list[dict[str, Any]], list[str]]:
+    ) -> tuple[list[dict[str, Any]], list[str], bool]:
         page_tracks: list[dict[str, Any]] = []
         page_errors: list[str] = []
 
@@ -354,18 +358,27 @@ async def collect_subtitles(
 
         if cid is None:
             page_errors.append("page without cid")
-            return page_tracks, page_errors
+            return page_tracks, page_errors, False
 
         try:
-            subtitle_data = await _timed_get_subtitle(cid)
+            player_info = await _timed_get_player_info(cid)
         except Exception as exc:
             page_errors.append(f"cid {cid}: subtitle metadata failed: {exc}")
-            return page_tracks, page_errors
+            return page_tracks, page_errors, False
+
+        login_mid = coerce_int(player_info.get("login_mid"))
+        login_required = bool(player_info.get("need_login_subtitle")) and not login_mid
+        subtitle_data = player_info.get("subtitle")
+        if not isinstance(subtitle_data, dict):
+            subtitle_data = {}
 
         subtitle_items = (subtitle_data or {}).get("subtitles") or []
         if not isinstance(subtitle_items, list):
             page_errors.append(f"cid {cid}: invalid subtitle payload")
-            return page_tracks, page_errors
+            return page_tracks, page_errors, login_required
+
+        if login_required and not subtitle_items:
+            page_errors.append(f"cid {cid}: {SUBTITLE_LOGIN_REQUIRED_REASON}")
 
         for subtitle_item in subtitle_items:
             if not isinstance(subtitle_item, dict):
@@ -377,7 +390,7 @@ async def collect_subtitles(
             )
             page_tracks.append({"track": track, "subtitle_url": subtitle_url})
 
-        return page_tracks, page_errors
+        return page_tracks, page_errors, login_required
 
     inline_candidates = None
     if normalized_mode == "smart":
@@ -386,10 +399,14 @@ async def collect_subtitles(
     if inline_candidates is not None:
         candidates.extend(inline_candidates)
     else:
+        login_required = False
         page_tasks = [_collect_page_tracks(page) for page in pages]
-        for page_tracks, page_errors in await asyncio.gather(*page_tasks):
+        for page_tracks, page_errors, page_login_required in await asyncio.gather(
+            *page_tasks
+        ):
             candidates.extend(page_tracks)
             errors.extend(page_errors)
+            login_required = login_required or page_login_required
 
     available_languages: list[str] = []
     seen_languages: set[str] = set()
@@ -412,7 +429,11 @@ async def collect_subtitles(
             ),
             available_languages=available_languages,
             selected_language=None,
-            fallback_reason="No subtitle tracks available",
+            fallback_reason=(
+                SUBTITLE_LOGIN_REQUIRED_REASON
+                if login_required
+                else "No subtitle tracks available"
+            ),
             truncated=False,
             returned_chars=0,
             dropped_tracks=0,
