@@ -1,3 +1,5 @@
+[![MseeP.ai Security Assessment Badge](https://mseep.net/pr/222wcnm-bilistalkermcp-badge.png)](https://mseep.ai/app/222wcnm-bilistalkermcp)
+
 # BiliStalkerMCP
 
 [![Python](https://img.shields.io/badge/Python-3.12+-blue?logo=python)](https://www.python.org/)
