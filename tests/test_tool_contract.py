@@ -22,7 +22,13 @@ async def test_dynamic_tool_exposes_expected_dynamic_type_contract():
         "ARTICLE",
         "DRAW",
         "TEXT",
+        "REVIEW",
     ]
+
+    assert (
+        "REVIEW includes only recognized five-slot rating cards"
+        in dynamic_type["description"]
+    )
 
 
 @pytest.mark.asyncio

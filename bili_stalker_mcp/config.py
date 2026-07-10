@@ -147,8 +147,9 @@ class DynamicType:
     ARTICLE: Literal["ARTICLE"] = "ARTICLE"
     DRAW: Literal["DRAW"] = "DRAW"
     TEXT: Literal["TEXT"] = "TEXT"
+    REVIEW: Literal["REVIEW"] = "REVIEW"
 
-    VALID_TYPES = (ALL, ALL_RAW, VIDEO, ARTICLE, DRAW, TEXT)
+    VALID_TYPES = (ALL, ALL_RAW, VIDEO, ARTICLE, DRAW, TEXT, REVIEW)
 
     TYPE_MAPPINGS = {
         ALL: "all",

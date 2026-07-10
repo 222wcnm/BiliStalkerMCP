@@ -17,7 +17,7 @@ from ..config import (
 from ..infra.upstream import timed_upstream_call
 from ..models import DynamicItemResponse, DynamicListResponse
 from ..observability import add_lazy_pause
-from ..parsers.dynamic_parser import parse_dynamic_item
+from ..parsers.dynamic_parser import is_review_dynamic_item, parse_dynamic_item
 from ..retry import with_retry
 
 CURSOR_VERSION = 2
@@ -73,7 +73,10 @@ def normalize_dynamic_type(dynamic_type: str) -> str:
     return normalized
 
 
-def is_dynamic_type_match(item_type_id: Any, dynamic_type: str) -> bool:
+def is_dynamic_type_match(item_or_type: Any, dynamic_type: str) -> bool:
+    item = item_or_type if isinstance(item_or_type, dict) else None
+    item_type_id = item.get("type") if item is not None else item_or_type
+
     if dynamic_type == DynamicType.ALL:
         return item_type_id in {
             1,
@@ -93,6 +96,8 @@ def is_dynamic_type_match(item_type_id: Any, dynamic_type: str) -> bool:
         return item_type_id in {2, "DYNAMIC_TYPE_DRAW"}
     if dynamic_type == DynamicType.TEXT:
         return item_type_id in {4, "DYNAMIC_TYPE_WORD"}
+    if dynamic_type == DynamicType.REVIEW:
+        return item is not None and is_review_dynamic_item(item)
     return False
 
 
@@ -236,8 +241,7 @@ async def fetch_user_dynamics(
         remaining_match_in_page = False
 
         for index, card in enumerate(cards):
-            item_type_id = card.get("type")
-            if not is_dynamic_type_match(item_type_id, dynamic_type):
+            if not is_dynamic_type_match(card, dynamic_type):
                 continue
 
             matched_count_in_page += 1
@@ -250,7 +254,7 @@ async def fetch_user_dynamics(
             if len(processed_dynamics) >= limit:
                 remaining_match_in_page = any(
                     is_dynamic_type_match(
-                        tail.get("type"),
+                        tail,
                         dynamic_type,
                     )
                     for tail in cards[index + 1 :]

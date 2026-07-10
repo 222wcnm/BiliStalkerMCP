@@ -36,7 +36,9 @@ from .errors import public_error_json
 from .observability import begin_request, snapshot_metrics
 from .utils import extract_bvid
 
-DynamicTypeLiteral = Literal["ALL", "ALL_RAW", "VIDEO", "ARTICLE", "DRAW", "TEXT"]
+DynamicTypeLiteral = Literal[
+    "ALL", "ALL_RAW", "VIDEO", "ARTICLE", "DRAW", "TEXT", "REVIEW"
+]
 SubtitleModeLiteral = Literal["minimal", "smart", "full"]
 CommentContentTypeLiteral = Literal["video", "article", "dynamic"]
 
@@ -430,7 +432,9 @@ def create_server() -> FastMCP:
                 description=(
                     "Allowed values: "
                     f"{DynamicType.ALL}, {DynamicType.ALL_RAW}, {DynamicType.VIDEO}, "
-                    f"{DynamicType.ARTICLE}, {DynamicType.DRAW}, {DynamicType.TEXT}."
+                    f"{DynamicType.ARTICLE}, {DynamicType.DRAW}, {DynamicType.TEXT}, "
+                    f"{DynamicType.REVIEW}. REVIEW includes only recognized "
+                    "five-slot rating cards, not other common cards."
                 )
             ),
         ] = DynamicType.ALL,

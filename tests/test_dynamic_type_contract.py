@@ -17,12 +17,14 @@ def test_dynamic_type_contract_values():
         "ARTICLE",
         "DRAW",
         "TEXT",
+        "REVIEW",
     )
 
 
 def test_normalize_dynamic_type_is_case_insensitive():
     assert _normalize_dynamic_type("video") == "VIDEO"
     assert _normalize_dynamic_type(" all_raw ") == "ALL_RAW"
+    assert _normalize_dynamic_type(" review ") == "REVIEW"
 
 
 def test_normalize_dynamic_type_rejects_invalid_value():

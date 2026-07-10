@@ -95,6 +95,17 @@ class DynamicArticleRef(BaseModel):
     title: str | None = None
 
 
+class DynamicReviewRef(BaseModel):
+    rating: int | None = None
+    text: str | None = None
+    title: str | None = None
+    cover_url: str | None = None
+    jump_url: str | None = None
+    score_description: str | None = None
+    biz_type: str | None = None
+    biz_id: str | None = None
+
+
 class DynamicImageResponse(BaseModel):
     url: str
     width: int | None = None
@@ -122,6 +133,7 @@ class DynamicItemResponse(BaseModel):
     stats: DynamicStatsResponse = Field(default_factory=DynamicStatsResponse)
     video: DynamicVideoRef | None = None
     article: DynamicArticleRef | None = None
+    review: DynamicReviewRef | None = None
     origin: DynamicOriginResponse | None = None
 
 

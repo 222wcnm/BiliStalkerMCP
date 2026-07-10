@@ -1,0 +1,37 @@
+{
+  "id_str": "review-1001",
+  "type": "DYNAMIC_TYPE_COMMON_SQUARE",
+  "modules": {
+    "module_author": {
+      "pub_ts": "1771601421"
+    },
+    "module_dynamic": {
+      "desc": {
+        "text": "[星][星][星][星][星]\n这是一条中性测试点评。"
+      },
+      "major": {
+        "common": {
+          "title": "示例作品",
+          "cover": "https://example.com/review-cover.jpg",
+          "jump_url": "https://www.bilibili.com/bangumi/media/md12345",
+          "desc": "9.5分",
+          "badge": "番剧",
+          "label": "评分",
+          "biz_type": "1",
+          "biz_id": "12345"
+        }
+      }
+    },
+    "module_stat": {
+      "like": {
+        "count": 12
+      },
+      "comment": {
+        "count": 3
+      },
+      "forward": {
+        "count": 1
+      }
+    }
+  }
+}

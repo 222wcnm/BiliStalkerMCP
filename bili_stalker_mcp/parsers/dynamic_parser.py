@@ -1,5 +1,6 @@
 import json
 import logging
+import re
 from datetime import datetime, timezone, tzinfo
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -15,6 +16,8 @@ try:
 except Exception:
     logger.warning("Invalid BILI_TIMEZONE '%s', falling back to UTC", DEFAULT_TIMEZONE)
     _OUTPUT_TZ = timezone.utc
+
+_REVIEW_RATING_LINE = re.compile(r"^(?P<rating>(?:\[星\]|\[空星\]){5})(?:\r?\n|$)")
 
 
 def format_timestamp(ts: int | None) -> str | None:
@@ -124,6 +127,60 @@ def _extract_dynamic_text(module_dynamic: dict[str, Any]) -> str | None:
     return None
 
 
+def _optional_string(value: Any) -> str | None:
+    if isinstance(value, str):
+        return value
+    if isinstance(value, int) and not isinstance(value, bool):
+        return str(value)
+    return None
+
+
+def _extract_review(item: Any) -> dict[str, Any] | None:
+    if not isinstance(item, dict) or item.get("type") != "DYNAMIC_TYPE_COMMON_SQUARE":
+        return None
+
+    modules = item.get("modules")
+    if not isinstance(modules, dict):
+        return None
+    module_dynamic = modules.get("module_dynamic")
+    if not isinstance(module_dynamic, dict):
+        return None
+    major = module_dynamic.get("major")
+    if not isinstance(major, dict):
+        return None
+    common = major.get("common")
+    if not isinstance(common, dict):
+        return None
+    desc = module_dynamic.get("desc")
+    if not isinstance(desc, dict):
+        return None
+    text = desc.get("text")
+    if not isinstance(text, str):
+        return None
+
+    rating_match = _REVIEW_RATING_LINE.match(text)
+    if rating_match is None:
+        return None
+
+    rating_line = rating_match.group("rating")
+    review_text = text[rating_match.end() :].strip() or None
+    return {
+        "rating": rating_line.count("[星]"),
+        "text": review_text,
+        "title": _optional_string(common.get("title")),
+        "cover_url": _optional_string(common.get("cover")),
+        "jump_url": _optional_string(common.get("jump_url")),
+        "score_description": _optional_string(common.get("desc")),
+        "biz_type": _optional_string(common.get("biz_type")),
+        "biz_id": _optional_string(common.get("biz_id")),
+    }
+
+
+def is_review_dynamic_item(item: Any) -> bool:
+    """Return whether a raw polymer item is a five-star review card."""
+    return _extract_review(item) is not None
+
+
 def _parse_new_dynamic_item(
     item: dict[str, Any],
     *,
@@ -135,6 +192,7 @@ def _parse_new_dynamic_item(
     major = _ensure_mapping(module_dynamic.get("major"))
     item_type = item.get("type")
     dynamic_id = item.get("id_str")
+    review = _extract_review(item)
 
     parsed: dict[str, Any] = {
         "dynamic_id": str(dynamic_id) if dynamic_id is not None else None,
@@ -202,6 +260,10 @@ def _parse_new_dynamic_item(
             "id": _coerce_int(article_id),
             "title": article.get("title") or opus.get("title"),
         }
+    elif review is not None:
+        parsed["type"] = "REVIEW"
+        parsed["text_content"] = review["text"]
+        parsed["review"] = review
     else:
         logger.debug("unhandled dynamic type: %s, raw=%s", item_type, item)
         type_suffix = str(item_type or "UNKNOWN").removeprefix("DYNAMIC_TYPE_")
