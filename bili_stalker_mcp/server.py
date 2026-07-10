@@ -32,6 +32,7 @@ from .core import (
     get_credential,
     get_user_id_by_username,
 )
+from .errors import public_error_json
 from .observability import begin_request, snapshot_metrics
 from .utils import extract_bvid
 
@@ -132,6 +133,7 @@ def create_server() -> FastMCP:
         except Exception as exc:
             total_duration_ms = round((time.perf_counter() - started) * 1000, 3)
             metrics = snapshot_metrics()
+            public_error = public_error_json(exc, request_id=request_id)
             logger.error(
                 "tool_call_failed",
                 extra={
@@ -148,10 +150,12 @@ def create_server() -> FastMCP:
                     "upstream_block_count": metrics["upstream_block_count"],
                     "upstream_rate_limit_count": metrics["upstream_rate_limit_count"],
                     "cache": metrics["cache"],
-                    "error": str(exc),
+                    "error": public_error,
                 },
             )
-            raise
+            if isinstance(exc, ToolError):
+                raise
+            raise ToolError(public_error) from exc
 
     @mcp.prompt()
     def track_user_updates() -> str:

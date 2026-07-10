@@ -5,6 +5,7 @@ from async_lru import alru_cache
 from bilibili_api import Credential, article, search, user, video
 from bilibili_api.exceptions import ApiException
 
+from ..errors import RISK_CONTROL_CODES, extract_error_code
 from ..infra.http_client import get_json
 from ..infra.upstream import timed_upstream_call
 from ..models import (
@@ -412,7 +413,7 @@ async def _legacy_cv_markdown(
             f"unsupported payload key: {exc}",
         )
     except ApiException as exc:
-        if is_retryable_error(exc):
+        if extract_error_code(exc) in RISK_CONTROL_CODES or is_retryable_error(exc):
             raise
         error_reason = repr(exc)
         logger.warning(

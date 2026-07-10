@@ -2,8 +2,17 @@ import httpx
 import pytest
 from bilibili_api.exceptions import ApiException
 
+from bili_stalker_mcp.errors import RiskControlError
+from bili_stalker_mcp.infra.circuit_breaker import reset_risk_control_circuit
 from bili_stalker_mcp.observability import begin_request, snapshot_metrics
 from bili_stalker_mcp.retry import RetryableBiliApiError, with_retry
+
+
+@pytest.fixture(autouse=True)
+def reset_circuit():
+    reset_risk_control_circuit()
+    yield
+    reset_risk_control_circuit()
 
 
 @pytest.mark.asyncio
@@ -68,7 +77,7 @@ async def test_retry_policy_retries_known_api_error(monkeypatch):
     async def flaky_api():
         attempts["count"] += 1
         if attempts["count"] == 1:
-            raise ApiException({"code": -412, "message": "blocked"})
+            raise ApiException({"code": -509, "message": "rate limited"})
         return "ok"
 
     result = await flaky_api()
@@ -77,6 +86,30 @@ async def test_retry_policy_retries_known_api_error(monkeypatch):
     assert attempts["count"] == 2
     assert len(sleep_calls) == 1
     assert snapshot_metrics()["retry_count"] == 1
+
+
+@pytest.mark.asyncio
+async def test_retry_policy_does_not_retry_risk_control(monkeypatch):
+    sleep_calls = []
+    attempts = {"count": 0}
+
+    async def fake_sleep(delay: float) -> None:
+        sleep_calls.append(delay)
+
+    monkeypatch.setattr("bili_stalker_mcp.retry.asyncio.sleep", fake_sleep)
+    begin_request("retry-risk-control")
+
+    @with_retry(max_retries=2, base_delay=0.01)
+    async def blocked_api():
+        attempts["count"] += 1
+        raise ApiException({"code": -412, "message": "blocked"})
+
+    with pytest.raises(RiskControlError):
+        await blocked_api()
+
+    assert attempts["count"] == 1
+    assert sleep_calls == []
+    assert snapshot_metrics()["retry_count"] == 0
 
 
 @pytest.mark.asyncio
@@ -142,7 +175,7 @@ async def test_empty_retryable_codes_disables_code_retries(monkeypatch):
     @with_retry(max_retries=2, retryable_codes=set())
     async def fail_once():
         attempts["count"] += 1
-        raise RetryableBiliApiError(-412, "blocked")
+        raise RetryableBiliApiError(-509, "rate limited")
 
     with pytest.raises(RetryableBiliApiError):
         await fail_once()
@@ -181,6 +214,10 @@ async def test_return_default_only_after_retry_exhaustion(monkeypatch):
         default_on_exhaust="fallback",
     )
     async def retryable_failure():
+        raise RetryableBiliApiError(-509, "rate limited")
+
+    @with_retry(return_default=True, default_on_exhaust="fallback")
+    async def risk_control_failure():
         raise RetryableBiliApiError(-412, "blocked")
 
     @with_retry(return_default=True, default_on_exhaust="fallback")
@@ -188,5 +225,7 @@ async def test_return_default_only_after_retry_exhaustion(monkeypatch):
         raise ApiException({"code": -400, "message": "bad request"})
 
     assert await retryable_failure() == "fallback"
+    with pytest.raises(RiskControlError):
+        await risk_control_failure()
     with pytest.raises(ApiException):
         await non_retryable_failure()

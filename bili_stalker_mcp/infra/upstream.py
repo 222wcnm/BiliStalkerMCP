@@ -11,6 +11,7 @@ from ..observability import (
     get_request_id,
     register_upstream_call,
 )
+from .circuit_breaker import record_risk_control_success
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +37,9 @@ async def timed_upstream_call(awaitable: Awaitable[T]) -> T:
 
     started = time.perf_counter()
     try:
-        return await awaitable
+        result = await awaitable
+        if not hasattr(result, "status_code"):
+            record_risk_control_success()
+        return result
     finally:
         add_upstream_duration_ms((time.perf_counter() - started) * 1000.0)

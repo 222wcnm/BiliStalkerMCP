@@ -18,11 +18,16 @@ from typing import (
 import httpx
 from bilibili_api.exceptions import ApiException, NetworkException
 
+from .errors import RISK_CONTROL_CODES, RiskControlError, extract_error_code
+from .infra.circuit_breaker import (
+    ensure_risk_control_request_allowed,
+    record_risk_control_failure,
+)
 from .observability import add_retry
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_RETRYABLE_CODES: Set[int] = {-412, -509, 403, 412, 429}
+DEFAULT_RETRYABLE_CODES: Set[int] = {-509, 403, 429}
 
 AsyncCallable = TypeVar("AsyncCallable", bound=Callable[..., Awaitable[Any]])
 
@@ -44,28 +49,7 @@ def _extract_api_error_code(exc: Exception) -> int | None:
     - ``ResponseCodeException`` / generic ``ApiException`` – (``.code``).
     - ``NetworkException`` – HTTP-level status (``.status``).
     """
-    if isinstance(exc, RetryableBiliApiError):
-        return exc.code
-
-    code = getattr(exc, "code", None)
-    if isinstance(code, int):
-        return code
-
-    status = getattr(exc, "status", None)
-    if isinstance(status, int):
-        return status
-
-    if exc.args:
-        first = exc.args[0]
-        if isinstance(first, dict):
-            arg_code = first.get("code")
-            if isinstance(arg_code, int):
-                return arg_code
-
-    if isinstance(exc, httpx.HTTPStatusError):
-        return exc.response.status_code
-
-    return None
+    return extract_error_code(exc)
 
 
 def with_retry(
@@ -92,6 +76,7 @@ def with_retry(
 
             for attempt in range(max_retries + 1):
                 try:
+                    ensure_risk_control_request_allowed()
                     # First attempt is immediate. Backoff applies only to retries.
                     if attempt > 0:
                         delay = min(
@@ -113,6 +98,16 @@ def with_retry(
                 except (ApiException, NetworkException, RetryableBiliApiError) as exc:
                     last_exception = exc
                     code = _extract_api_error_code(exc)
+                    if code in RISK_CONTROL_CODES:
+                        snapshot = record_risk_control_failure()
+                        logger.error(
+                            "Risk-control API error in %s (code=%s)",
+                            func.__name__,
+                            code,
+                        )
+                        raise RiskControlError(
+                            retry_after=snapshot.retry_after
+                        ) from exc
                     if code in codes and attempt < max_retries:
                         add_retry()
                         if on_retry:
@@ -142,6 +137,16 @@ def with_retry(
                 except httpx.HTTPStatusError as exc:
                     last_exception = exc
                     code = _extract_api_error_code(exc)
+                    if code in RISK_CONTROL_CODES:
+                        snapshot = record_risk_control_failure()
+                        logger.error(
+                            "Risk-control HTTP status in %s (status=%s)",
+                            func.__name__,
+                            code,
+                        )
+                        raise RiskControlError(
+                            retry_after=snapshot.retry_after
+                        ) from exc
                     if code in codes and attempt < max_retries:
                         add_retry()
                         if on_retry:

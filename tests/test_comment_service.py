@@ -3,12 +3,21 @@ from typing import Any
 import pytest
 from bilibili_api import bvid2aid
 
+from bili_stalker_mcp.errors import RiskControlError
+from bili_stalker_mcp.infra.circuit_breaker import reset_risk_control_circuit
 from bili_stalker_mcp.services import comment_service
 
 BVID = "BV17x411w7KC"
 AID = 170001
 MAIN_URL = "https://api.bilibili.com/x/v2/reply/main"
 REPLIES_URL = "https://api.bilibili.com/x/v2/reply/reply"
+
+
+@pytest.fixture(autouse=True)
+def reset_circuit():
+    reset_risk_control_circuit()
+    yield
+    reset_risk_control_circuit()
 
 
 def _comment(rpid: int, preview_count: int = 0) -> dict[str, Any]:
@@ -171,14 +180,13 @@ async def test_comment_replies_use_one_request_with_page_parameters(monkeypatch)
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("code", [-412, -509])
-async def test_comment_api_retries_existing_retryable_codes(monkeypatch, code):
+async def test_comment_api_retries_rate_limit_code(monkeypatch):
     calls = []
 
     async def fake_get_json(url, *, params, cred):
         calls.append(url)
         if len(calls) == 1:
-            return {"code": code, "message": "retry"}
+            return {"code": -509, "message": "retry"}
         return _main_response()
 
     async def fake_sleep(delay):
@@ -198,6 +206,35 @@ async def test_comment_api_retries_existing_retryable_codes(monkeypatch, code):
 
     assert result["count"] == 1
     assert calls == [MAIN_URL, MAIN_URL]
+
+
+@pytest.mark.asyncio
+async def test_comment_api_does_not_retry_risk_control_code(monkeypatch):
+    calls = []
+    sleep_calls = []
+
+    async def fake_get_json(url, *, params, cred):
+        calls.append(url)
+        return {"code": -412, "message": "blocked"}
+
+    async def fake_sleep(delay):
+        sleep_calls.append(delay)
+
+    monkeypatch.setattr(comment_service, "get_json", fake_get_json)
+    monkeypatch.setattr("bili_stalker_mcp.retry.asyncio.sleep", fake_sleep)
+
+    with pytest.raises(RiskControlError):
+        await comment_service.fetch_content_comments(
+            content_type="video",
+            content_id=BVID,
+            cursor=None,
+            limit=20,
+            sort="hot",
+            cred=None,
+        )
+
+    assert calls == [MAIN_URL]
+    assert sleep_calls == []
 
 
 def test_bvid2aid_conversion_is_local_and_correct():

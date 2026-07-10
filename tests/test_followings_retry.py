@@ -1,5 +1,7 @@
 import pytest
 
+from bili_stalker_mcp.errors import RiskControlError
+from bili_stalker_mcp.infra.circuit_breaker import reset_risk_control_circuit
 from bili_stalker_mcp.services.user_service import fetch_user_followings
 
 
@@ -16,6 +18,13 @@ class _FakeResponse:
         return self._payload
 
 
+@pytest.fixture(autouse=True)
+def reset_circuit():
+    reset_risk_control_circuit()
+    yield
+    reset_risk_control_circuit()
+
+
 @pytest.mark.asyncio
 async def test_fetch_user_followings_retries_retryable_codes(monkeypatch):
     sleep_calls = []
@@ -29,8 +38,6 @@ async def test_fetch_user_followings_retries_retryable_codes(monkeypatch):
             calls["count"] += 1
             if calls["count"] == 1:
                 return _FakeResponse({"code": -509, "message": "too many requests"})
-            if calls["count"] == 2:
-                return _FakeResponse({"code": -412, "message": "blocked"})
             return _FakeResponse(
                 {
                     "code": 0,
@@ -51,10 +58,38 @@ async def test_fetch_user_followings_retries_retryable_codes(monkeypatch):
 
     result = await fetch_user_followings(user_id=1, page=1, limit=20, cred=None)
 
-    assert calls["count"] == 3
-    assert len(sleep_calls) == 2
+    assert calls["count"] == 2
+    assert len(sleep_calls) == 1
     assert result["total"] == 1
     assert result["followings"] == [{"mid": 1001, "uname": "alice", "sign": "hello"}]
+
+
+@pytest.mark.asyncio
+async def test_fetch_user_followings_does_not_retry_risk_control(monkeypatch):
+    sleep_calls = []
+    calls = {"count": 0}
+
+    async def fake_sleep(delay: float) -> None:
+        sleep_calls.append(delay)
+
+    class FakeClient:
+        async def get(self, *args, **kwargs):
+            calls["count"] += 1
+            return _FakeResponse({"code": -412, "message": "blocked"})
+
+    monkeypatch.setattr("bili_stalker_mcp.retry.asyncio.sleep", fake_sleep)
+    monkeypatch.setattr("bili_stalker_mcp.infra.upstream.REQUEST_JITTER_MIN_MS", 0)
+    monkeypatch.setattr("bili_stalker_mcp.infra.upstream.REQUEST_JITTER_MAX_MS", 0)
+    monkeypatch.setattr(
+        "bili_stalker_mcp.infra.http_client.get_shared_http_client",
+        lambda: FakeClient(),
+    )
+
+    with pytest.raises(RiskControlError):
+        await fetch_user_followings(user_id=1, page=1, limit=20, cred=None)
+
+    assert calls["count"] == 1
+    assert sleep_calls == []
 
 
 @pytest.mark.asyncio

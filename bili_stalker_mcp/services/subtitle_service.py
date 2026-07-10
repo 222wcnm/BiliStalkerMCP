@@ -6,6 +6,7 @@ from typing import Any, Literal
 
 from bilibili_api import Credential, video
 
+from ..errors import RiskControlError, public_error_json
 from ..infra.http_client import get_json
 from ..infra.upstream import timed_upstream_call
 from ..models import SubtitleResponse, SubtitleTrack
@@ -70,8 +71,10 @@ async def _fetch_subtitle_text(
                 lines.append(content.strip())
 
         return "\n".join(lines), None
+    except RiskControlError as exc:
+        return "", public_error_json(exc)
     except RetryableBiliApiError as exc:
-        return "", f"blocked or rate-limited: {exc}"
+        return "", f"blocked or rate-limited: {public_error_json(exc)}"
     except Exception as exc:
         return "", str(exc)
 

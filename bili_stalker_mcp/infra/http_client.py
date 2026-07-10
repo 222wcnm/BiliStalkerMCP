@@ -12,8 +12,14 @@ from ..config import (
     READ_TIMEOUT,
     REQUEST_TIMEOUT,
 )
+from ..errors import RISK_CONTROL_CODES, RiskControlError
 from ..observability import record_upstream_block, record_upstream_rate_limit
 from ..retry import RetryableBiliApiError
+from .circuit_breaker import (
+    ensure_risk_control_request_allowed,
+    record_risk_control_failure,
+    record_risk_control_success,
+)
 from .upstream import timed_upstream_call
 
 logger = logging.getLogger(__name__)
@@ -26,7 +32,7 @@ except (
     curl_requests = None
 
 
-RETRYABLE_HTTP_STATUSES = {403, 412, 429}
+RETRYABLE_HTTP_STATUSES = {403, 429}
 
 _http_client: "SharedRawHttpClient | None" = None
 
@@ -91,6 +97,11 @@ def _build_http_status_error(
 
 
 def _raise_for_retryable_status(status_code: int, url: str) -> None:
+    if status_code == 412:
+        record_upstream_block()
+        snapshot = record_risk_control_failure()
+        raise RiskControlError(retry_after=snapshot.retry_after)
+
     if status_code == 429:
         record_upstream_rate_limit()
         raise RetryableBiliApiError(
@@ -98,7 +109,7 @@ def _raise_for_retryable_status(status_code: int, url: str) -> None:
             message=f"HTTP rate limit from upstream for {url}",
         )
 
-    if status_code in {403, 412}:
+    if status_code == 403:
         record_upstream_block()
         raise RetryableBiliApiError(
             code=status_code,
@@ -198,6 +209,7 @@ async def request_json(
     follow_redirects: bool = True,
     timeout: float = REQUEST_TIMEOUT,
 ) -> dict[str, Any]:
+    ensure_risk_control_request_allowed()
     client = get_shared_http_client()
     merged_headers = build_request_headers(cred=cred, headers=headers)
     method_name = method.upper()
@@ -225,6 +237,8 @@ async def request_json(
         )
 
     status_code = int(getattr(response, "status_code", 0) or 0)
+    if status_code == 412:
+        _raise_for_retryable_status(status_code, url)
     if status_code in RETRYABLE_HTTP_STATUSES:
         _raise_for_retryable_status(status_code, url)
     if status_code >= 400:
@@ -247,6 +261,12 @@ async def request_json(
             f"Unexpected JSON response type from {url}: {type(payload).__name__}"
         )
 
+    if payload.get("code") in RISK_CONTROL_CODES:
+        record_upstream_block()
+        snapshot = record_risk_control_failure()
+        raise RiskControlError(retry_after=snapshot.retry_after)
+
+    record_risk_control_success()
     return payload
 
 
