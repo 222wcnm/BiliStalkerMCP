@@ -1,11 +1,11 @@
 ﻿import logging
-import os
 from typing import Optional
 
 from bilibili_api import user  # compatibility export for tests/monkeypatching
 from bilibili_api import Credential
 
 from .config import initialize_bilibili_request_settings
+from .credentials import CredentialLoadError, load_credential_snapshot
 from .infra.http_client import get_shared_http_client
 from .parsers.dynamic_parser import format_timestamp, parse_dynamic_item
 from .services.comment_service import (
@@ -33,47 +33,52 @@ initialize_bilibili_request_settings()
 
 logger = logging.getLogger(__name__)
 
-_credential_cache_key: tuple[str | None, str | None, str | None] | None = None
+_credential_cache_key: tuple[str | bool | None, ...] | None = None
 _credential_cache_value: Credential | None = None
 _missing_buvid3_warned = False
 
 
 def get_credential() -> Optional[Credential]:
-    """Build Bilibili credential from environment variables.
+    """Build Bilibili credential from environment variables and cookie files.
 
-    This function caches by raw env tuple to keep identity stable across calls,
+    This function caches by resolved credential values to keep identity stable,
     allowing async-lru caches keyed by credential object to hit reliably.
     """
     global _credential_cache_key, _credential_cache_value, _missing_buvid3_warned
 
-    sessdata = os.environ.get("SESSDATA")
-    bili_jct = os.environ.get("BILI_JCT")
-    buvid3 = os.environ.get("BUVID3")
-
-    if not sessdata:
-        logger.error("SESSDATA is not set in environment variables")
+    try:
+        snapshot = load_credential_snapshot()
+    except CredentialLoadError as exc:
+        logger.error("Failed to load credential configuration: %s", exc)
         _credential_cache_key = None
         _credential_cache_value = None
         return None
 
-    current_key = (sessdata, bili_jct, buvid3)
+    if not snapshot.sessdata:
+        logger.error("SESSDATA is not configured; set SESSDATA or BILI_COOKIE_FILE")
+        _credential_cache_key = None
+        _credential_cache_value = None
+        return None
+
+    current_key = snapshot.cache_key()
     if _credential_cache_key == current_key and _credential_cache_value is not None:
         return _credential_cache_value
 
     try:
-        if not buvid3 and not _missing_buvid3_warned:
+        if not snapshot.buvid3 and not _missing_buvid3_warned:
             logger.warning(
                 "BUVID3 is not set; anti-bot block risk is higher for raw requests"
             )
             _missing_buvid3_warned = True
 
-        if bili_jct and buvid3:
-            credential = Credential(sessdata=sessdata, bili_jct=bili_jct, buvid3=buvid3)
-        elif bili_jct:
-            credential = Credential(sessdata=sessdata, bili_jct=bili_jct, buvid3="")
-        else:
+        if not snapshot.bili_jct:
             logger.warning("Using minimal authentication (SESSDATA only)")
-            credential = Credential(sessdata=sessdata, bili_jct="", buvid3="")
+
+        credential = snapshot.to_credential()
+        if credential is None:
+            _credential_cache_key = None
+            _credential_cache_value = None
+            return None
 
         _credential_cache_key = current_key
         _credential_cache_value = credential

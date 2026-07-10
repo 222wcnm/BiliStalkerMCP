@@ -51,9 +51,7 @@ def _get_credential_from_context(_ctx: Context) -> Credential:
     """Get credential from environment or raise protocol-level tool error."""
     cred = get_credential()
     if cred is None:
-        raise ToolError(
-            "Missing SESSDATA. Please provide SESSDATA in environment variables."
-        )
+        raise ToolError("Missing SESSDATA. Set SESSDATA or provide BILI_COOKIE_FILE.")
     return cred
 
 

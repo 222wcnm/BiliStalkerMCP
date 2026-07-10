@@ -83,7 +83,12 @@ exclude = [
     "/.codex",
     "/.env",
     "/.mcp.json",
+    "/BILI_COOKIE.txt",
+    "/BILI_REFRESH_TOKEN.txt",
     "/cookie.json",
+    "/refresh_token.json",
+    "/bili_refresh_token.json",
+    "/.bili_refresh_token",
 ]
 
 [tool.hatch.build.targets.wheel]

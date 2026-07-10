@@ -131,7 +131,11 @@ cython_debug/
 
 # Project specific files
 BILI_COOKIE.txt
+BILI_REFRESH_TOKEN.txt
 cookie.json
+refresh_token.json
+bili_refresh_token.json
+.bili_refresh_token
 .mcp.json
 .claude/
 
