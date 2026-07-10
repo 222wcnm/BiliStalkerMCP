@@ -44,6 +44,13 @@ def test_dynamic_type_matching_supports_polymer_types(item_type, dynamic_type):
     assert _is_dynamic_type_match(item_type, dynamic_type) is True
 
 
+def test_all_raw_includes_unknown_polymer_types_and_all_remains_curated():
+    unknown_type = "DYNAMIC_TYPE_FUTURE_CARD"
+
+    assert _is_dynamic_type_match(unknown_type, DynamicType.ALL_RAW) is True
+    assert _is_dynamic_type_match(unknown_type, DynamicType.ALL) is False
+
+
 def test_cursor_token_round_trip():
     token = _encode_cursor_token(
         api_cursor="abc123",

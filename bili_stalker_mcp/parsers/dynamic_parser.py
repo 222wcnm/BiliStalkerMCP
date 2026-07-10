@@ -203,6 +203,7 @@ def _parse_new_dynamic_item(
             "title": article.get("title") or opus.get("title"),
         }
     else:
+        logger.debug("unhandled dynamic type: %s, raw=%s", item_type, item)
         type_suffix = str(item_type or "UNKNOWN").removeprefix("DYNAMIC_TYPE_")
         parsed["type"] = f"UNKNOWN_{type_suffix}"
 

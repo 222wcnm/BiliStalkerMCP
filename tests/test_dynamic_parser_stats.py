@@ -96,6 +96,42 @@ def test_parse_polymer_draw_items_extracts_images():
     ]
 
 
+def test_parse_unknown_polymer_dynamic_type_returns_unknown_and_logs(caplog):
+    item = {
+        "id_str": "3005",
+        "type": "DYNAMIC_TYPE_FUTURE_CARD",
+        "modules": {
+            "module_author": {"pub_ts": "1771601421"},
+            "module_dynamic": {
+                "desc": {"text": "future card"},
+                "major": {
+                    "common": {"title": "future title"},
+                },
+            },
+            "module_stat": {
+                "like": {"count": 5},
+                "comment": {"count": 2},
+                "forward": {"count": 1},
+            },
+        },
+    }
+
+    with caplog.at_level(
+        "DEBUG",
+        logger="bili_stalker_mcp.parsers.dynamic_parser",
+    ):
+        parsed = parse_dynamic_item(item)
+
+    assert "error" not in parsed
+    assert parsed["type"] == "UNKNOWN_FUTURE_CARD"
+    assert parsed["text_content"] == "future card"
+    assert parsed["stats"] == {"like": 5, "comment": 2, "forward": 1}
+    assert any(
+        record.message.startswith("unhandled dynamic type: DYNAMIC_TYPE_FUTURE_CARD")
+        for record in caplog.records
+    )
+
+
 def test_parse_draw_extracts_stats_and_image_count():
     item = {
         "desc": {
