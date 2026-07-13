@@ -102,7 +102,13 @@ def public_error_from_exception(
 
     code = extract_error_code(exc)
     if code in RISK_CONTROL_CODES:
-        return risk_control_error(request_id=request_id)
+        retry_after = getattr(exc, "retry_after", None)
+        if not isinstance(retry_after, (int, float)) or isinstance(retry_after, bool):
+            retry_after = None
+        return risk_control_error(
+            retry_after=retry_after,
+            request_id=request_id,
+        )
 
     return PublicError(
         code=code,

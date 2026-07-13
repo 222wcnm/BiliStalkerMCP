@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Python 3.12 / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - windows-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install uv and Python
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Install locked environment
+        run: uv sync --locked --all-extras --dev
+
+      - name: Check lock file
+        run: uv lock --check
+
+      - name: Run tests
+        run: uv run pytest -q -p no:cacheprovider
+
+      - name: Check formatting
+        run: uv run black --check bili_stalker_mcp tests scripts
+
+      - name: Check import order
+        run: uv run isort --check-only bili_stalker_mcp tests scripts
+
+      - name: Run lint
+        run: uv run flake8 bili_stalker_mcp tests scripts
+
+      - name: Run type checking
+        run: uv run mypy bili_stalker_mcp
+
+      - name: Build distributions
+        run: uv build --no-sources
+
+      - name: Check distribution metadata
+        run: uvx --from twine twine check dist/*

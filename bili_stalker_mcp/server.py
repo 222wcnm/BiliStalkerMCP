@@ -19,6 +19,12 @@ from pydantic import Field
 
 from . import __version__
 from .config import DynamicType
+from .cookie_refresh import (
+    CookieRefreshConfigError,
+    CookieRefreshError,
+    load_refreshing_credential,
+    validate_cookie_refresh_runtime,
+)
 from .core import (
     fetch_article_content,
     fetch_content_comment_replies,
@@ -32,7 +38,8 @@ from .core import (
     get_credential,
     get_user_id_by_username,
 )
-from .errors import public_error_json
+from .credentials import cookie_refresh_enabled
+from .errors import RiskControlError, public_error_json
 from .observability import begin_request, snapshot_metrics
 from .utils import extract_bvid
 
@@ -49,12 +56,31 @@ MAX_ARTICLE_LIMIT = 30
 MAX_FOLLOWING_LIMIT = 50
 
 
-def _get_credential_from_context(_ctx: Context) -> Credential:
+async def _get_credential_from_context(_ctx: Context) -> Credential:
     """Get credential from environment or raise protocol-level tool error."""
-    cred = get_credential()
-    if cred is None:
-        raise ToolError("Missing SESSDATA. Set SESSDATA or provide BILI_COOKIE_FILE.")
-    return cred
+    try:
+        if cookie_refresh_enabled():
+            return await load_refreshing_credential()
+
+        cred = get_credential()
+        if cred is None:
+            raise ToolError(
+                "Missing SESSDATA. Set SESSDATA or provide BILI_COOKIE_FILE."
+            )
+        return cred
+    except ToolError:
+        raise
+    except CookieRefreshConfigError as exc:
+        raise ToolError(str(exc)) from None
+    except RiskControlError as exc:
+        tool_error = ToolError(public_error_json(exc))
+        setattr(tool_error, "code", exc.code)
+        setattr(tool_error, "retry_after", exc.retry_after)
+        raise tool_error from None
+    except CookieRefreshError as exc:
+        raise ToolError(public_error_json(exc)) from None
+    except Exception as exc:  # pragma: no cover - defensive safety boundary
+        raise ToolError(public_error_json(exc)) from None
 
 
 def _parse_user_identifier(
@@ -85,6 +111,7 @@ async def _normalize_comment_content_id(
 
 def create_server() -> FastMCP:
     """Create and configure the BiliStalkerMCP server."""
+    validate_cookie_refresh_runtime()
     logger = logging.getLogger(__name__)
     mcp = FastMCP("BiliStalkerMCP", version=__version__)
 
@@ -202,7 +229,7 @@ def create_server() -> FastMCP:
         """Get profile information for a Bilibili user."""
 
         async def _runner() -> Dict[str, Any]:
-            cred = _get_credential_from_context(ctx)
+            cred = await _get_credential_from_context(ctx)
             user_id, username = _parse_user_identifier(user_id_or_username)
             target_uid = await _resolve_user_id(user_id, username)
             return await fetch_user_info(target_uid, cred)
@@ -251,7 +278,7 @@ def create_server() -> FastMCP:
         """Get lightweight video list for a user."""
 
         async def _runner() -> Dict[str, Any]:
-            cred = _get_credential_from_context(ctx)
+            cred = await _get_credential_from_context(ctx)
             user_id, username = _parse_user_identifier(user_id_or_username)
             target_uid = await _resolve_user_id(user_id, username)
             return await fetch_user_videos(target_uid, page, limit, cred)
@@ -307,7 +334,7 @@ def create_server() -> FastMCP:
         """Search a user's videos by keyword."""
 
         async def _runner() -> Dict[str, Any]:
-            cred = _get_credential_from_context(ctx)
+            cred = await _get_credential_from_context(ctx)
             user_id, username = _parse_user_identifier(user_id_or_username)
             target_uid = await _resolve_user_id(user_id, username)
             return await fetch_user_videos(
@@ -377,7 +404,7 @@ def create_server() -> FastMCP:
         """Get full video detail and optional subtitles."""
 
         async def _runner() -> Dict[str, Any]:
-            cred = _get_credential_from_context(ctx)
+            cred = await _get_credential_from_context(ctx)
             resolved_bvid = await extract_bvid(bvid)
             return await fetch_video_detail(
                 bvid=resolved_bvid,
@@ -442,7 +469,7 @@ def create_server() -> FastMCP:
         """Get user dynamics with type filtering and cursor pagination."""
 
         async def _runner() -> Dict[str, Any]:
-            cred = _get_credential_from_context(ctx)
+            cred = await _get_credential_from_context(ctx)
             user_id, username = _parse_user_identifier(user_id_or_username)
             target_uid = await _resolve_user_id(user_id, username)
             return await fetch_user_dynamics(
@@ -497,7 +524,7 @@ def create_server() -> FastMCP:
         """Get lightweight article list for a user."""
 
         async def _runner() -> Dict[str, Any]:
-            cred = _get_credential_from_context(ctx)
+            cred = await _get_credential_from_context(ctx)
             user_id, username = _parse_user_identifier(user_id_or_username)
             target_uid = await _resolve_user_id(user_id, username)
             return await fetch_user_articles(target_uid, page, limit, cred)
@@ -535,7 +562,7 @@ def create_server() -> FastMCP:
         """Get full article markdown content (supports both CV and opus ids)."""
 
         async def _runner() -> Dict[str, Any]:
-            cred = _get_credential_from_context(ctx)
+            cred = await _get_credential_from_context(ctx)
             stripped = article_id.strip()
             if not stripped.isdigit() or int(stripped) < 1:
                 raise ToolError(
@@ -587,7 +614,7 @@ def create_server() -> FastMCP:
         """Get user followings."""
 
         async def _runner() -> Dict[str, Any]:
-            cred = _get_credential_from_context(ctx)
+            cred = await _get_credential_from_context(ctx)
             user_id, username = _parse_user_identifier(user_id_or_username)
             target_uid = await _resolve_user_id(user_id, username)
             return await fetch_user_followings(target_uid, page, limit, cred)
@@ -665,7 +692,7 @@ def create_server() -> FastMCP:
         """
 
         async def _runner() -> Dict[str, Any]:
-            cred = _get_credential_from_context(ctx)
+            cred = await _get_credential_from_context(ctx)
             normalized_id = await _normalize_comment_content_id(
                 content_type, content_id
             )
@@ -734,7 +761,7 @@ def create_server() -> FastMCP:
         """Get paginated replies under one top-level video, article, or dynamic comment."""
 
         async def _runner() -> Dict[str, Any]:
-            cred = _get_credential_from_context(ctx)
+            cred = await _get_credential_from_context(ctx)
             normalized_id = await _normalize_comment_content_id(
                 content_type, content_id
             )

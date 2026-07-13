@@ -51,11 +51,65 @@ pip install bili-stalker-mcp
 
 | 变量名 | 必填 | 描述 |
 |--------|:----:|------|
-| `SESSDATA` | **是** | B 站登录凭证。 |
+| `SESSDATA` | 条件必填 | B 站登录凭证；未通过 `BILI_COOKIE_FILE` 提供时必填。 |
 | `BILI_JCT` | 否 | CSRF Token，涉及高权限操作时必需。 |
 | `BUVID3` | 否 | 硬件指纹，显著降低风控阻断风险。 |
+| `BILI_COOKIE_FILE` | 否 | 普通 Cookie 文件路径。 |
+| `BILI_REFRESH_TOKEN_FILE` | 否 | 独立 refresh token 文件路径；不得通过环境变量提供 token。 |
+| `BILI_ENABLE_COOKIE_REFRESH` | 否 | 设为 `true` 后启用安全自动刷新；默认：`false`。 |
+| `BILI_COOKIE_REFRESH_CHECK_INTERVAL_SECONDS` | 否 | 检查刷新需求的间隔秒数；默认：`21600`，最小：`60`。 |
 | `BILI_LOG_LEVEL` | 否 | 映射至 `DEBUG`, `INFO` (默认), `WARNING`。 |
 | `BILI_TIMEZONE` | 否 | 格式化时间输出时区（默认：`Asia/Shanghai`）。 |
+
+### 可选的安全 Cookie 自动刷新
+
+自动刷新默认关闭。只有当 Cookie 文件和 refresh token 文件均为已存在、可读、可写的
+普通文件时才应启用。Cookie 文件只能包含普通 Cookie（`SESSDATA`、`bili_jct`、
+`buvid3`、`buvid4`、`DedeUserID`）；refresh token 只能写在独立文件中。
+
+```json
+{
+  "BILI_COOKIE_FILE": "/secure/bilibili-cookie.txt",
+  "BILI_REFRESH_TOKEN_FILE": "/secure/bilibili-refresh-token.txt",
+  "BILI_ENABLE_COOKIE_REFRESH": "true",
+  "BILI_COOKIE_REFRESH_CHECK_INTERVAL_SECONDS": "21600"
+}
+```
+
+启用刷新后，不要再通过环境变量设置 `SESSDATA`、`BILI_JCT` 或 `DEDEUSERID`：这些会
+轮换的值必须来自 Cookie 文件，避免重启后重新加载旧凭据。`BUVID3` 和 `BUVID4` 仍可由
+环境变量提供。检查会按间隔执行，共享这些文件的并发 MCP 调用和多个服务进程会共用刷新锁；
+存在 pending-confirm 状态时会先恢复确认，不会直接产生另一组凭据。锁的旁路文件名为
+`.bili-cookie-refresh.lock`，进程退出后保留属于正常现象。
+
+如需更快完成首次配置，可从 B 站浏览器请求中复制完整 Cookie header 的值，再从 Local
+Storage 复制 `ac_time_value`，然后运行：
+
+```powershell
+uv run bili-stalker-cookie-setup --directory D:\BiliStalkerSecrets
+```
+
+如果只从 PyPI 调用、不克隆仓库，可以运行：
+
+```powershell
+uvx --from bili-stalker-mcp bili-stalker-cookie-setup --directory D:\BiliStalkerSecrets
+```
+
+脚本会隐藏两次粘贴输入，拒绝写入仓库内目录或覆盖已有凭据文件，并且只输出不含 secret 的
+MCP `env` 配置片段。不要粘贴完整 cURL 命令，只粘贴其中 `cookie:` 后面的值。
+
+### 本地验证
+
+以下命令均使用 mock，不需要也不应填入 B 站真实凭据：
+
+```powershell
+uv run pytest -q tests/test_credentials.py tests/test_cookie_refresh.py tests/test_tool_contract.py
+uv run pytest -q
+uv run black --check bili_stalker_mcp tests scripts
+uv run isort --check-only bili_stalker_mcp tests scripts
+uv run flake8 bili_stalker_mcp tests scripts
+uv run mypy bili_stalker_mcp
+```
 
 ## 🛠️ 工具集
 
@@ -82,6 +136,9 @@ pip install bili-stalker-mcp
 - `ALL` (默认): 仅文本、图文（DRAW）、转发（最适合 AI 分析）。
 - `ALL_RAW`: 原始全量数据（包含视频及专栏）。
 - `VIDEO`, `ARTICLE`, `DRAW`, `TEXT`: 特定分类过滤。
+- `REVIEW`: 仅返回项目已识别的五格星级评分卡。结果中的 `review.rating` 是已点亮
+  星数（0-5），并会返回 `review.title`、`review.text`、封面与跳转 URL，以及可用的
+  来源评分说明；该过滤器不会自行判断被评分的标题是否属于动漫。
 
 每条动态都包含 `images` 列表，图片对象提供 `url`、`width` 和 `height`；
 无有效 URL 的图片会被过滤，无法解析的尺寸返回 `null`。`image_count` 始终等于

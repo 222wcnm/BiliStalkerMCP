@@ -27,7 +27,8 @@ classifiers = [
     "Topic :: Communications",
 ]
 dependencies = [
-    "bilibili-api-python>=17.1.4",
+    "bilibili-api-python==17.4.2",
+    "filelock==3.29.7",
     "fastmcp>=3.0.0",
     "mcp>=1.26.0",
     "httpx>=0.25.0",
@@ -62,6 +63,7 @@ dev = [
 
 [project.scripts]
 bili-stalker-mcp = "bili_stalker_mcp.cli:main"
+bili-stalker-cookie-setup = "bili_stalker_mcp.setup_cookie_refresh:main"
 
 [project.urls]
 Homepage = "https://github.com/222wcnm/BiliStalkerMCP"
@@ -89,10 +91,24 @@ exclude = [
     "/refresh_token.json",
     "/bili_refresh_token.json",
     "/.bili_refresh_token",
+    "/**/.bili-cookie-refresh-transaction.json",
+    "/**/.bili-cookie-refresh-cookie.stage",
+    "/**/.bili-cookie-refresh-token.stage",
+    "/**/.bili-cookie-refresh-pending.json",
+    "/**/.bili-cookie-refresh.lock",
+    "/**/.bili-cookie-refresh-*.tmp",
 ]
 
 [tool.hatch.build.targets.wheel]
 packages = ["bili_stalker_mcp"]
+exclude = [
+    "/**/.bili-cookie-refresh-transaction.json",
+    "/**/.bili-cookie-refresh-cookie.stage",
+    "/**/.bili-cookie-refresh-token.stage",
+    "/**/.bili-cookie-refresh-pending.json",
+    "/**/.bili-cookie-refresh.lock",
+    "/**/.bili-cookie-refresh-*.tmp",
+]
 
 [tool.black]
 line-length = 88

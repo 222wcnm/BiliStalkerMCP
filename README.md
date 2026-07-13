@@ -43,17 +43,75 @@ pip install bili-stalker-mcp
 > Prefer `uv run --directory ...` for faster local updates when PyPI release propagation is delayed.
 > You can still use `uvx bili-stalker-mcp` for quick one-off usage.
 
-> **Auth**: Obtain `SESSDATA` from Browser DevTools (F12) > Application > Cookies > `.bilibili.com`.
+> **Auth**: Provide `SESSDATA` directly, or put it in `BILI_COOKIE_FILE`. Obtain it from Browser DevTools (F12) > Application > Cookies > `.bilibili.com`.
 
 ### Environment Variables
 
 | Key | Req | Description |
 |-----|:---:|-------------|
-| `SESSDATA` | **Yes** | Bilibili session token. |
+| `SESSDATA` | Conditional | Bilibili session token; required unless `BILI_COOKIE_FILE` provides it. |
 | `BILI_JCT` | No | CSRF protection token. |
 | `BUVID3` | No | Hardware fingerprint (reduces rate-limiting risk). |
+| `BILI_COOKIE_FILE` | No | Path to a plain Cookie file. |
+| `BILI_REFRESH_TOKEN_FILE` | No | Path to the separate refresh-token file; never set the token through an environment variable. |
+| `BILI_ENABLE_COOKIE_REFRESH` | No | `true` enables safe automatic refresh; default: `false`. |
+| `BILI_COOKIE_REFRESH_CHECK_INTERVAL_SECONDS` | No | Refresh-check interval; default: `21600`, minimum: `60`. |
 | `BILI_LOG_LEVEL` | No | `DEBUG`, `INFO` (Default), `WARNING`. |
 | `BILI_TIMEZONE` | No | Output time zone for formatted timestamps (default: `Asia/Shanghai`). |
+
+### Optional Safe Cookie Refresh
+
+Automatic refresh is disabled by default. Enable it only when the Cookie file and
+refresh-token file are existing, readable, writable regular files. The Cookie file
+may contain only ordinary Cookie values (`SESSDATA`, `bili_jct`, `buvid3`,
+`buvid4`, and `DedeUserID`); the refresh token belongs only in its own file.
+
+```json
+{
+  "BILI_COOKIE_FILE": "/secure/bilibili-cookie.txt",
+  "BILI_REFRESH_TOKEN_FILE": "/secure/bilibili-refresh-token.txt",
+  "BILI_ENABLE_COOKIE_REFRESH": "true",
+  "BILI_COOKIE_REFRESH_CHECK_INTERVAL_SECONDS": "21600"
+}
+```
+
+When refresh is enabled, do not set `SESSDATA`, `BILI_JCT`, or `DEDEUSERID` in
+the environment: those rotating values must come from the Cookie file so a restart
+cannot reload stale credentials. `BUVID3` and `BUVID4` may still be provided through
+the environment. Refresh checks are rate-limited, and concurrent MCP calls or server
+processes sharing these files use one refresh lock. Pending confirmation is recovered
+before another refresh. The `.bili-cookie-refresh.lock` sidecar may remain on disk
+between runs.
+
+For a quicker initial setup, copy the complete Cookie header value from a Bilibili
+browser request and `ac_time_value` from Local Storage, then run:
+
+```powershell
+uv run bili-stalker-cookie-setup --directory D:\BiliStalkerSecrets
+```
+
+For a PyPI-only invocation without cloning this repository:
+
+```powershell
+uvx --from bili-stalker-mcp bili-stalker-cookie-setup --directory D:\BiliStalkerSecrets
+```
+
+The script hides both pasted values, refuses directories inside the repository and
+existing credential files, and prints only a non-secret MCP `env` block. Do not
+paste an entire cURL command: paste only the value after its `cookie:` header.
+
+### Local Verification
+
+All verification commands use mocks and do not require Bilibili credentials:
+
+```powershell
+uv run pytest -q tests/test_credentials.py tests/test_cookie_refresh.py tests/test_tool_contract.py
+uv run pytest -q
+uv run black --check bili_stalker_mcp tests scripts
+uv run isort --check-only bili_stalker_mcp tests scripts
+uv run flake8 bili_stalker_mcp tests scripts
+uv run mypy bili_stalker_mcp
+```
 
 ## Available Tools
 
@@ -82,6 +140,10 @@ complete reply thread.
 - `ALL` (default): Text, Draw, and Reposts.
 - `ALL_RAW`: Unfiltered (includes Videos & Articles).
 - `VIDEO`, `ARTICLE`, `DRAW`, `TEXT`: Specific category filtering.
+- `REVIEW`: Recognized five-slot rating cards only. Each result exposes
+  `review.rating` (filled stars, 0-5), `review.title`, `review.text`, cover and
+  jump URLs, plus the source score description when available. This filter does
+  not independently classify whether the rated title is an anime.
 
 Each dynamic item includes an `images` list. Every image contains `url`, `width`,
 and `height`; invalid URLs are omitted, and unavailable dimensions are `null`.
