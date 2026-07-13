@@ -233,13 +233,17 @@ function Test-RegistryPackage {
         if ($UseTestPyPI) {
             uv pip install `
                 --python $pythonPath `
+                --refresh-package $ProjectName `
                 --index-url "https://test.pypi.org/simple" `
                 --extra-index-url "https://pypi.org/simple" `
                 --index-strategy unsafe-best-match `
                 $requirement
         }
         else {
-            uv pip install --python $pythonPath $requirement
+            uv pip install `
+                --python $pythonPath `
+                --refresh-package $ProjectName `
+                $requirement
         }
         Assert-LastExitCode -Operation "Installing $requirement from registry"
         Test-InstalledEnvironment -VenvPath $tempRoot -ExpectedVersion $Version
