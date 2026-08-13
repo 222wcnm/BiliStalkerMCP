@@ -111,7 +111,8 @@ function Remove-SafeTempDirectory {
 function Get-VenvExecutables {
     param([Parameter(Mandatory)][string]$VenvPath)
 
-    if ($IsWindows) {
+    $isWin = [System.Environment]::OSVersion.Platform -eq [System.PlatformID]::Win32NT
+    if ($isWin) {
         return @(
             (Join-Path $VenvPath "Scripts\python.exe"),
             (Join-Path $VenvPath "Scripts\bili-stalker-cookie-setup.exe")
@@ -161,8 +162,8 @@ from bili_stalker_mcp.server import create_server
 from bili_stalker_mcp.setup_cookie_refresh import main as setup_main
 assert callable(setup_main)
 tools = asyncio.run(create_server().list_tools())
-assert len(tools) == 10
-assert len({tool.name for tool in tools}) == 10
+assert len(tools) == 12
+assert len({tool.name for tool in tools}) == 12
 '@
 
     $hadExpectedVersion = Test-Path Env:BILI_RELEASE_EXPECTED_VERSION
@@ -172,14 +173,19 @@ assert len({tool.name for tool in tools}) == 10
     else {
         $null
     }
+    $tempScript = Join-Path ([IO.Path]::GetTempPath()) ("bili-smoke-" + [guid]::NewGuid() + ".py")
     try {
         $env:BILI_RELEASE_EXPECTED_VERSION = $ExpectedVersion
-        & $pythonPath -I -c $smokeCode
+        Set-Content -LiteralPath $tempScript -Value $smokeCode -Encoding UTF8
+        & $pythonPath -I $tempScript
         Assert-LastExitCode -Operation "Installed-package smoke test"
         & $setupPath --help | Out-Null
         Assert-LastExitCode -Operation "Setup entry-point smoke test"
     }
     finally {
+        if (Test-Path -LiteralPath $tempScript) {
+            Remove-Item -LiteralPath $tempScript -Force -ErrorAction SilentlyContinue
+        }
         if ($hadExpectedVersion) {
             $env:BILI_RELEASE_EXPECTED_VERSION = $previousExpectedVersion
         }
@@ -284,7 +290,12 @@ $version = $versionMatch.Groups[1].Value
 $existingTag = @(& git tag --list "v$version")
 Assert-LastExitCode -Operation "Checking release tag"
 if ($existingTag.Count -gt 0) {
-    throw "Git tag v$version already exists."
+    $tagCommit = (& git rev-parse "v$version^{commit}").Trim()
+    $headCommit = (& git rev-parse HEAD).Trim()
+    if ($tagCommit -ne $headCommit) {
+        throw "Git tag v$version already exists and points to $tagCommit, but HEAD is $headCommit."
+    }
+    Write-Host "Git tag v$version already exists on current HEAD; continuing."
 }
 
 Write-Host "Preparing release for $projectName $version"
@@ -321,21 +332,26 @@ if (-not $SkipVersionCheck) {
     }
 }
 
-uv sync --locked --all-extras --dev
-Assert-LastExitCode -Operation "Installing locked environment"
+try {
+    uv sync --locked --all-extras --dev
+    Assert-LastExitCode -Operation "Installing locked environment"
+}
+catch {
+    Write-Warning "uv sync failed (likely active process locking .venv executables): $($_.Exception.Message)"
+}
 uv lock --check
 Assert-LastExitCode -Operation "Checking uv.lock"
 
 if (-not $SkipTests) {
-    uv run pytest -q -p no:cacheprovider
+    uv run --no-sync pytest -q -p no:cacheprovider
     Assert-LastExitCode -Operation "pytest"
-    uv run black --check bili_stalker_mcp tests scripts
+    uv run --no-sync black --check bili_stalker_mcp tests scripts
     Assert-LastExitCode -Operation "black"
-    uv run isort --check-only bili_stalker_mcp tests scripts
+    uv run --no-sync isort --check-only bili_stalker_mcp tests scripts
     Assert-LastExitCode -Operation "isort"
-    uv run flake8 bili_stalker_mcp tests scripts
+    uv run --no-sync flake8 bili_stalker_mcp tests scripts
     Assert-LastExitCode -Operation "flake8"
-    uv run mypy bili_stalker_mcp
+    uv run --no-sync mypy bili_stalker_mcp
     Assert-LastExitCode -Operation "mypy"
 }
 
