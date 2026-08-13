@@ -226,48 +226,151 @@ async def get_user_id_by_username(username: str) -> int | None:
     return None
 
 
+def _clean_str(value: Any) -> str | None:
+    if not isinstance(value, str):
+        return None
+    cleaned = value.strip()
+    return cleaned or None
+
+
+def _parse_user_profile(info: dict[str, Any]) -> dict[str, Any]:
+    """Extract high-value profile fields from the raw space info payload."""
+    official_raw = info.get("official") or {}
+    vip_raw = info.get("vip") or {}
+    live_raw = info.get("live_room") or {}
+    school_raw = info.get("school") or {}
+    profession_raw = info.get("profession") or {}
+
+    sex = _clean_str(info.get("sex"))
+    if sex == "保密":
+        sex = None
+
+    official = None
+    official_title = _clean_str(official_raw.get("title"))
+    if official_title:
+        official = {
+            "role": coerce_int(official_raw.get("role")),
+            "title": official_title,
+        }
+
+    vip = None
+    if isinstance(vip_raw, dict) and vip_raw:
+        vip = {
+            "status": bool(coerce_int(vip_raw.get("status"))),
+            "label": _clean_str((vip_raw.get("label") or {}).get("text")),
+        }
+
+    live_room = None
+    if coerce_int(live_raw.get("roomStatus")):
+        live_room = {
+            "is_live": bool(coerce_int(live_raw.get("liveStatus"))),
+            "title": _clean_str(live_raw.get("title")),
+            "url": _clean_str(live_raw.get("url")),
+            "watched": coerce_int((live_raw.get("watched_show") or {}).get("num")),
+        }
+
+    profession_parts = [
+        _clean_str(profession_raw.get("name")),
+        _clean_str(profession_raw.get("title")),
+    ]
+    profession = " ".join(part for part in profession_parts if part) or None
+
+    return {
+        "face": _clean_str(info.get("face")),
+        "level": coerce_int(info.get("level")),
+        "sex": sex,
+        "birthday": _clean_str(info.get("birthday")),
+        "school": _clean_str(school_raw.get("name")),
+        "profession": profession,
+        "official": official,
+        "vip": vip,
+        "is_banned": (
+            bool(coerce_int(info.get("silence"))) if "silence" in info else None
+        ),
+        "is_senior_member": (
+            bool(coerce_int(info.get("is_senior_member")))
+            if "is_senior_member" in info
+            else None
+        ),
+        "live_room": live_room,
+    }
+
+
 @alru_cache(maxsize=32, ttl=300)
 @with_retry(max_retries=3, base_delay=2.0)
 async def _fetch_user_info_cached(user_id: int, cred: Credential) -> dict[str, Any]:
     u = user.User(uid=user_id, credential=cred)
-    info = await timed_upstream_call(u.get_user_info())
+
+    async def _fetch_relation_stat() -> dict[str, Any] | None:
+        try:
+            stat_data = await get_json(
+                "https://api.bilibili.com/x/relation/stat",
+                params={"vmid": user_id},
+                cred=cred,
+            )
+        except RetryableBiliApiError as exc:
+            logger.warning(
+                "Relation stat request was blocked or rate-limited for uid %s: %s",
+                user_id,
+                exc,
+            )
+            return None
+        except Exception as exc:
+            logger.warning("Relation stat request failed for uid %s: %s", user_id, exc)
+            return None
+
+        if stat_data.get("code") == 0 and "data" in stat_data:
+            return stat_data["data"]
+        logger.warning(
+            "Failed to get relation stat for uid %s: %s",
+            user_id,
+            stat_data.get("message"),
+        )
+        return None
+
+    async def _fetch_up_stat() -> dict[str, Any] | None:
+        if not getattr(cred, "bili_jct", None):
+            logger.debug("Skipping up stat for uid %s: bili_jct not set", user_id)
+            return None
+        try:
+            return await timed_upstream_call(u.get_up_stat())
+        except Exception as exc:
+            logger.warning("Up stat request failed for uid %s: %s", user_id, exc)
+            return None
+
+    info, relation, up_stat = await asyncio.gather(
+        timed_upstream_call(u.get_user_info()),
+        _fetch_relation_stat(),
+        _fetch_up_stat(),
+    )
+
     if not info or "mid" not in info:
         raise ValueError(f"Invalid response for user {user_id}")
 
-    user_data = {
+    user_data: dict[str, Any] = {
         "mid": info.get("mid"),
         "name": info.get("name"),
         "sign": info.get("sign"),
+        **_parse_user_profile(info),
         "following": None,
         "follower": None,
+        "total_video_views": None,
+        "total_article_views": None,
+        "total_likes": None,
     }
 
-    try:
-        stat_url = "https://api.bilibili.com/x/relation/stat"
-        params = {"vmid": user_id}
-        stat_data = await get_json(
-            stat_url,
-            params=params,
-            cred=cred,
-        )
+    if relation is not None:
+        user_data["following"] = coerce_int(relation.get("following"))
+        user_data["follower"] = coerce_int(relation.get("follower"))
 
-        if stat_data.get("code") == 0 and "data" in stat_data:
-            user_data["following"] = stat_data["data"].get("following")
-            user_data["follower"] = stat_data["data"].get("follower")
-        else:
-            logger.warning(
-                "Failed to get relation stat for uid %s: %s",
-                user_id,
-                stat_data.get("message"),
-            )
-    except RetryableBiliApiError as exc:
-        logger.warning(
-            "Relation stat request was blocked or rate-limited for uid %s: %s",
-            user_id,
-            exc,
+    if up_stat is not None:
+        user_data["total_video_views"] = coerce_int(
+            (up_stat.get("archive") or {}).get("view")
         )
-    except Exception as exc:
-        logger.warning("Relation stat request failed for uid %s: %s", user_id, exc)
+        user_data["total_article_views"] = coerce_int(
+            (up_stat.get("article") or {}).get("view")
+        )
+        user_data["total_likes"] = coerce_int(up_stat.get("likes"))
 
     return user_data
 

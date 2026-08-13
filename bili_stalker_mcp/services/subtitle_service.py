@@ -132,16 +132,19 @@ def _append_track_with_budget(
     selected_tracks: list[SubtitleTrack],
     full_text_lines: list[str],
     remaining_budget: int,
+    label: str | None = None,
 ) -> tuple[int, bool]:
     text = raw_text or ""
     was_truncated = False
+    header = f"[{label}]\n" if label else ""
     if text:
         separator_cost = 1 if full_text_lines else 0
-        if remaining_budget <= separator_cost:
+        overhead = separator_cost + len(header)
+        if remaining_budget <= overhead:
             text = ""
             was_truncated = True
         else:
-            remaining_budget -= separator_cost
+            remaining_budget -= overhead
             if len(text) > remaining_budget:
                 text = text[:remaining_budget]
                 remaining_budget = 0
@@ -149,10 +152,19 @@ def _append_track_with_budget(
             else:
                 remaining_budget -= len(text)
 
-    selected_tracks.append(track.model_copy(update={"text": text}))
+    # Tracks carry metadata only; subtitle text is returned once via full_text
+    # to avoid doubling the token cost of the response.
+    selected_tracks.append(track.model_copy(update={"text": ""}))
     if text:
-        full_text_lines.append(text)
+        full_text_lines.append(f"{header}{text}")
     return remaining_budget, was_truncated
+
+
+def _track_label(track: SubtitleTrack) -> str:
+    language = track.lan_doc or track.lan or "unknown"
+    if track.part:
+        return f"{language} · {track.part}"
+    return language
 
 
 def _build_subtitle_candidates(
@@ -513,6 +525,7 @@ async def collect_subtitles(
         ]
         track_results = await asyncio.gather(*track_tasks)
         remaining_budget = char_budget
+        use_labels = len(candidates) > 1
         for candidate, (text, error) in zip(candidates, track_results):
             track = candidate["track"]
             if error:
@@ -525,6 +538,7 @@ async def collect_subtitles(
                 selected_tracks=selected_tracks,
                 full_text_lines=full_text_lines,
                 remaining_budget=remaining_budget,
+                label=_track_label(track) if use_labels else None,
             )
             truncated = truncated or was_truncated
         dropped_tracks = max(0, len(candidates) - len(selected_tracks))

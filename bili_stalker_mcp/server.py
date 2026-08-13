@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import time
 import uuid
@@ -201,12 +202,11 @@ def create_server() -> FastMCP:
         return (
             "Track a target Bilibili user in this order: \n"
             "1) If given a username, call search_users once and use the numeric UID. \n"
-            "2) get_user_info \n"
-            "3) get_user_videos \n"
-            "4) get_video_detail (for videos that need full context) \n"
-            "5) get_user_dynamics \n"
-            "6) get_user_articles \n"
-            "7) get_article_content (for articles that need full context) \n"
+            "2) get_user_snapshot (profile + recent videos/dynamics/articles in one call) \n"
+            "3) get_video_detail (for videos that need full context) \n"
+            "4) get_article_content (for articles that need full context) \n"
+            "5) Use get_user_videos/get_user_dynamics/get_user_articles only for "
+            "deeper pagination. \n"
             "Then summarize by publish time and highlight major changes."
         )
 
@@ -216,7 +216,7 @@ def create_server() -> FastMCP:
         return (
             "Analyze one Bilibili user's content behavior: \n"
             "1) Resolve a username with search_users and reuse the numeric UID. \n"
-            "2) Collect profile + lightweight lists (videos, dynamics, articles). \n"
+            "2) Call get_user_snapshot for profile + lightweight lists in one call. \n"
             "3) Fetch details only for high-value items (video/article detail tools). \n"
             "4) Measure cadence and content-type mix. \n"
             "5) Summarize top themes and recent shifts."
@@ -258,6 +258,108 @@ def create_server() -> FastMCP:
                 ) from None
 
         return await _run_tool("search_users", _runner)
+
+    @mcp.tool(
+        annotations={
+            "readOnlyHint": True,
+            "destructiveHint": False,
+            "idempotentHint": True,
+        }
+    )
+    async def get_user_snapshot(
+        ctx: Context,
+        user_id_or_username: Annotated[
+            str,
+            Field(
+                min_length=1,
+                description="Bilibili user id (numeric) or username.",
+            ),
+        ],
+        video_limit: Annotated[
+            int,
+            Field(
+                ge=0,
+                le=MAX_VIDEO_LIMIT,
+                description=f"Recent videos to include, 0-{MAX_VIDEO_LIMIT}. 0 skips the section.",
+            ),
+        ] = 10,
+        dynamic_limit: Annotated[
+            int,
+            Field(
+                ge=0,
+                le=MAX_DYNAMIC_LIMIT,
+                description=f"Recent dynamics to include, 0-{MAX_DYNAMIC_LIMIT}. 0 skips the section.",
+            ),
+        ] = 10,
+        article_limit: Annotated[
+            int,
+            Field(
+                ge=0,
+                le=MAX_ARTICLE_LIMIT,
+                description=f"Recent articles to include, 0-{MAX_ARTICLE_LIMIT}. 0 skips the section.",
+            ),
+        ] = 10,
+    ) -> Dict[str, Any]:
+        """Get a one-call user overview: profile plus recent videos, dynamics and articles.
+
+        Sections are fetched concurrently, so prefer this over separate
+        get_user_info/get_user_videos/get_user_dynamics/get_user_articles calls
+        when you need a broad view of a user. A failed section is reported under
+        `errors` while the remaining sections are still returned. Set a
+        section's limit to 0 to skip it.
+        """
+
+        async def _runner() -> Dict[str, Any]:
+            cred = await _get_credential_from_context(ctx)
+            user_id, username = _parse_user_identifier(user_id_or_username)
+            target_uid = await _resolve_user_id(user_id, username)
+
+            async def _section(
+                name: str,
+                factory: Callable[[], Awaitable[Dict[str, Any]]],
+                enabled: bool,
+            ) -> Tuple[str, Optional[Dict[str, Any]], Optional[str]]:
+                if not enabled:
+                    return name, None, None
+                try:
+                    return name, await factory(), None
+                except Exception as exc:
+                    logger.warning("snapshot section %s failed: %r", name, exc)
+                    return name, None, public_error_json(exc)
+
+            sections = await asyncio.gather(
+                _section("user", lambda: fetch_user_info(target_uid, cred), True),
+                _section(
+                    "videos",
+                    lambda: fetch_user_videos(target_uid, 1, video_limit, cred),
+                    video_limit > 0,
+                ),
+                _section(
+                    "dynamics",
+                    lambda: fetch_user_dynamics(
+                        user_id=target_uid,
+                        limit=dynamic_limit,
+                        cred=cred,
+                        dynamic_type=DynamicType.ALL,
+                        cursor=None,
+                    ),
+                    dynamic_limit > 0,
+                ),
+                _section(
+                    "articles",
+                    lambda: fetch_user_articles(target_uid, 1, article_limit, cred),
+                    article_limit > 0,
+                ),
+            )
+
+            snapshot: Dict[str, Any] = {"uid": target_uid, "errors": {}}
+            for name, payload, error in sections:
+                snapshot[name] = payload
+                if error is not None:
+                    snapshot["errors"][name] = error
+            return snapshot
+
+        return await _run_tool("get_user_snapshot", _runner)
 
     @mcp.tool(
         annotations={

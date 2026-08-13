@@ -2,9 +2,13 @@ import pytest
 from curl_cffi.const import CurlECode
 from curl_cffi.requests.exceptions import ConnectionError as CurlConnectionError
 
+from bili_stalker_mcp.models import SubtitleTrack
 from bili_stalker_mcp.observability import begin_request, snapshot_metrics
 from bili_stalker_mcp.retry import RetryableBiliApiError
-from bili_stalker_mcp.services.subtitle_service import _fetch_subtitle_text
+from bili_stalker_mcp.services.subtitle_service import (
+    _append_track_with_budget,
+    _fetch_subtitle_text,
+)
 from bili_stalker_mcp.services.user_service import (
     _fetch_video_detail_cached,
     fetch_video_detail,
@@ -483,8 +487,48 @@ async def test_fetch_video_detail_full_mode_keeps_all_tracks(monkeypatch):
     assert subtitles["mode"] == "full"
     assert subtitles["track_count"] == 2
     assert len(subtitles["tracks"]) == 2
-    assert subtitles["full_text"] == "zh body\nen body"
+    assert all(track["text"] == "" for track in subtitles["tracks"])
+    assert subtitles["full_text"] == (
+        "[Chinese · P1]\nzh body\n[English · P1]\nen body"
+    )
     assert subtitles["dropped_tracks"] == 0
+
+
+def test_append_track_with_budget_counts_label_overhead():
+    track = SubtitleTrack(cid=1, part="P1", lan="zh-CN", lan_doc="Chinese")
+    label = "Chinese · P1"
+    header_len = len(f"[{label}]\n")
+
+    # Budget large enough: header + text both charged against the budget.
+    tracks: list[SubtitleTrack] = []
+    lines: list[str] = []
+    remaining, truncated = _append_track_with_budget(
+        track=track,
+        raw_text="abcdef",
+        selected_tracks=tracks,
+        full_text_lines=lines,
+        remaining_budget=30,
+        label=label,
+    )
+    assert not truncated
+    assert remaining == 30 - header_len - len("abcdef")
+    assert lines == [f"[{label}]\nabcdef"]
+    assert tracks[0].text == ""
+
+    # Budget smaller than the header alone: text must be dropped, not overflow.
+    tracks = []
+    lines = []
+    remaining, truncated = _append_track_with_budget(
+        track=track,
+        raw_text="abcdef",
+        selected_tracks=tracks,
+        full_text_lines=lines,
+        remaining_budget=header_len - 1,
+        label=label,
+    )
+    assert truncated
+    assert lines == []
+    assert len("\n".join(lines)) <= header_len - 1
 
 
 @pytest.mark.asyncio

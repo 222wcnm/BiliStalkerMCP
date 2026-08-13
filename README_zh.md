@@ -116,7 +116,8 @@ uv run mypy bili_stalker_mcp
 | 工具 | 功能描述 | 参数 |
 |------|----------|------|
 | `search_users` | 返回含数字 UID 的轻量用户候选列表 | `keyword`, `limit` |
-| `get_user_info` | 档案资料与核心统计数据 | `user_id_or_username` |
+| `get_user_snapshot` | 一次调用获取用户概览：档案 + 最近视频/动态/专栏（服务端并发抓取） | `user_id_or_username`, `video_limit`, `dynamic_limit`, `article_limit`（设为 0 可跳过对应部分） |
+| `get_user_info` | 丰富档案：等级、认证头衔、大会员、直播间、封禁状态、关注/粉丝数、视频总播放/专栏总阅读/总获赞（需 `bili_jct`） | `user_id_or_username` |
 | `get_user_videos` | 轻量视频列表 | `user_id_or_username`, `page`, `limit` |
 | `search_user_videos` | 指定用户视频关键词检索 | `user_id_or_username`, `keyword`, `page`, `limit` |
 | `get_video_detail` | 视频详情与可选字幕聚合 | `bvid`, `fetch_subtitles`（默认：`false`）, `subtitle_mode`（`smart`/`full`/`minimal`）, `subtitle_lang`（默认：`auto`）, `subtitle_max_chars` |
@@ -159,6 +160,10 @@ uv run mypy bili_stalker_mcp
 
 `subtitle_lang` 可指定语言（如 `en-US`）；`auto` 会按内置优先级自动回退。  
 `subtitle_max_chars` 可限制字幕正文最大返回字符数，避免 token 膨胀。
+
+字幕正文只通过 `full_text` 返回一次；`tracks` 仅承载元数据（`text` 恒为空），
+避免同一内容重复计费 token。`full` 模式多轨时，`full_text` 中每段正文前会带
+`[语言 · 分P]` 标签以保留归属信息。
 
 ## 📎 附带 Skill
 

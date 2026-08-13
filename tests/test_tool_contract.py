@@ -20,6 +20,7 @@ async def test_complete_public_tool_contract_is_stable():
 
     assert set(contracts) == {
         "search_users",
+        "get_user_snapshot",
         "get_user_info",
         "get_user_videos",
         "search_user_videos",
@@ -38,7 +39,7 @@ async def test_complete_public_tool_contract_is_stable():
         separators=(",", ":"),
     ).encode("utf-8")
     assert hashlib.sha256(canonical_contract).hexdigest() == (
-        "e6f960225217d4b6323a39779ee29ad8354b937d2e9ebf15b0163ee95dc5a58e"
+        "97261d0c5b8bf37223fdd264dca25c3adf9a6b0b1ee4b15a16eab2cceac42392"
     )
 
 

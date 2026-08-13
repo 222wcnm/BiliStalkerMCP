@@ -3,12 +3,43 @@
 from pydantic import BaseModel, ConfigDict, Field
 
 
+class UserOfficialInfo(BaseModel):
+    role: int | None = None
+    title: str | None = None
+
+
+class UserVipInfo(BaseModel):
+    status: bool = False
+    label: str | None = None
+
+
+class UserLiveRoomInfo(BaseModel):
+    is_live: bool = False
+    title: str | None = None
+    url: str | None = None
+    watched: int | None = None
+
+
 class UserInfoResponse(BaseModel):
     mid: int
     name: str
+    face: str | None = None
     sign: str | None = None
+    level: int | None = None
+    sex: str | None = None
+    birthday: str | None = None
+    school: str | None = None
+    profession: str | None = None
+    official: UserOfficialInfo | None = None
+    vip: UserVipInfo | None = None
+    is_banned: bool | None = None
+    is_senior_member: bool | None = None
+    live_room: UserLiveRoomInfo | None = None
     following: int | None = None
     follower: int | None = None
+    total_video_views: int | None = None
+    total_article_views: int | None = None
+    total_likes: int | None = None
 
 
 class UserSearchItem(BaseModel):

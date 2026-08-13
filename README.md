@@ -118,7 +118,8 @@ uv run mypy bili_stalker_mcp
 | Tool | Capability | Parameters |
 |------|------------|------------|
 | `search_users` | Lightweight user candidates with numeric UIDs | `keyword`, `limit` |
-| `get_user_info` | Profile & core statistics | `user_id_or_username` |
+| `get_user_snapshot` | One-call overview: profile + recent videos/dynamics/articles fetched concurrently | `user_id_or_username`, `video_limit`, `dynamic_limit`, `article_limit` (0 skips a section) |
+| `get_user_info` | Rich profile: level, official title, VIP, live room, ban status, following/follower, total video views/article views/likes (needs `bili_jct`) | `user_id_or_username` |
 | `get_user_videos` | Lightweight video list | `user_id_or_username`, `page`, `limit` |
 | `search_user_videos` | Keyword search in one user's video list | `user_id_or_username`, `keyword`, `page`, `limit` |
 | `get_video_detail` | Full video detail + optional subtitles | `bvid`, `fetch_subtitles` (default: `false`), `subtitle_mode` (`smart`/`full`/`minimal`), `subtitle_lang` (default: `auto`), `subtitle_max_chars` |
@@ -166,6 +167,10 @@ an empty `images` list.
 
 `subtitle_lang` can force a language (for example `en-US`); `auto` uses built-in priority fallback.  
 `subtitle_max_chars` caps returned subtitle text size to avoid token explosion.
+
+Subtitle text is returned once via `full_text`; `tracks` carry metadata only
+(`text` is always empty). In `full` mode with multiple tracks, each segment in
+`full_text` is prefixed with a `[language · part]` label.
 
 ## Bundled Skill
 
