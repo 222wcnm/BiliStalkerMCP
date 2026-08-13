@@ -19,12 +19,10 @@ import httpx
 from bilibili_api.exceptions import ApiException, NetworkException
 
 try:
-    from curl_cffi.requests.exceptions import (
-        ConnectionError as CurlConnectionError,
-        DNSError as CurlDNSError,
-        ProxyError as CurlProxyError,
-        SSLError as CurlSSLError,
-    )
+    from curl_cffi.requests.exceptions import ConnectionError as CurlConnectionError
+    from curl_cffi.requests.exceptions import DNSError as CurlDNSError
+    from curl_cffi.requests.exceptions import ProxyError as CurlProxyError
+    from curl_cffi.requests.exceptions import SSLError as CurlSSLError
 except ImportError:  # pragma: no cover - curl_cffi is optional at runtime
     CURL_RETRYABLE_EXCEPTIONS: tuple[Type[Exception], ...] = ()
 else:

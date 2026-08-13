@@ -319,8 +319,9 @@ async def _fetch_user_info_cached(user_id: int, cred: Credential) -> dict[str, A
             logger.warning("Relation stat request failed for uid %s: %s", user_id, exc)
             return None
 
-        if stat_data.get("code") == 0 and "data" in stat_data:
-            return stat_data["data"]
+        data = stat_data.get("data")
+        if stat_data.get("code") == 0 and isinstance(data, dict):
+            return data
         logger.warning(
             "Failed to get relation stat for uid %s: %s",
             user_id,

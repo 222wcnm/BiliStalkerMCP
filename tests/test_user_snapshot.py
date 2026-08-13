@@ -10,9 +10,7 @@ def fake_credential(monkeypatch):
     async def _fake_credential(_ctx):
         return None
 
-    monkeypatch.setattr(
-        server_module, "_get_credential_from_context", _fake_credential
-    )
+    monkeypatch.setattr(server_module, "_get_credential_from_context", _fake_credential)
 
 
 async def _snapshot_tool():
