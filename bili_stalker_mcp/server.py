@@ -38,6 +38,7 @@ from .core import (
     get_credential,
     get_user_id_by_username,
 )
+from .core import search_users as search_users_service
 from .credentials import cookie_refresh_enabled
 from .errors import RiskControlError, public_error_json
 from .observability import begin_request, snapshot_metrics
@@ -50,6 +51,7 @@ SubtitleModeLiteral = Literal["minimal", "smart", "full"]
 CommentContentTypeLiteral = Literal["video", "article", "dynamic"]
 
 MAX_PAGE = 1000
+MAX_USER_SEARCH_LIMIT = 20
 MAX_VIDEO_LIMIT = 30
 MAX_DYNAMIC_LIMIT = 30
 MAX_ARTICLE_LIMIT = 30
@@ -120,11 +122,20 @@ def create_server() -> FastMCP:
             return user_id
 
         if username:
-            resolved = await get_user_id_by_username(username)
+            try:
+                resolved = await get_user_id_by_username(username)
+            except TimeoutError:
+                raise ToolError(
+                    "Bilibili user search timed out. Retry later, call search_users, "
+                    "or provide a numeric UID."
+                ) from None
             if resolved is not None:
                 return resolved
 
-        raise ToolError(f"User '{username or user_id}' was not found.")
+        raise ToolError(
+            f"No exact match for user '{username or user_id}'. "
+            "Call search_users to select a numeric UID."
+        )
 
     async def _run_tool(
         tool_name: str,
@@ -189,12 +200,13 @@ def create_server() -> FastMCP:
         """Generate a workflow prompt for tracking a Bilibili user."""
         return (
             "Track a target Bilibili user in this order: \n"
-            "1) get_user_info \n"
-            "2) get_user_videos \n"
-            "3) get_video_detail (for videos that need full context) \n"
-            "4) get_user_dynamics \n"
-            "5) get_user_articles \n"
-            "6) get_article_content (for articles that need full context) \n"
+            "1) If given a username, call search_users once and use the numeric UID. \n"
+            "2) get_user_info \n"
+            "3) get_user_videos \n"
+            "4) get_video_detail (for videos that need full context) \n"
+            "5) get_user_dynamics \n"
+            "6) get_user_articles \n"
+            "7) get_article_content (for articles that need full context) \n"
             "Then summarize by publish time and highlight major changes."
         )
 
@@ -203,11 +215,49 @@ def create_server() -> FastMCP:
         """Generate a workflow prompt for analyzing a Bilibili user."""
         return (
             "Analyze one Bilibili user's content behavior: \n"
-            "1) Collect profile + lightweight lists (videos, dynamics, articles). \n"
-            "2) Fetch details only for high-value items (video/article detail tools). \n"
-            "3) Measure cadence and content-type mix. \n"
-            "4) Summarize top themes and recent shifts."
+            "1) Resolve a username with search_users and reuse the numeric UID. \n"
+            "2) Collect profile + lightweight lists (videos, dynamics, articles). \n"
+            "3) Fetch details only for high-value items (video/article detail tools). \n"
+            "4) Measure cadence and content-type mix. \n"
+            "5) Summarize top themes and recent shifts."
         )
+
+    @mcp.tool(
+        annotations={
+            "readOnlyHint": True,
+            "destructiveHint": False,
+            "idempotentHint": True,
+        }
+    )
+    async def search_users(
+        keyword: Annotated[
+            str,
+            Field(
+                min_length=1,
+                description="Bilibili username keyword.",
+            ),
+        ],
+        limit: Annotated[
+            int,
+            Field(
+                ge=1,
+                le=MAX_USER_SEARCH_LIMIT,
+                description=f"Maximum candidates to return, 1-{MAX_USER_SEARCH_LIMIT}.",
+            ),
+        ] = 10,
+    ) -> Dict[str, Any]:
+        """Search Bilibili users and return lightweight candidates with numeric UIDs."""
+
+        async def _runner() -> Dict[str, Any]:
+            try:
+                return await search_users_service(keyword, limit)
+            except TimeoutError:
+                raise ToolError(
+                    "Bilibili user search timed out. Retry later or use a known "
+                    "numeric UID."
+                ) from None
+
+        return await _run_tool("search_users", _runner)
 
     @mcp.tool(
         annotations={

@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from typing import Any, Literal
 
@@ -16,6 +17,8 @@ from ..models import (
     FollowingItemResponse,
     FollowingsResponse,
     UserInfoResponse,
+    UserSearchItem,
+    UserSearchResponse,
     VideoDetailItem,
     VideoDetailResponse,
     VideoListItem,
@@ -24,7 +27,12 @@ from ..models import (
 )
 from ..observability import record_cache_hit
 from ..parsers.dynamic_parser import format_timestamp
-from ..retry import RetryableBiliApiError, is_retryable_error, with_retry
+from ..retry import (
+    DEFAULT_RETRYABLE_EXCEPTIONS,
+    RetryableBiliApiError,
+    is_retryable_error,
+    with_retry,
+)
 from ..utils.converters import coerce_int, safe_aid_to_bvid
 from .article_renderer import (
     build_article_fallback_markdown,
@@ -39,6 +47,9 @@ from .subtitle_service import (
 )
 
 logger = logging.getLogger(__name__)
+
+USER_SEARCH_LIMIT = 20
+USER_SEARCH_TIMEOUT_SECONDS = 10.0
 
 # ──────────────────── internal helpers ────────────────────
 
@@ -123,45 +134,96 @@ def _filter_article_stats(raw_stats: Any) -> ArticleStatsResponse:
 
 
 @alru_cache(maxsize=128, ttl=3600)
-@with_retry(max_retries=5, base_delay=2.0, return_default=True, default_on_exhaust=None)
-async def _get_user_id_by_username_cached(username: str) -> int | None:
-    if not username:
-        return None
-
-    search_result = await timed_upstream_call(
-        search.search_by_type(
-            keyword=username,
-            search_type=search.SearchObjectType.USER,
+@with_retry(
+    max_retries=1,
+    base_delay=1.0,
+    retryable_exceptions=(TimeoutError, *DEFAULT_RETRYABLE_EXCEPTIONS),
+)
+async def _search_users_cached(keyword: str) -> list[dict[str, Any]]:
+    async with asyncio.timeout(USER_SEARCH_TIMEOUT_SECONDS):
+        search_result = await timed_upstream_call(
+            search.search_by_type(
+                keyword=keyword,
+                search_type=search.SearchObjectType.USER,
+                page_size=USER_SEARCH_LIMIT,
+            )
         )
-    )
     result_list = search_result.get("result") or (search_result.get("data") or {}).get(
         "result"
     )
 
     if not isinstance(result_list, list) or not result_list:
-        logger.warning("User '%s' not found in search results", username)
-        return None
+        return []
 
-    username_lower = username.lower()
+    keyword_key = keyword.casefold()
+    users: list[dict[str, Any]] = []
     for user_item in result_list:
-        uname = (user_item.get("uname") or "").lower()
-        if uname == username_lower:
-            return coerce_int(user_item.get("mid"))
+        if not isinstance(user_item, dict):
+            continue
+        uid = coerce_int(user_item.get("mid"))
+        name = user_item.get("uname")
+        if uid is None or not isinstance(name, str) or not name:
+            continue
+        users.append(
+            UserSearchItem(
+                uid=uid,
+                name=name,
+                sign=user_item.get("usign"),
+                avatar=user_item.get("upic"),
+                follower=coerce_int(user_item.get("fans")),
+                videos=coerce_int(user_item.get("videos")),
+                level=coerce_int(user_item.get("level")),
+                is_live=(
+                    bool(user_item.get("is_live")) if "is_live" in user_item else None
+                ),
+                is_exact_match=name.casefold() == keyword_key,
+            ).model_dump()
+        )
+    return users
 
-    logger.warning(
-        "No exact match for '%s', using first result '%s'",
-        username,
-        result_list[0].get("uname"),
+
+async def search_users(keyword: str, limit: int = 10) -> dict[str, Any]:
+    normalized = keyword.strip()
+    if not normalized:
+        raise ValueError("keyword must not be empty")
+    if limit < 1 or limit > USER_SEARCH_LIMIT:
+        raise ValueError(f"limit must be between 1 and {USER_SEARCH_LIMIT}")
+
+    before = _search_users_cached.cache_info()
+    users = await _search_users_cached(normalized)
+    after = _search_users_cached.cache_info()
+    record_cache_hit("user_search", _cache_hit(before, after))
+
+    selected = [UserSearchItem(**item) for item in users[:limit]]
+    exact_match_uid = next(
+        (item["uid"] for item in users if item["is_exact_match"]),
+        None,
     )
-    return coerce_int(result_list[0].get("mid"))
+    return UserSearchResponse(
+        users=selected,
+        count=len(selected),
+        exact_match_uid=exact_match_uid,
+    ).model_dump()
 
 
 async def get_user_id_by_username(username: str) -> int | None:
-    before = _get_user_id_by_username_cached.cache_info()
-    result = await _get_user_id_by_username_cached(username)
-    after = _get_user_id_by_username_cached.cache_info()
+    # Deliberately not cached on its own: reusing _search_users_cached keeps
+    # username resolution consistent with search_users results at all times.
+    username = username.strip()
+    if not username:
+        return None
+
+    before = _search_users_cached.cache_info()
+    users = await _search_users_cached(username)
+    after = _search_users_cached.cache_info()
     record_cache_hit("user_id_by_username", _cache_hit(before, after))
-    return result
+
+    for user_item in users:
+        if user_item["is_exact_match"]:
+            return int(user_item["uid"])
+
+    logger.warning("No exact user match for '%s'", username)
+    return None
 
 
 @alru_cache(maxsize=32, ttl=300)

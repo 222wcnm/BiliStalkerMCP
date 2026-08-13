@@ -11,6 +11,24 @@ class UserInfoResponse(BaseModel):
     follower: int | None = None
 
 
+class UserSearchItem(BaseModel):
+    uid: int
+    name: str
+    sign: str | None = None
+    avatar: str | None = None
+    follower: int | None = None
+    videos: int | None = None
+    level: int | None = None
+    is_live: bool | None = None
+    is_exact_match: bool = False
+
+
+class UserSearchResponse(BaseModel):
+    users: list[UserSearchItem] = Field(default_factory=list)
+    count: int = 0
+    exact_match_uid: int | None = None
+
+
 class VideoListItem(BaseModel):
     bvid: str | None = None
     aid: int | None = None

@@ -117,6 +117,7 @@ uv run mypy bili_stalker_mcp
 
 | Tool | Capability | Parameters |
 |------|------------|------------|
+| `search_users` | Lightweight user candidates with numeric UIDs | `keyword`, `limit` |
 | `get_user_info` | Profile & core statistics | `user_id_or_username` |
 | `get_user_videos` | Lightweight video list | `user_id_or_username`, `page`, `limit` |
 | `search_user_videos` | Keyword search in one user's video list | `user_id_or_username`, `keyword`, `page`, `limit` |
@@ -127,6 +128,10 @@ uv run mypy bili_stalker_mcp
 | `get_user_followings` | Subscription list analysis | `user_id_or_username`, `page`, `limit` |
 | `get_content_comments` | Comments for a video, article, or dynamic (including images and note metadata) | `content_type`, `content_id`, `cursor`, `limit`, `sort` |
 | `get_content_comment_replies` | Full sub-replies for a video, article, or dynamic comment | `content_type`, `content_id`, `root_rpid`, `page`, `limit` |
+
+When starting from a username, call `search_users` once and reuse the returned numeric
+UID for subsequent tools. Implicit username resolution accepts exact matches only; it
+does not silently select the first similar search result.
 
 Comment `pictures` contain the original image URLs. Regular long comments retain the
 full text returned by Bilibili. Note-style comments may contain only a preview; use

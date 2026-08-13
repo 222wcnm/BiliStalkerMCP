@@ -1,7 +1,10 @@
 import pytest
+from curl_cffi.const import CurlECode
+from curl_cffi.requests.exceptions import ConnectionError as CurlConnectionError
 
 from bili_stalker_mcp.observability import begin_request, snapshot_metrics
 from bili_stalker_mcp.retry import RetryableBiliApiError
+from bili_stalker_mcp.services.subtitle_service import _fetch_subtitle_text
 from bili_stalker_mcp.services.user_service import (
     _fetch_video_detail_cached,
     fetch_video_detail,
@@ -13,6 +16,41 @@ def clear_video_detail_cache():
     _fetch_video_detail_cached.cache_clear()
     yield
     _fetch_video_detail_cached.cache_clear()
+
+
+@pytest.mark.asyncio
+async def test_fetch_subtitle_text_retries_curl_connection_error(monkeypatch):
+    calls = 0
+    delays = []
+
+    async def fake_get_json(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise CurlConnectionError(
+                "Failed to connect to aisubtitle.hdslb.com",
+                CurlECode.COULDNT_CONNECT,
+            )
+        return {"body": [{"content": "recovered subtitle"}]}
+
+    async def fake_sleep(delay):
+        delays.append(delay)
+
+    monkeypatch.setattr(
+        "bili_stalker_mcp.services.subtitle_service.get_json",
+        fake_get_json,
+    )
+    monkeypatch.setattr("bili_stalker_mcp.retry.asyncio.sleep", fake_sleep)
+
+    text, error = await _fetch_subtitle_text(
+        "https://aisubtitle.hdslb.com/test.json",
+        cred=None,
+    )
+
+    assert calls == 2
+    assert len(delays) == 1
+    assert text == "recovered subtitle"
+    assert error is None
 
 
 @pytest.mark.asyncio

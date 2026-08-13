@@ -19,6 +19,7 @@ async def test_complete_public_tool_contract_is_stable():
     }
 
     assert set(contracts) == {
+        "search_users",
         "get_user_info",
         "get_user_videos",
         "search_user_videos",
@@ -37,7 +38,7 @@ async def test_complete_public_tool_contract_is_stable():
         separators=(",", ":"),
     ).encode("utf-8")
     assert hashlib.sha256(canonical_contract).hexdigest() == (
-        "b04a7df762964bcde9175cf0f5297c5afd6f53e598607a146e0fa8d04240d2e0"
+        "e6f960225217d4b6323a39779ee29ad8354b937d2e9ebf15b0163ee95dc5a58e"
     )
 
 
@@ -84,6 +85,7 @@ async def test_public_tool_limit_bounds_are_stable():
     schemas = await _tool_schemas()
 
     expected_limit_maximums = {
+        "search_users": 20,
         "get_user_videos": 30,
         "search_user_videos": 30,
         "get_user_dynamics": 30,

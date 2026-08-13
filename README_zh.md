@@ -115,6 +115,7 @@ uv run mypy bili_stalker_mcp
 
 | 工具 | 功能描述 | 参数 |
 |------|----------|------|
+| `search_users` | 返回含数字 UID 的轻量用户候选列表 | `keyword`, `limit` |
 | `get_user_info` | 档案资料与核心统计数据 | `user_id_or_username` |
 | `get_user_videos` | 轻量视频列表 | `user_id_or_username`, `page`, `limit` |
 | `search_user_videos` | 指定用户视频关键词检索 | `user_id_or_username`, `keyword`, `page`, `limit` |
@@ -125,6 +126,9 @@ uv run mypy bili_stalker_mcp
 | `get_user_followings` | 用户关注列表分析 | `user_id_or_username`, `page`, `limit` |
 | `get_content_comments` | 视频、专栏或动态的评论（含图片和笔记元数据） | `content_type`, `content_id`, `cursor`, `limit`, `sort` |
 | `get_content_comment_replies` | 视频、专栏或动态评论的完整楼中楼回复 | `content_type`, `content_id`, `root_rpid`, `page`, `limit` |
+
+从用户名开始时，建议先调用一次 `search_users`，后续工具统一复用返回的数字 UID。
+隐式用户名解析只接受精确匹配，不会再静默选择第一条相似搜索结果。
 
 评论中的 `pictures` 会保留原始图片 URL。普通长评论保留 B 站接口返回的完整文本；
 笔记类型长评可能只返回预览，可将返回的 `note.cvid` 交给 `get_article_content` 获取全文。

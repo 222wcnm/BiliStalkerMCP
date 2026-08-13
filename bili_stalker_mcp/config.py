@@ -33,10 +33,26 @@ DEFAULT_HEADERS = {
 }
 
 
+def _get_env_float(name: str, default: float) -> float:
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+
+    try:
+        return float(raw)
+    except ValueError:
+        logger.warning(
+            "Invalid float value for %s=%r, falling back to %s", name, raw, default
+        )
+        return default
+
+
 REQUEST_DELAY = 3.0
-REQUEST_TIMEOUT = 60.0
-CONNECT_TIMEOUT = 15.0
-READ_TIMEOUT = 45.0
+# Per-attempt upstream timeouts. Kept well below typical MCP client deadlines so a
+# stalled upstream request fails fast instead of blocking the whole tool call.
+REQUEST_TIMEOUT = _get_env_float("BILI_REQUEST_TIMEOUT_SECONDS", 20.0)
+CONNECT_TIMEOUT = _get_env_float("BILI_CONNECT_TIMEOUT_SECONDS", 10.0)
+READ_TIMEOUT = _get_env_float("BILI_READ_TIMEOUT_SECONDS", 15.0)
 DEFAULT_TIMEZONE = os.environ.get("BILI_TIMEZONE", "Asia/Shanghai")
 DEFAULT_IMPERSONATE: Literal["chrome131"] = "chrome131"
 

@@ -10,7 +10,7 @@ from ..errors import RiskControlError, public_error_json
 from ..infra.http_client import get_json
 from ..infra.upstream import timed_upstream_call
 from ..models import SubtitleResponse, SubtitleTrack
-from ..retry import RetryableBiliApiError
+from ..retry import RetryableBiliApiError, with_retry
 from ..utils.converters import coerce_int
 
 logger = logging.getLogger(__name__)
@@ -50,6 +50,14 @@ def _normalize_subtitle_url(subtitle_url: object) -> str | None:
     return f"https://{value.lstrip('/')}"
 
 
+@with_retry(max_retries=2, base_delay=0.5, max_delay=2.0)
+async def _fetch_subtitle_payload(
+    url: str,
+    cred: Credential | None,
+) -> dict[str, Any]:
+    return await get_json(url, cred=cred)
+
+
 async def _fetch_subtitle_text(
     subtitle_url: Any,
     cred: Credential | None,
@@ -59,7 +67,7 @@ async def _fetch_subtitle_text(
         return "", "subtitle_url missing"
 
     try:
-        subtitle_payload = await get_json(url, cred=cred)
+        subtitle_payload = await _fetch_subtitle_payload(url, cred)
 
         body = subtitle_payload.get("body") or []
         lines: list[str] = []

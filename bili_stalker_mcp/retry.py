@@ -18,6 +18,27 @@ from typing import (
 import httpx
 from bilibili_api.exceptions import ApiException, NetworkException
 
+try:
+    from curl_cffi.requests.exceptions import (
+        ConnectionError as CurlConnectionError,
+        DNSError as CurlDNSError,
+        ProxyError as CurlProxyError,
+        SSLError as CurlSSLError,
+    )
+except ImportError:  # pragma: no cover - curl_cffi is optional at runtime
+    CURL_RETRYABLE_EXCEPTIONS: tuple[Type[Exception], ...] = ()
+else:
+    # Read timeouts (curl Timeout) are deliberately NOT retried: each attempt can
+    # consume the full request timeout, so retrying multiplies tool latency past
+    # MCP client deadlines. Connect timeouts stay retryable via ConnectionError
+    # (ConnectTimeout subclasses it) because they are bounded and cheap.
+    CURL_RETRYABLE_EXCEPTIONS = (
+        CurlConnectionError,
+        CurlDNSError,
+        CurlProxyError,
+        CurlSSLError,
+    )
+
 from .errors import RISK_CONTROL_CODES, RiskControlError, extract_error_code
 from .infra.circuit_breaker import (
     ensure_risk_control_request_allowed,
@@ -28,6 +49,10 @@ from .observability import add_retry
 logger = logging.getLogger(__name__)
 
 DEFAULT_RETRYABLE_CODES: Set[int] = {-509, 403, 429}
+DEFAULT_RETRYABLE_EXCEPTIONS: tuple[Type[Exception], ...] = (
+    httpx.RequestError,
+    *CURL_RETRYABLE_EXCEPTIONS,
+)
 
 AsyncCallable = TypeVar("AsyncCallable", bound=Callable[..., Awaitable[Any]])
 
@@ -65,7 +90,9 @@ def with_retry(
     """Retry async call with exponential backoff on deterministic transient failures."""
     codes = DEFAULT_RETRYABLE_CODES if retryable_codes is None else retryable_codes
     exceptions = (
-        (httpx.RequestError,) if retryable_exceptions is None else retryable_exceptions
+        DEFAULT_RETRYABLE_EXCEPTIONS
+        if retryable_exceptions is None
+        else retryable_exceptions
     )
 
     def decorator(func: AsyncCallable) -> AsyncCallable:

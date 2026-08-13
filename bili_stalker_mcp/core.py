@@ -27,6 +27,7 @@ from .services.user_service import (
     fetch_user_videos,
     fetch_video_detail,
     get_user_id_by_username,
+    search_users,
 )
 
 initialize_bilibili_request_settings()
@@ -104,6 +105,7 @@ __all__ = [
     "user",
     "get_credential",
     "get_user_id_by_username",
+    "search_users",
     "fetch_user_info",
     "fetch_user_videos",
     "fetch_video_detail",
