@@ -78,7 +78,13 @@ function Assert-SafeDistributions {
     )
 
     foreach ($artifact in Get-DistributionFiles -DistDirectory $DistDirectory) {
-        $entries = @(& tar -tf $artifact.FullName)
+        # Resolve Windows bsdtar explicitly: a POSIX tar earlier on PATH (e.g.
+        # Git Bash's) treats "D:\..." as host:path and fails with exit 128.
+        $tarExe = Join-Path $env:SystemRoot "System32\tar.exe"
+        if (-not (Test-Path -LiteralPath $tarExe)) {
+            $tarExe = "tar"
+        }
+        $entries = @(& $tarExe -tf $artifact.FullName)
         Assert-LastExitCode -Operation "Inspecting $($artifact.Name)"
         $forbiddenEntries = @(
             $entries | Where-Object {
