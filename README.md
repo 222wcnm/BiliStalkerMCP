@@ -148,8 +148,8 @@ complete reply thread.
 
 ### Dynamic Filtering (`dynamic_type`)
 
-- `ALL` (default): Text, Draw, and Reposts.
-- `ALL_RAW`: Unfiltered (includes Videos & Articles).
+- `ALL` (default): Text, Draw, Reposts, and Video dynamics.
+- `ALL_RAW`: Unfiltered (additionally includes Articles and unknown types).
 - `VIDEO`, `ARTICLE`, `DRAW`, `TEXT`: Specific category filtering.
 - `REVIEW`: Recognized five-slot rating cards only. Each result exposes
   `review.rating` (filled stars, 0-5), `review.title`, `review.text`, cover and

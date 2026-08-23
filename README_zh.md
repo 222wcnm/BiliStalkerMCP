@@ -58,6 +58,11 @@ pip install bili-stalker-mcp
 | `BILI_REFRESH_TOKEN_FILE` | 否 | 独立 refresh token 文件路径；不得通过环境变量提供 token。 |
 | `BILI_ENABLE_COOKIE_REFRESH` | 否 | 设为 `true` 后启用安全自动刷新；默认：`false`。 |
 | `BILI_COOKIE_REFRESH_CHECK_INTERVAL_SECONDS` | 否 | 检查刷新需求的间隔秒数；默认：`21600`，最小：`60`。 |
+| `BILI_PROXY` | 否 | 让全部上游请求（bilibili_api 与内置 HTTP 客户端）走指定代理。系统代理未被自动识别、或 B 站域名 DNS 解析不稳定时建议配置。 |
+| `BILI_REQUEST_JITTER_MODE` | 否 | 上游抖动策略：`adaptive`（默认；仅在未配置登录态或近期出现 412/429/403 时休眠）、`always`、`never`。 |
+| `BILI_REQUEST_JITTER_MIN_MS` / `BILI_REQUEST_JITTER_MAX_MS` | 否 | 抖动休眠范围；默认：`200`–`1200`。 |
+| `BILI_REQUEST_JITTER_BUDGET_MS` | 否 | 单次工具调用允许的抖动休眠总量；默认：`500`。 |
+| `BILI_RISK_PRESSURE_WINDOW_SECONDS` | 否 | 一次 412/429/403 让自适应抖动保持生效的时长；默认：`300`。 |
 | `BILI_LOG_LEVEL` | 否 | 映射至 `DEBUG`, `INFO` (默认), `WARNING`。 |
 | `BILI_TIMEZONE` | 否 | 格式化时间输出时区（默认：`Asia/Shanghai`）。 |
 
@@ -138,8 +143,8 @@ uv run mypy bili_stalker_mcp
 
 ### 动态类型过滤 (`dynamic_type`)
 
-- `ALL` (默认): 仅文本、图文（DRAW）、转发（最适合 AI 分析）。
-- `ALL_RAW`: 原始全量数据（包含视频及专栏）。
+- `ALL` (默认): 文本、图文（DRAW）、转发、视频动态（最适合 AI 分析）。
+- `ALL_RAW`: 原始全量数据（额外包含专栏动态及未知类型）。
 - `VIDEO`, `ARTICLE`, `DRAW`, `TEXT`: 特定分类过滤。
 - `REVIEW`: 仅返回项目已识别的五格星级评分卡。结果中的 `review.rating` 是已点亮
   星数（0-5），并会返回 `review.title`、`review.text`、封面与跳转 URL，以及可用的
@@ -242,6 +247,17 @@ docker run -e SESSDATA=... bilistalker-mcp
 
 - **412 Precondition Failed**: 触发 B 站防爬虫机制。请刷新 `SESSDATA` 或确保已提供 `BUVID3`。
 - **环境建议**: 云服务器 IP 极易被封锁，建议优先在本地环境运行。
+- **上游请求卡顿约 20 秒或 DNS 解析超时**: 请配置 `BILI_PROXY`。`bilibili_api` 的 curl_cffi 客户端不会自动使用系统代理和环境变量代理，必须显式指定。
+
+## 上游依赖说明
+
+`bilibili-api-python` 已锁定在 `==17.4.2`。其上游仓库已因 B 站委托律师发函而永久关停，
+无法再指望该项目提供维护或修复。此外该包采用 GPL-3.0-or-later 许可证，因此其源码
+**不能 vendor 或 fork 进本 MIT 协议仓库**。
+
+缓解方案是将剩余仍依赖 SDK 的端点（用户信息、视频列表/详情、动态、专栏）逐步迁移到
+本项目自建的 HTTP 栈（`SharedRawHttpClient`）——评论区、关注列表、粉丝数等已经独立于
+SDK 走这条路径。版本锁定应保持精确匹配，避免安装到未知的未来版本。
 
 ## 开源协议
 
