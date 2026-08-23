@@ -106,6 +106,48 @@ def test_recent_risk_pressure_window_semantics():
     assert recent_risk_pressure(300) is False
 
 
+def test_raise_for_retryable_status_records_risk_pressure():
+    from bili_stalker_mcp.errors import RiskControlError
+    from bili_stalker_mcp.infra.circuit_breaker import reset_risk_control_circuit
+    from bili_stalker_mcp.infra.http_client import _raise_for_retryable_status
+
+    try:
+        with pytest.raises(RiskControlError):
+            _raise_for_retryable_status(412, "https://api.bilibili.com/x")
+        assert recent_risk_pressure(300) is True
+    finally:
+        reset_risk_pressure()
+        reset_risk_control_circuit()
+
+
+def test_has_configured_credential_retries_after_load_failure(monkeypatch):
+    from bili_stalker_mcp import credentials
+
+    monkeypatch.setattr(credentials, "_credential_presence_cache", None)
+    calls = {"count": 0}
+
+    class _Snapshot:
+        sessdata = "token"
+
+    def _flaky_load():
+        calls["count"] += 1
+        if calls["count"] == 1:
+            raise credentials.CredentialLoadError("temporarily locked")
+        return _Snapshot()
+
+    monkeypatch.setattr(credentials, "load_credential_snapshot", _flaky_load)
+
+    try:
+        assert credentials.has_configured_credential() is False
+        assert credentials.has_configured_credential() is True
+        assert calls["count"] == 2
+        # Successful lookups are cached: no further probing.
+        assert credentials.has_configured_credential() is True
+        assert calls["count"] == 2
+    finally:
+        monkeypatch.setattr(credentials, "_credential_presence_cache", None)
+
+
 def test_jitter_enabled_for_call_reflects_mode(monkeypatch):
     monkeypatch.setattr(upstream, "REQUEST_JITTER_MODE", "always")
     assert upstream.jitter_enabled_for_call() is True

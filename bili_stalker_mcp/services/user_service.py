@@ -437,7 +437,8 @@ async def fetch_user_videos(
     )
     after = _fetch_user_videos_cached.cache_info()
     record_cache_hit("user_videos", _cache_hit(before, after))
-    return payload
+    # Re-validate so cache hits hand out a fresh dict, not the shared entry.
+    return VideoListResponse(**payload).model_dump()
 
 
 @alru_cache(maxsize=64, ttl=180)

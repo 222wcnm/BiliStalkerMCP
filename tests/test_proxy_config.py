@@ -1,5 +1,16 @@
 import pytest
 
+from bili_stalker_mcp.config import sanitize_proxy_url
+
+
+def test_sanitize_proxy_url_masks_userinfo():
+    assert (
+        sanitize_proxy_url("http://user:secret@127.0.0.1:8080")
+        == "http://***@127.0.0.1:8080"
+    )
+    assert sanitize_proxy_url("socks5://127.0.0.1:1080") == "socks5://127.0.0.1:1080"
+    assert sanitize_proxy_url("") == ""
+
 
 @pytest.fixture()
 def _reset_initialized(monkeypatch):

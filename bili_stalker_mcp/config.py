@@ -3,8 +3,29 @@
 import logging
 import os
 from typing import Literal
+from urllib.parse import urlsplit, urlunsplit
 
 logger = logging.getLogger(__name__)
+
+
+def sanitize_proxy_url(proxy_url: str) -> str:
+    """Mask userinfo so proxy credentials never reach logs or reports."""
+    if not proxy_url:
+        return proxy_url
+
+    try:
+        parts = urlsplit(proxy_url)
+    except ValueError:
+        return "<invalid-proxy-url>"
+
+    if parts.username is None and parts.password is None:
+        return proxy_url
+
+    host = parts.hostname or ""
+    port = f":{parts.port}" if parts.port is not None else ""
+    return urlunsplit(
+        (parts.scheme, f"***@{host}{port}", parts.path, parts.query, parts.fragment)
+    )
 
 
 DEFAULT_HEADERS = {
@@ -195,10 +216,15 @@ def initialize_bilibili_request_settings() -> None:
     if PROXY_URL:
         try:
             request_settings.set_proxy(PROXY_URL)
-            logger.debug("Routing bilibili_api requests through proxy %s", PROXY_URL)
+            logger.debug(
+                "Routing bilibili_api requests through proxy %s",
+                sanitize_proxy_url(PROXY_URL),
+            )
         except Exception as exc:
             logger.warning(
-                "Failed to configure bilibili_api proxy %s: %s", PROXY_URL, exc
+                "Failed to configure bilibili_api proxy %s: %s",
+                sanitize_proxy_url(PROXY_URL),
+                exc,
             )
 
     _request_settings_initialized = True

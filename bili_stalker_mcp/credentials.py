@@ -515,18 +515,28 @@ def resolve_cookie_refresh_files(
 _credential_presence_cache: bool | None = None
 
 
+def reset_credential_presence_cache() -> None:
+    """Forget the cached credential-presence answer (used after rotation)."""
+    global _credential_presence_cache
+    _credential_presence_cache = None
+
+
 def has_configured_credential() -> bool:
     """True when a SESSDATA is configured via env vars or cookie file.
 
-    Result is cached: this feeds the adaptive upstream-jitter heuristic, which
-    only needs to know whether requests carry a login, not its validity.
+    Successful lookups are cached: this feeds the adaptive upstream-jitter
+    heuristic, which only needs to know whether requests carry a login, not
+    its validity. A failed load (e.g. the cookie file is briefly locked by a
+    refresh transaction) is NOT cached so the next call re-probes instead of
+    latching "anonymous" for the process lifetime.
     """
     global _credential_presence_cache
     if _credential_presence_cache is None:
         try:
-            _credential_presence_cache = bool(load_credential_snapshot().sessdata)
+            snapshot = load_credential_snapshot()
         except CredentialLoadError:
-            _credential_presence_cache = False
+            return False
+        _credential_presence_cache = bool(snapshot.sessdata)
     return _credential_presence_cache
 
 

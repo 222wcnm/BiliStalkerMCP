@@ -152,7 +152,8 @@ def _build_curl_session_kwargs(proxy_url: str) -> dict[str, Any]:
 
 class SharedRawHttpClient:
     def __init__(self) -> None:
-        self._httpx_client = _build_httpx_client(PROXY_URL)
+        # Build the curl session first: if both proxy spellings fail there is
+        # nothing else to clean up yet.
         self._curl_session: Any | None = None
         self._closed = False
 
@@ -172,6 +173,8 @@ class SharedRawHttpClient:
             logger.debug(
                 "curl_cffi is unavailable, raw requests will use httpx fallback only"
             )
+
+        self._httpx_client = _build_httpx_client(PROXY_URL)
 
     @property
     def is_closed(self) -> bool:

@@ -2,3 +2,6 @@
 max-line-length = 88
 extend-ignore = E203,E501,W503
 exclude = .git,.venv,__pycache__,build,dist
+per-file-ignores =
+    # env knobs must be set before importing bili_stalker_mcp (config reads env at import)
+    scripts/perf_compare_raw.py:E402

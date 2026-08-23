@@ -60,6 +60,7 @@ if BENCH_PROXY:
 
     request_settings.set_proxy(BENCH_PROXY)
 
+from bili_stalker_mcp.config import sanitize_proxy_url
 from bili_stalker_mcp.observability import begin_request
 
 TaskFn = Callable[[], Awaitable[object]]
@@ -281,7 +282,7 @@ async def main() -> None:
         "pacing": (
             "default" if os.environ.get("BILI_PERF_KEEP_PACING") == "1" else "disabled"
         ),
-        "proxy": BENCH_PROXY or None,
+        "proxy": sanitize_proxy_url(BENCH_PROXY) or None,
         "tasks": results,
         "warm_cache_user_info": warm,
         "mcp_protocol_hot_user_info": protocol,

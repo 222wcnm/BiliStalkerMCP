@@ -378,4 +378,5 @@ async def fetch_user_dynamics(
     )
     after = _fetch_user_dynamics_cached.cache_info()
     record_cache_hit("user_dynamics", _cache_hit(before, after))
-    return payload
+    # Re-validate so cache hits hand out a fresh dict, not the shared entry.
+    return DynamicListResponse(**payload).model_dump()
