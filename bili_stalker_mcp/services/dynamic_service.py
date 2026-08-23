@@ -5,6 +5,7 @@ import logging
 import random
 from typing import Any
 
+from async_lru import alru_cache
 from bilibili_api import Credential, user
 
 from ..config import (
@@ -16,7 +17,7 @@ from ..config import (
 )
 from ..infra.upstream import timed_upstream_call
 from ..models import DynamicItemResponse, DynamicListResponse
-from ..observability import add_lazy_pause
+from ..observability import add_lazy_pause, record_cache_hit
 from ..parsers.dynamic_parser import is_review_dynamic_item, parse_dynamic_item
 from ..retry import with_retry
 
@@ -160,7 +161,7 @@ def decode_cursor_token(
 
 
 @with_retry(max_retries=3, base_delay=2.0)
-async def fetch_user_dynamics(
+async def _fetch_user_dynamics_uncached(
     user_id: int,
     limit: int,
     cred: Credential,
@@ -328,3 +329,53 @@ async def fetch_user_dynamics(
         has_more=has_more,
     )
     return payload.model_dump()
+
+
+@alru_cache(maxsize=64, ttl=30)
+async def _fetch_user_dynamics_cached(
+    user_id: int,
+    limit: int,
+    cred: Credential,
+    dynamic_type: str,
+    cursor: str | None,
+) -> dict[str, Any]:
+    return await _fetch_user_dynamics_uncached(
+        user_id,
+        limit,
+        cred,
+        dynamic_type=dynamic_type,
+        cursor=cursor,
+    )
+
+
+def _cache_hit(before: Any, after: Any) -> bool:
+    return (after.hits > before.hits) if before and after else False
+
+
+async def fetch_user_dynamics(
+    user_id: int,
+    limit: int,
+    cred: Credential,
+    dynamic_type: str = "ALL",
+    cursor: str | None = None,
+    offset: Any = FIRST_PAGE_CURSOR,
+) -> dict[str, Any]:
+    if offset not in (None, FIRST_PAGE_CURSOR):
+        # Legacy offset-based paging (including offset=0): serve directly so
+        # explicit offsets never share entries with the cached default path.
+        return await _fetch_user_dynamics_uncached(
+            user_id,
+            limit,
+            cred,
+            dynamic_type=dynamic_type,
+            cursor=cursor,
+            offset=offset,
+        )
+
+    before = _fetch_user_dynamics_cached.cache_info()
+    payload = await _fetch_user_dynamics_cached(
+        user_id, limit, cred, dynamic_type, cursor
+    )
+    after = _fetch_user_dynamics_cached.cache_info()
+    record_cache_hit("user_dynamics", _cache_hit(before, after))
+    return payload

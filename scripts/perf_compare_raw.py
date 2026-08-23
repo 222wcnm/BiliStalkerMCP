@@ -102,7 +102,12 @@ def _stats(samples_ms: list[float]) -> dict[str, float | int]:
 def _clear_caches() -> None:
     _user_service._fetch_user_info_cached.cache_clear()
     _user_service._fetch_video_detail_cached.cache_clear()
+    _user_service._fetch_user_videos_cached.cache_clear()
     _user_service._search_users_cached.cache_clear()
+
+    from bili_stalker_mcp.services import dynamic_service as _dynamic_service
+
+    _dynamic_service._fetch_user_dynamics_cached.cache_clear()
 
 
 async def _build_tasks(uid: int, limit: int, cred) -> dict[str, dict[str, TaskFn]]:

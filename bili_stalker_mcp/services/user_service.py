@@ -386,8 +386,9 @@ async def fetch_user_info(user_id: int, cred: Credential) -> dict[str, Any]:
     return payload.model_dump()
 
 
+@alru_cache(maxsize=64, ttl=60)
 @with_retry(max_retries=3, base_delay=2.0)
-async def fetch_user_videos(
+async def _fetch_user_videos_cached(
     user_id: int,
     page: int,
     limit: int,
@@ -421,6 +422,22 @@ async def fetch_user_videos(
         total=coerce_int((video_list.get("page") or {}).get("count")) or 0,
     )
     return payload.model_dump()
+
+
+async def fetch_user_videos(
+    user_id: int,
+    page: int,
+    limit: int,
+    cred: Credential,
+    keyword: str = "",
+) -> dict[str, Any]:
+    before = _fetch_user_videos_cached.cache_info()
+    payload = await _fetch_user_videos_cached(
+        user_id, page, limit, cred, keyword=keyword
+    )
+    after = _fetch_user_videos_cached.cache_info()
+    record_cache_hit("user_videos", _cache_hit(before, after))
+    return payload
 
 
 @alru_cache(maxsize=64, ttl=180)
