@@ -1,4 +1,5 @@
 import contextvars
+import time
 from typing import Any
 
 _metrics_state_var: contextvars.ContextVar[dict[str, Any] | None] = (
@@ -7,6 +8,10 @@ _metrics_state_var: contextvars.ContextVar[dict[str, Any] | None] = (
         default=None,
     )
 )
+
+# Process-wide monotonic timestamps of recent risk-control responses
+# (412/429/403), consulted by the adaptive upstream-jitter heuristic.
+_risk_pressure_events: list[float] = []
 
 
 def _new_state(request_id: str | None = None) -> dict[str, Any]:
@@ -57,6 +62,33 @@ def add_upstream_duration_ms(duration_ms: float) -> None:
 
 def add_throttle_sleep_ms(duration_ms: float) -> None:
     _get_state()["throttle_sleep_ms"] += max(0.0, duration_ms)
+
+
+def get_throttle_sleep_ms() -> float:
+    return float(_get_state()["throttle_sleep_ms"])
+
+
+def record_risk_pressure() -> None:
+    """Mark a risk-control response (412/429/403) as recent."""
+    now = time.monotonic()
+    _risk_pressure_events.append(now)
+    del _risk_pressure_events[: max(0, len(_risk_pressure_events) - 64)]
+
+
+def recent_risk_pressure(window_seconds: float) -> bool:
+    """True when a risk-control response occurred within the window."""
+    if window_seconds <= 0 or not _risk_pressure_events:
+        return False
+
+    cutoff = time.monotonic() - window_seconds
+    # Events are appended in time order, so stale ones form a prefix.
+    stale_count = len([e for e in _risk_pressure_events if e < cutoff])
+    del _risk_pressure_events[:stale_count]
+    return bool(_risk_pressure_events)
+
+
+def reset_risk_pressure() -> None:
+    _risk_pressure_events.clear()
 
 
 def add_lazy_pause(duration_ms: float) -> None:

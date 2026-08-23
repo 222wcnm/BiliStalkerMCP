@@ -512,6 +512,24 @@ def resolve_cookie_refresh_files(
     return files
 
 
+_credential_presence_cache: bool | None = None
+
+
+def has_configured_credential() -> bool:
+    """True when a SESSDATA is configured via env vars or cookie file.
+
+    Result is cached: this feeds the adaptive upstream-jitter heuristic, which
+    only needs to know whether requests carry a login, not its validity.
+    """
+    global _credential_presence_cache
+    if _credential_presence_cache is None:
+        try:
+            _credential_presence_cache = bool(load_credential_snapshot().sessdata)
+        except CredentialLoadError:
+            _credential_presence_cache = False
+    return _credential_presence_cache
+
+
 def _is_posix() -> bool:
     return os.name == "posix"
 

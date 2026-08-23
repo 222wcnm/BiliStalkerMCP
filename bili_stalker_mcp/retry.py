@@ -42,7 +42,7 @@ from .infra.circuit_breaker import (
     ensure_risk_control_request_allowed,
     record_risk_control_failure,
 )
-from .observability import add_retry
+from .observability import add_retry, record_risk_pressure
 
 logger = logging.getLogger(__name__)
 
@@ -123,6 +123,8 @@ def with_retry(
                 except (ApiException, NetworkException, RetryableBiliApiError) as exc:
                     last_exception = exc
                     code = _extract_api_error_code(exc)
+                    if code in RISK_CONTROL_CODES or code in {403, 429}:
+                        record_risk_pressure()
                     if code in RISK_CONTROL_CODES:
                         snapshot = record_risk_control_failure()
                         logger.error(
@@ -162,6 +164,8 @@ def with_retry(
                 except httpx.HTTPStatusError as exc:
                     last_exception = exc
                     code = _extract_api_error_code(exc)
+                    if code in RISK_CONTROL_CODES or code in {403, 429}:
+                        record_risk_pressure()
                     if code in RISK_CONTROL_CODES:
                         snapshot = record_risk_control_failure()
                         logger.error(

@@ -71,6 +71,18 @@ def _get_env_int(name: str, default: int) -> int:
         return default
 
 
+def _get_env_str(name: str, default: str) -> str:
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+
+    cleaned = raw.strip()
+    if not cleaned:
+        logger.warning("Empty value for %s, falling back to %r", name, default)
+        return default
+    return cleaned
+
+
 def _get_env_bool(name: str, default: bool) -> bool:
     raw = os.environ.get(name)
     if raw is None:
@@ -88,6 +100,11 @@ def _get_env_bool(name: str, default: bool) -> bool:
     return default
 
 
+# Upstream proxy shared by bilibili_api and the raw HTTP clients. bilibili_api's
+# curl_cffi client overrides environment proxies with an empty string, so an
+# explicit proxy must be applied through request_settings to take effect.
+PROXY_URL = _get_env_str("BILI_PROXY", "")
+
 REQUEST_JITTER_MIN_MS = max(0, _get_env_int("BILI_REQUEST_JITTER_MIN_MS", 200))
 REQUEST_JITTER_MAX_MS = max(0, _get_env_int("BILI_REQUEST_JITTER_MAX_MS", 1200))
 if REQUEST_JITTER_MAX_MS < REQUEST_JITTER_MIN_MS:
@@ -97,6 +114,30 @@ if REQUEST_JITTER_MAX_MS < REQUEST_JITTER_MIN_MS:
         REQUEST_JITTER_MIN_MS,
     )
     REQUEST_JITTER_MAX_MS = REQUEST_JITTER_MIN_MS
+
+
+def _get_env_jitter_mode() -> str:
+    raw = os.environ.get("BILI_REQUEST_JITTER_MODE")
+    if raw is None:
+        return "adaptive"
+
+    cleaned = raw.strip().lower()
+    if cleaned in {"adaptive", "always", "never"}:
+        return cleaned
+
+    logger.warning("Invalid BILI_REQUEST_JITTER_MODE=%r, falling back to adaptive", raw)
+    return "adaptive"
+
+
+# "adaptive": jitter only when anonymous (no SESSDATA) or after recent
+# risk-control pressure; "always"/"never" force the behavior unconditionally.
+REQUEST_JITTER_MODE = _get_env_jitter_mode()
+# Total jitter sleep budget per tool call; further upstream calls skip once used up.
+REQUEST_JITTER_BUDGET_MS = max(0, _get_env_int("BILI_REQUEST_JITTER_BUDGET_MS", 500))
+# How long a 412/429/403 keeps the adaptive jitter engaged.
+RISK_PRESSURE_WINDOW_SECONDS = max(
+    1, _get_env_int("BILI_RISK_PRESSURE_WINDOW_SECONDS", 300)
+)
 
 BILI_412_CIRCUIT_THRESHOLD = max(1, _get_env_int("BILI_412_CIRCUIT_THRESHOLD", 3))
 BILI_412_CIRCUIT_WINDOW_SECONDS = max(
@@ -150,6 +191,15 @@ def initialize_bilibili_request_settings() -> None:
         )
     except Exception as exc:
         logger.debug("curl_cffi client unavailable, using default client: %s", exc)
+
+    if PROXY_URL:
+        try:
+            request_settings.set_proxy(PROXY_URL)
+            logger.debug("Routing bilibili_api requests through proxy %s", PROXY_URL)
+        except Exception as exc:
+            logger.warning(
+                "Failed to configure bilibili_api proxy %s: %s", PROXY_URL, exc
+            )
 
     _request_settings_initialized = True
 

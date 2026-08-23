@@ -9,11 +9,16 @@ from ..config import (
     CONNECT_TIMEOUT,
     DEFAULT_HEADERS,
     DEFAULT_IMPERSONATE,
+    PROXY_URL,
     READ_TIMEOUT,
     REQUEST_TIMEOUT,
 )
 from ..errors import RISK_CONTROL_CODES, RiskControlError
-from ..observability import record_upstream_block, record_upstream_rate_limit
+from ..observability import (
+    record_risk_pressure,
+    record_upstream_block,
+    record_upstream_rate_limit,
+)
 from ..retry import RetryableBiliApiError
 from .circuit_breaker import (
     ensure_risk_control_request_allowed,
@@ -97,6 +102,8 @@ def _build_http_status_error(
 
 
 def _raise_for_retryable_status(status_code: int, url: str) -> None:
+    record_risk_pressure()
+
     if status_code == 412:
         record_upstream_block()
         snapshot = record_risk_control_failure()
@@ -117,22 +124,50 @@ def _raise_for_retryable_status(status_code: int, url: str) -> None:
         )
 
 
+def _build_httpx_client(proxy_url: str) -> httpx.AsyncClient:
+    common_kwargs: dict[str, Any] = {
+        "headers": DEFAULT_HEADERS.copy(),
+        "timeout": httpx.Timeout(CONNECT_TIMEOUT, read=READ_TIMEOUT),
+    }
+    if not proxy_url:
+        return httpx.AsyncClient(**common_kwargs)
+
+    try:
+        return httpx.AsyncClient(proxy=proxy_url, **common_kwargs)
+    except TypeError:  # httpx < 0.26 spells the argument `proxies`
+        return httpx.AsyncClient(proxies=proxy_url, **common_kwargs)  # type: ignore[call-arg]
+
+
+def _build_curl_session_kwargs(proxy_url: str) -> dict[str, Any]:
+    kwargs: dict[str, Any] = {
+        "headers": DEFAULT_HEADERS.copy(),
+        "timeout": REQUEST_TIMEOUT,
+        "impersonate": DEFAULT_IMPERSONATE,
+        "raise_for_status": False,
+    }
+    if proxy_url:
+        kwargs["proxy"] = proxy_url
+    return kwargs
+
+
 class SharedRawHttpClient:
     def __init__(self) -> None:
-        self._httpx_client = httpx.AsyncClient(
-            headers=DEFAULT_HEADERS.copy(),
-            timeout=httpx.Timeout(CONNECT_TIMEOUT, read=READ_TIMEOUT),
-        )
+        self._httpx_client = _build_httpx_client(PROXY_URL)
         self._curl_session: Any | None = None
         self._closed = False
 
         if curl_requests is not None:
-            self._curl_session = curl_requests.AsyncSession(
-                headers=DEFAULT_HEADERS.copy(),
-                timeout=REQUEST_TIMEOUT,
-                impersonate=DEFAULT_IMPERSONATE,
-                raise_for_status=False,
-            )
+            try:
+                self._curl_session = curl_requests.AsyncSession(
+                    **_build_curl_session_kwargs(PROXY_URL)
+                )
+            except TypeError:  # older curl_cffi only accepts a proxies mapping
+                self._curl_session = curl_requests.AsyncSession(
+                    **{
+                        **_build_curl_session_kwargs(""),
+                        "proxies": {"all": PROXY_URL},
+                    }
+                )
         else:
             logger.debug(
                 "curl_cffi is unavailable, raw requests will use httpx fallback only"
@@ -262,6 +297,7 @@ async def request_json(
         )
 
     if payload.get("code") in RISK_CONTROL_CODES:
+        record_risk_pressure()
         record_upstream_block()
         snapshot = record_risk_control_failure()
         raise RiskControlError(retry_after=snapshot.retry_after)
