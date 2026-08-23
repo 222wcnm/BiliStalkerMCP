@@ -56,6 +56,11 @@ pip install bili-stalker-mcp
 | `BILI_REFRESH_TOKEN_FILE` | No | Path to the separate refresh-token file; never set the token through an environment variable. |
 | `BILI_ENABLE_COOKIE_REFRESH` | No | `true` enables safe automatic refresh; default: `false`. |
 | `BILI_COOKIE_REFRESH_CHECK_INTERVAL_SECONDS` | No | Refresh-check interval; default: `21600`, minimum: `60`. |
+| `BILI_PROXY` | No | Route all upstream requests (bilibili_api and the built-in HTTP clients) through this proxy. Recommended when the system proxy is not picked up automatically or DNS resolution for Bilibili hosts is unstable. |
+| `BILI_REQUEST_JITTER_MODE` | No | Upstream jitter behavior: `adaptive` (default; sleeps only without a configured login or after recent 412/429/403), `always`, `never`. |
+| `BILI_REQUEST_JITTER_MIN_MS` / `BILI_REQUEST_JITTER_MAX_MS` | No | Jitter sleep range; default: `200`–`1200`. |
+| `BILI_REQUEST_JITTER_BUDGET_MS` | No | Total jitter sleep allowed per tool call; default: `500`. |
+| `BILI_RISK_PRESSURE_WINDOW_SECONDS` | No | How long a 412/429/403 keeps adaptive jitter engaged; default: `300`. |
 | `BILI_LOG_LEVEL` | No | `DEBUG`, `INFO` (Default), `WARNING`. |
 | `BILI_TIMEZONE` | No | Output time zone for formatted timestamps (default: `Asia/Shanghai`). |
 
@@ -249,6 +254,21 @@ docker run -e SESSDATA=... bilistalker-mcp
 
 - **412 Precondition Failed**: Bilibili anti-crawling system triggered. Refresh `SESSDATA` or provide `BUVID3`.
 - **Cloud IPs**: Highly susceptible to blocking; local execution is recommended.
+- **Long ~20s stalls or DNS timeouts on upstream calls**: configure `BILI_PROXY`. `bilibili_api`'s curl_cffi client ignores system and environment proxies unless an explicit proxy is set.
+
+## Upstream Dependency Note
+
+`bilibili-api-python` is pinned to `==17.4.2`. Its upstream repository has been
+permanently shut down following a legal notice from Bilibili, so no further
+maintenance or fixes can be expected from that project. Additionally, the
+package is licensed GPL-3.0-or-later, which means its source **cannot be
+vendored or forked into this MIT-licensed repository**.
+
+The mitigation path is incremental migration of the remaining SDK-backed
+endpoints (user info, video list/details, dynamics, articles) onto this
+project's own raw HTTP stack (`SharedRawHttpClient`), which already serves
+comments, followings, and relation stats independently of the SDK. The pin
+should be kept exact so installs never pick up an unknown future version.
 
 ## License
 
