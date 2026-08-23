@@ -53,6 +53,13 @@ def test_all_raw_includes_unknown_polymer_types_and_all_remains_curated():
     assert _is_dynamic_type_match(unknown_type, DynamicType.ALL) is False
 
 
+@pytest.mark.parametrize("item_type", [8, "DYNAMIC_TYPE_AV"])
+def test_all_includes_video_dynamics(item_type):
+    # Video dynamics belong to ALL; excluding them forced video-heavy users
+    # through several upstream pages to fill a small limit.
+    assert _is_dynamic_type_match(item_type, DynamicType.ALL) is True
+
+
 def test_cursor_token_round_trip():
     token = _encode_cursor_token(
         api_cursor="abc123",

@@ -78,13 +78,18 @@ def is_dynamic_type_match(item_or_type: Any, dynamic_type: str) -> bool:
     item_type_id = item.get("type") if item is not None else item_or_type
 
     if dynamic_type == DynamicType.ALL:
+        # Video dynamics (8 / DYNAMIC_TYPE_AV) are part of ALL: excluding them
+        # made video-heavy users require several upstream pages to fill a
+        # small limit, tripling latency for the most common request shape.
         return item_type_id in {
             1,
             2,
             4,
+            8,
             "DYNAMIC_TYPE_FORWARD",
             "DYNAMIC_TYPE_DRAW",
             "DYNAMIC_TYPE_WORD",
+            "DYNAMIC_TYPE_AV",
         }
     if dynamic_type == DynamicType.ALL_RAW:
         return True
