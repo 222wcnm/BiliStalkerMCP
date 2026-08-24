@@ -170,3 +170,6 @@ fixer.py
 
 # Skill archives (local use only)
 skills/*.zip
+
+# ZCode local config (machine-specific MCP env)
+.zcode/
