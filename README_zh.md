@@ -58,7 +58,7 @@ pip install bili-stalker-mcp
 | `BILI_REFRESH_TOKEN_FILE` | 否 | 独立 refresh token 文件路径；不得通过环境变量提供 token。 |
 | `BILI_ENABLE_COOKIE_REFRESH` | 否 | 设为 `true` 后启用安全自动刷新；默认：`false`。 |
 | `BILI_COOKIE_REFRESH_CHECK_INTERVAL_SECONDS` | 否 | 检查刷新需求的间隔秒数；默认：`21600`，最小：`60`。 |
-| `BILI_PROXY` | 否 | 让全部上游请求（bilibili_api 与内置 HTTP 客户端）走指定代理。系统代理未被自动识别、或 B 站域名 DNS 解析不稳定时建议配置。 |
+| `BILI_PROXY` | 否 | 让全部上游请求（bilibili_api 与内置 HTTP 客户端）走指定代理。系统代理未被自动识别、或 B 站域名 DNS 解析不稳定时建议配置。若启动时代理不可达，服务会自动降级为直连并记录警告。 |
 | `BILI_REQUEST_JITTER_MODE` | 否 | 上游抖动策略：`adaptive`（默认；仅在未配置登录态或近期出现 412/429/403 时休眠）、`always`、`never`。 |
 | `BILI_REQUEST_JITTER_MIN_MS` / `BILI_REQUEST_JITTER_MAX_MS` | 否 | 抖动休眠范围；默认：`200`–`1200`。 |
 | `BILI_REQUEST_JITTER_BUDGET_MS` | 否 | 单次工具调用允许的抖动休眠总量；默认：`500`。 |

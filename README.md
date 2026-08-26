@@ -56,7 +56,7 @@ pip install bili-stalker-mcp
 | `BILI_REFRESH_TOKEN_FILE` | No | Path to the separate refresh-token file; never set the token through an environment variable. |
 | `BILI_ENABLE_COOKIE_REFRESH` | No | `true` enables safe automatic refresh; default: `false`. |
 | `BILI_COOKIE_REFRESH_CHECK_INTERVAL_SECONDS` | No | Refresh-check interval; default: `21600`, minimum: `60`. |
-| `BILI_PROXY` | No | Route all upstream requests (bilibili_api and the built-in HTTP clients) through this proxy. Recommended when the system proxy is not picked up automatically or DNS resolution for Bilibili hosts is unstable. |
+| `BILI_PROXY` | No | Route all upstream requests (bilibili_api and the built-in HTTP clients) through this proxy. Recommended when the system proxy is not picked up automatically or DNS resolution for Bilibili hosts is unstable. If the proxy is unreachable at startup, the server falls back to direct connections and logs a warning. |
 | `BILI_REQUEST_JITTER_MODE` | No | Upstream jitter behavior: `adaptive` (default; sleeps only without a configured login or after recent 412/429/403), `always`, `never`. |
 | `BILI_REQUEST_JITTER_MIN_MS` / `BILI_REQUEST_JITTER_MAX_MS` | No | Jitter sleep range; default: `200`–`1200`. |
 | `BILI_REQUEST_JITTER_BUDGET_MS` | No | Total jitter sleep allowed per tool call; default: `500`. |

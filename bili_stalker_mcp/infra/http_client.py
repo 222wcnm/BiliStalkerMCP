@@ -6,10 +6,10 @@ from urllib.parse import urlparse
 import httpx
 
 from ..config import (
+    ACTIVE_PROXY_URL,
     CONNECT_TIMEOUT,
     DEFAULT_HEADERS,
     DEFAULT_IMPERSONATE,
-    PROXY_URL,
     READ_TIMEOUT,
     REQUEST_TIMEOUT,
 )
@@ -160,13 +160,13 @@ class SharedRawHttpClient:
         if curl_requests is not None:
             try:
                 self._curl_session = curl_requests.AsyncSession(
-                    **_build_curl_session_kwargs(PROXY_URL)
+                    **_build_curl_session_kwargs(ACTIVE_PROXY_URL)
                 )
             except TypeError:  # older curl_cffi only accepts a proxies mapping
                 self._curl_session = curl_requests.AsyncSession(
                     **{
                         **_build_curl_session_kwargs(""),
-                        "proxies": {"all": PROXY_URL},
+                        "proxies": {"all": ACTIVE_PROXY_URL},
                     }
                 )
         else:
@@ -174,7 +174,7 @@ class SharedRawHttpClient:
                 "curl_cffi is unavailable, raw requests will use httpx fallback only"
             )
 
-        self._httpx_client = _build_httpx_client(PROXY_URL)
+        self._httpx_client = _build_httpx_client(ACTIVE_PROXY_URL)
 
     @property
     def is_closed(self) -> bool:
