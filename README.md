@@ -21,7 +21,9 @@ If you are searching for a Bilibili MCP server, a Bilibili Model Context Protoco
 
 Copy and send the following to Claude Code, Codex, or other AI agents:
 
-> Check the current client environment's MCP configuration standards, then configure `222wcnm/BiliStalkerMCP` as an available MCP server. If needed, ask whether to configure it globally or per-project, and prompt me for required Bilibili environment variables (e.g. SESSDATA).
+```text
+Check the current client environment's MCP configuration standards, then configure 222wcnm/BiliStalkerMCP as an available MCP server. If needed, ask whether to configure it globally or per-project, and prompt me for required Bilibili environment variables (e.g. SESSDATA).
+```
 
 ---
 

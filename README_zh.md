@@ -21,7 +21,9 @@ BiliStalkerMCP 是一个基于 [Model Context Protocol (MCP)](https://modelconte
 
 复制并发送如下内容给 Claude Code、codex 等 AI Agent：
 
-> 调查当前客户端环境的 MCP 配置规范，然后将 `222wcnm/BiliStalkerMCP` 配置为可用的 MCP Server；如需确认配置范围（全局/项目级）或需要我提供 B 站环境变量（如 SESSDATA），请询问。
+```text
+调查当前客户端环境的 MCP 配置规范，然后将 222wcnm/BiliStalkerMCP 配置为可用的 MCP Server；如需确认配置范围（全局/项目级）或需要我提供 B 站环境变量（如 SESSDATA），请询问。
+```
 
 ---
 
