@@ -3,6 +3,7 @@
 [![Python](https://img.shields.io/badge/Python-3.12+-blue?logo=python)](https://www.python.org/)
 [![MCP](https://img.shields.io/badge/MCP-Compatible-orange)](https://github.com/jlowin/fastmcp)
 [![PyPI version](https://badge.fury.io/py/bili-stalker-mcp.svg)](https://pypi.org/project/bili-stalker-mcp/)
+[![PyPI Total Downloads](https://static.pepy.tech/badge/bili-stalker-mcp)](https://pepy.tech/project/bili-stalker-mcp)
 
 ## Bilibili MCP Server for Specific User Analysis
 
@@ -14,16 +15,46 @@ If you are searching for a Bilibili MCP server, a Bilibili Model Context Protoco
 
 **English | [中文说明](README_zh.md)**
 
-### Installation
+## 🚀 Quick Start
 
-```bash
-uvx bili-stalker-mcp
-# or
-pip install bili-stalker-mcp
+### 🤖 Method 1: Let your AI Agent configure it (Recommended)
+
+Copy and send the following to Claude Code, Codex, or other AI agents:
+
+> Check the current client environment's MCP configuration standards, then configure `222wcnm/BiliStalkerMCP` as an available MCP server. If needed, ask whether to configure it globally or per-project, and prompt me for required Bilibili environment variables (e.g. SESSDATA).
+
+---
+
+### 🛠️ Method 2: Manual Configuration (MCP Clients)
+
+> Configuration paths and syntax may vary across different clients.
+
+#### 1. Run the PyPI release directly
+
+```json
+{
+  "mcpServers": {
+    "bilistalker": {
+      "command": "uvx",
+      "args": ["bili-stalker-mcp"],
+      "env": {
+        "SESSDATA": "required_sessdata",
+        "BILI_JCT": "optional_jct",
+        "BUVID3": "optional_buvid3"
+      }
+    }
+  }
+}
 ```
 
-### Configuration (Claude Desktop, Recommended)
+#### 2. Run from cloned source
 
+```bash
+git clone https://github.com/222wcnm/BiliStalkerMCP.git
+cd BiliStalkerMCP
+```
+
+Then replace `/path/to/BiliStalkerMCP` below with your actual absolute path:
 ```json
 {
   "mcpServers": {

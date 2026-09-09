@@ -3,6 +3,7 @@
 [![Python](https://img.shields.io/badge/Python-3.12+-blue?logo=python)](https://www.python.org/)
 [![MCP](https://img.shields.io/badge/MCP-Compatible-orange)](https://github.com/jlowin/fastmcp)
 [![PyPI version](https://badge.fury.io/py/bili-stalker-mcp.svg)](https://pypi.org/project/bili-stalker-mcp/)
+[![PyPI Total Downloads](https://static.pepy.tech/badge/bili-stalker-mcp)](https://pepy.tech/project/bili-stalker-mcp)
 
 ## 面向指定 B 站用户分析的 Bilibili MCP Server
 
@@ -16,22 +17,50 @@ BiliStalkerMCP 是一个基于 [Model Context Protocol (MCP)](https://modelconte
 
 ## 🚀 快速开始
 
-### 安装
+### 🤖 方式一：让 AI Agent 自己配置（推荐）
 
-```bash
-uvx bili-stalker-mcp
-# 或
-pip install bili-stalker-mcp
-```
+复制并发送如下内容给 Claude Code、codex 等 AI Agent：
 
-### 配置 (Claude Desktop，推荐)
+> 调查当前客户端环境的 MCP 配置规范，然后将 `222wcnm/BiliStalkerMCP` 配置为可用的 MCP Server；如需确认配置范围（全局/项目级）或需要我提供 B 站环境变量（如 SESSDATA），请询问。
+
+---
+
+### 🛠️ 方式二：手动配置 (MCP Clients)
+
+> 以下内容仅供参考，不同客户端的配置方法可能并不一致。
+
+#### 1. 直接运行 PyPI 稳定版
 
 ```json
 {
   "mcpServers": {
     "bilistalker": {
+      "command": "uvx",
+      "args": ["bili-stalker-mcp"],
+      "env": {
+        "SESSDATA": "必填_SESSDATA",
+        "BILI_JCT": "可选_BILI_JCT",
+        "BUVID3": "可选_BUVID3"
+      }
+    }
+  }
+}
+```
+
+#### 2. 从本地克隆源码运行
+
+```bash
+git clone https://github.com/222wcnm/BiliStalkerMCP.git
+cd BiliStalkerMCP
+```
+
+然后用真实绝对路径替换下面的 `/绝对路径/至/BiliStalkerMCP`：
+```json
+{
+  "mcpServers": {
+    "bilistalker": {
       "command": "uv",
-      "args": ["run", "--directory", "/path/to/BiliStalkerMCP", "bili-stalker-mcp"],
+      "args": ["run", "--directory", "/绝对路径/至/BiliStalkerMCP", "bili-stalker-mcp"],
       "env": {
         "SESSDATA": "必填_SESSDATA",
         "BILI_JCT": "可选_BILI_JCT",
