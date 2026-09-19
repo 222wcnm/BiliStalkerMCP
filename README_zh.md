@@ -7,7 +7,7 @@
 
 ## 面向指定 B 站用户分析的 Bilibili MCP Server
 
-BiliStalkerMCP 是一个基于 [Model Context Protocol (MCP)](https://modelcontextprotocol.io) 的 Bilibili MCP Server，专门面向需要分析指定 B 站用户或 UP 主的 AI 助手。
+BiliStalkerMCP 提供基于 [Model Context Protocol (MCP)](https://modelcontextprotocol.io) 的 Bilibili MCP Server 和命令行工具，专门面向需要分析指定 B 站用户或 UP 主的 AI 助手。
 
 它的工作流默认从目标 uid 或用户名出发，再结构化获取该用户的档案、视频、动态、专栏、字幕与关注列表。
 
@@ -77,6 +77,50 @@ cd BiliStalkerMCP
 > `uvx bili-stalker-mcp` 仍可用于快速一次性体验。
 
 > **凭据获取**: 在 B 站网页端按下 F12 -> Application -> Cookies 中获取相关值。
+
+### 方式三：命令行查询
+
+在本地仓库中，可以通过 CLI 直接调用全部 12 个工具，无需配置 MCP 客户端或启动常驻服务：
+
+```powershell
+uv run bili-stalker-mcp --help
+uv run bili-stalker-mcp tools
+uv run bili-stalker-mcp tools get_user_snapshot --pretty
+uv run bili-stalker-mcp call search_users --args '{"keyword":"用户名","limit":5}'
+uv run bili-stalker-mcp call get_user_snapshot --args '{"user_id_or_username":"12345","video_limit":5,"dynamic_limit":5,"article_limit":0}' --pretty
+uv run bili-stalker-mcp call get_video_detail --args '{"bvid":"BV1xx411c7mD","fetch_subtitles":true,"subtitle_max_chars":12000}'
+```
+
+`tools` 列出工具名称与简介；`tools 工具名` 返回完整 MCP schema，包含必填参数、默认值
+和取值范围。`call 工具名` 使用与 MCP 完全相同的工具名称及 JSON 参数。
+schema 中标为字符串的 ID 必须加引号，包括数字 UID 和较长的专栏、动态 ID。
+
+参数较多或需要避免 shell 引号转义时，可以读取 UTF-8 JSON 文件，或从管道读取 JSON 对象：
+
+```powershell
+uv run bili-stalker-mcp call get_user_snapshot --args-file args.json --pretty
+@{ user_id_or_username = "12345"; limit = 5 } | ConvertTo-Json -Compress | uv run bili-stalker-mcp call get_user_videos --args-file -
+```
+
+凭据使用下表中的环境变量，需在调用 CLI 的终端中设置。例如在 PowerShell 中设置
+`$env:BILI_COOKIE_FILE = 'D:\BiliStalkerSecrets\bili-cookie.txt'`。
+MCP 客户端配置里的 `env` 不会自动传给单独打开的终端。CLI 复用 MCP 的凭据、自动刷新、
+代理及请求限流逻辑；帮助、版本和工具发现命令不需要登录凭据。
+
+如果仓库已经有 `.env` 文件，需要在命令中显式加载；CLI 和普通 `uv run` 都不会自动读取它：
+
+```powershell
+uv run --env-file .env bili-stalker-mcp call get_user_info --args '{"user_id_or_username":"12345"}'
+```
+
+成功查询只向标准输出写入一个 UTF-8 JSON 值，日志和错误写入标准错误，可用重定向保存
+查询结果。退出码：`0` 成功，`1` 查询或配置失败，`2` 命令或参数错误，`130` 用户中断。
+查询失败时，标准错误最后一行是包含 `error` 的 JSON 对象；风控错误保留 `code` 和
+`retry_after`。用户概览允许部分成功，分析前应检查返回值的 `errors` 字段。
+
+也可以使用 `uv run python -m bili_stalker_mcp ...`，参数相同。
+安装包后可直接运行 `bili-stalker-mcp ...`。不传子命令时仍然启动 MCP stdio 服务，
+也可显式运行 `bili-stalker-mcp serve`。
 
 ### 环境变量
 
@@ -209,12 +253,13 @@ uv run mypy bili_stalker_mcp
 skills/bili-content-analysis/
 ├── SKILL.md                        # 工作流与输出规范
 └── references/
+    ├── cli.md                      # CLI 发现、查询与错误处理
     └── analysis-style.md           # 深度分析写作风格指南
 ```
 
 ### 功能
 
-引导兼容的 AI Agent（Gemini、Claude 等）执行结构化的 6 步 B 站内容分析流程：
+引导兼容的 AI Agent（Gemini、Claude 等）通过 MCP 工具或 CLI 执行结构化的 6 步 B 站内容分析流程：
 
 1. **明确目标** — 提取 uid / bvid / 关键词等标识符。
 2. **最小采集** — 优先调用轻量列表工具，仅对高价值条目拉取详情。

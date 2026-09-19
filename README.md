@@ -7,7 +7,7 @@
 
 ## Bilibili MCP Server for Specific User Analysis
 
-BiliStalkerMCP is a Bilibili MCP server built on [Model Context Protocol (MCP)](https://modelcontextprotocol.io), designed for AI agents that need to analyze a specific Bilibili user or creator.
+BiliStalkerMCP is a Bilibili MCP server and command-line tool built on [Model Context Protocol (MCP)](https://modelcontextprotocol.io), designed for AI agents that need to analyze a specific Bilibili user or creator.
 
 It is optimized for workflows that start from a target uid or username, then retrieve that user's profile, videos, dynamics, articles, subtitles, and followings with structured tools.
 
@@ -77,6 +77,57 @@ Then replace `/path/to/BiliStalkerMCP` below with your actual absolute path:
 > You can still use `uvx bili-stalker-mcp` for quick one-off usage.
 
 > **Auth**: Provide `SESSDATA` directly, or put it in `BILI_COOKIE_FILE`. Obtain it from Browser DevTools (F12) > Application > Cookies > `.bilibili.com`.
+
+### Method 3: Command-line queries
+
+From this checkout, use the CLI to query any of the 12 tools without configuring an
+MCP client or starting a persistent server:
+
+```powershell
+uv run bili-stalker-mcp --help
+uv run bili-stalker-mcp tools
+uv run bili-stalker-mcp tools get_user_snapshot --pretty
+uv run bili-stalker-mcp call search_users --args '{"keyword":"username","limit":5}'
+uv run bili-stalker-mcp call get_user_snapshot --args '{"user_id_or_username":"12345","video_limit":5,"dynamic_limit":5,"article_limit":0}' --pretty
+uv run bili-stalker-mcp call get_video_detail --args '{"bvid":"BV1xx411c7mD","fetch_subtitles":true,"subtitle_max_chars":12000}'
+```
+
+`tools` lists names and descriptions; `tools TOOL` returns the full MCP schema,
+including required arguments, defaults, and limits. `call TOOL` accepts the same
+names and JSON arguments as the MCP tools. IDs declared as strings in the schema
+must remain quoted, including numeric UIDs and long article/dynamic IDs.
+
+For larger arguments or to avoid shell quoting issues, read a UTF-8 JSON file or
+pipe a JSON object through stdin:
+
+```powershell
+uv run bili-stalker-mcp call get_user_snapshot --args-file args.json --pretty
+@{ user_id_or_username = "12345"; limit = 5 } | ConvertTo-Json -Compress | uv run bili-stalker-mcp call get_user_videos --args-file -
+```
+
+Set the environment variables below in the calling shell, for example
+`$env:BILI_COOKIE_FILE = 'D:\BiliStalkerSecrets\bili-cookie.txt'` in PowerShell.
+An MCP client's `env` configuration is not automatically inherited by a separate
+terminal. The CLI uses the same credential, refresh, proxy, and rate-limit behavior
+as MCP. Help, version, and tool discovery do not require login credentials.
+
+If the checkout already has a `.env` file, load it explicitly for the command;
+neither the CLI nor a plain `uv run` automatically loads it:
+
+```powershell
+uv run --env-file .env bili-stalker-mcp call get_user_info --args '{"user_id_or_username":"12345"}'
+```
+
+Successful queries write one UTF-8 JSON value to stdout; logs and errors go to
+stderr. Redirect stdout to save a result. Exit codes are `0` for success, `1` for
+query/configuration failures, `2` for invalid commands or arguments, and `130` for
+interruption. Query failures end with a JSON `error` object on stderr; risk-control
+errors retain `code` and `retry_after`. A snapshot can succeed with incomplete
+sections: inspect its `errors` field before interpreting it.
+
+`uv run python -m bili_stalker_mcp ...` accepts the same arguments. With an
+installed package, use `bili-stalker-mcp ...` directly. Running without a subcommand
+still starts the MCP stdio server; `bili-stalker-mcp serve` makes that explicit.
 
 ### Environment Variables
 
@@ -218,12 +269,13 @@ The repository ships a ready-to-use AI agent skill in `skills/bili-content-analy
 skills/bili-content-analysis/
 ├── SKILL.md                        # Workflow & output contract
 └── references/
+    ├── cli.md                      # CLI discovery, queries, and error handling
     └── analysis-style.md           # Detailed writing style rules
 ```
 
 ### What It Does
 
-Guides compatible AI agents (Gemini, Claude, etc.) through a structured 6-step workflow for deep Bilibili content analysis:
+Guides compatible AI agents (Gemini, Claude, etc.) through a structured 6-step workflow for deep Bilibili content analysis using MCP tools or the CLI:
 
 1. **Clarify** target and scope (uid / bvid / keyword).
 2. **Collect** evidence — lightweight lists first, heavy detail only for high-value items.
