@@ -10,11 +10,13 @@ import tempfile
 from dataclasses import dataclass, field
 from http.cookies import CookieError, SimpleCookie
 from pathlib import Path
-from typing import Any, Mapping
+from typing import TYPE_CHECKING, Any, Mapping
 
-from bilibili_api import Credential
 from filelock import FileLock
 from filelock import Timeout as FileLockTimeout
+
+if TYPE_CHECKING:
+    from bilibili_api import Credential
 
 logger = logging.getLogger(__name__)
 
@@ -114,6 +116,8 @@ class CredentialSnapshot:
     def to_credential(self) -> Credential | None:
         if not self.sessdata:
             return None
+
+        from bilibili_api import Credential
 
         return Credential(
             sessdata=self.sessdata,

@@ -8,11 +8,17 @@ import sys
 from collections.abc import Sequence
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Never
 
 from . import __version__
 
 logger = logging.getLogger(__name__)
+
+
+class JsonArgumentParser(argparse.ArgumentParser):
+    def error(self, message: str) -> Never:
+        _write_error("invalid_arguments", message)
+        raise SystemExit(2)
 
 
 class JsonLogFormatter(logging.Formatter):
@@ -113,13 +119,17 @@ def _serve() -> int:
 
 
 def _build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
+    parser = JsonArgumentParser(
         description="Query Bilibili tools directly or run the MCP stdio server.",
         epilog="Without a subcommand, starts the MCP stdio server (same as serve).",
     )
     parser.add_argument("--version", action="version", version=__version__)
     commands = parser.add_subparsers(dest="command")
     commands.add_parser("serve", help="Start the MCP stdio server")
+    doctor = commands.add_parser("doctor", help="Check local configuration")
+    doctor.add_argument(
+        "--network", action="store_true", help="Also test TCP connectivity"
+    )
 
     tools = commands.add_parser("tools", help="List tools or inspect one tool's schema")
     tools.add_argument("tool", nargs="?", help="Tool name to inspect")
@@ -249,6 +259,18 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         if args.command in (None, "serve"):
             return _serve()
+        if args.command == "doctor":
+            from .doctor import run_doctor
+
+            try:
+                report = run_doctor(network=args.network)
+            except Exception as exc:
+                from .errors import public_error_json
+
+                _write_error("internal_error", public_error_json(exc))
+                return 1
+            _write_json(report)
+            return 0 if report["ok"] else 1
         _configure_logging()
         return _run_command(args)
     except ImportError as exc:

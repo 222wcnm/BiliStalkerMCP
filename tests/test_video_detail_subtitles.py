@@ -1,3 +1,5 @@
+from unittest.mock import AsyncMock
+
 import pytest
 from curl_cffi.const import CurlECode
 from curl_cffi.requests.exceptions import ConnectionError as CurlConnectionError
@@ -533,30 +535,34 @@ def test_append_track_with_budget_counts_label_overhead():
 
 @pytest.mark.asyncio
 async def test_fetch_video_detail_defaults_to_disabled_subtitles(monkeypatch):
-    calls = {"get_info": 0}
-
-    class FakeVideo:
-        def __init__(self, bvid, credential):
-            self.bvid = bvid
-            self.credential = credential
-
-        async def get_info(self):
-            calls["get_info"] += 1
-            return {
+    raw_get = AsyncMock(
+        return_value={
+            "code": 0,
+            "data": {
                 "bvid": "BV1disabled11",
                 "aid": 123,
                 "stat": {},
                 "pages": [{"cid": 101, "page": 1, "part": "P1", "duration": 30}],
-            }
+            },
+        }
+    )
 
-    monkeypatch.setattr("bili_stalker_mcp.services.user_service.video.Video", FakeVideo)
+    monkeypatch.setattr("bili_stalker_mcp.services.user_service.get_json", raw_get)
+    monkeypatch.setattr(
+        "bili_stalker_mcp.services.user_service.video.Video",
+        lambda **_kwargs: pytest.fail("SDK video client used"),
+    )
 
     result = await fetch_video_detail(
         bvid="BV1disabled11",
         cred=None,
     )
 
-    assert calls["get_info"] == 1
+    raw_get.assert_awaited_once_with(
+        "https://api.bilibili.com/x/web-interface/view",
+        params={"bvid": "BV1disabled11"},
+        cred=None,
+    )
     assert result["subtitles"] == {
         "enabled": False,
         "mode": "disabled",
@@ -576,24 +582,20 @@ async def test_fetch_video_detail_defaults_to_disabled_subtitles(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_fetch_video_detail_records_cache_hit_metrics(monkeypatch):
-    calls = {"get_info": 0}
-
-    class FakeVideo:
-        def __init__(self, bvid, credential):
-            self.bvid = bvid
-            self.credential = credential
-
-        async def get_info(self):
-            calls["get_info"] += 1
-            return {
+    raw_get = AsyncMock(
+        return_value={
+            "code": 0,
+            "data": {
                 "bvid": "BV1cache1111",
                 "aid": 789,
                 "title": "cache demo",
                 "stat": {},
                 "pages": [{"cid": 101, "page": 1, "part": "P1", "duration": 30}],
-            }
+            },
+        }
+    )
 
-    monkeypatch.setattr("bili_stalker_mcp.services.user_service.video.Video", FakeVideo)
+    monkeypatch.setattr("bili_stalker_mcp.services.user_service.get_json", raw_get)
 
     begin_request("video-detail-cache")
     first = await fetch_video_detail(bvid="BV1cache1111", cred=None)
@@ -602,10 +604,21 @@ async def test_fetch_video_detail_records_cache_hit_metrics(monkeypatch):
     metrics = snapshot_metrics()
 
     assert first == second
-    assert calls["get_info"] == 1
+    assert raw_get.await_count == 1
     assert metrics["cache"]["video_detail"] == {
         "hit": 1,
         "miss": 1,
         "total": 2,
         "hit_rate": 0.5,
     }
+
+
+@pytest.mark.asyncio
+async def test_fetch_video_detail_raw_api_error_keeps_code(monkeypatch):
+    raw_get = AsyncMock(return_value={"code": -404, "message": "video missing"})
+    monkeypatch.setattr("bili_stalker_mcp.services.user_service.get_json", raw_get)
+
+    with pytest.raises(RetryableBiliApiError) as exc:
+        await fetch_video_detail(bvid="BV1missing11", cred=None)
+
+    assert exc.value.code == -404

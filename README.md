@@ -85,6 +85,8 @@ MCP client or starting a persistent server:
 
 ```powershell
 uv run bili-stalker-mcp --help
+uv run bili-stalker-mcp doctor
+uv run bili-stalker-mcp doctor --network
 uv run bili-stalker-mcp tools
 uv run bili-stalker-mcp tools get_user_snapshot --pretty
 uv run bili-stalker-mcp call search_users --args '{"keyword":"username","limit":5}'
@@ -96,6 +98,10 @@ uv run bili-stalker-mcp call get_video_detail --args '{"bvid":"BV1xx411c7mD","fe
 including required arguments, defaults, and limits. `call TOOL` accepts the same
 names and JSON arguments as the MCP tools. IDs declared as strings in the schema
 must remain quoted, including numeric UIDs and long article/dynamic IDs.
+`doctor` prints JSON diagnostics for credential sources, refresh configuration,
+proxy settings, and dependency versions. By default it does not use the network,
+change credential files, or print credential values. `doctor --network` adds a TCP
+connectivity check; it does not verify login or an API response.
 
 For larger arguments or to avoid shell quoting issues, read a UTF-8 JSON file or
 pipe a JSON object through stdin:
@@ -120,9 +126,10 @@ uv run --env-file .env bili-stalker-mcp call get_user_info --args '{"user_id_or_
 
 Successful queries write one UTF-8 JSON value to stdout; logs and errors go to
 stderr. Redirect stdout to save a result. Exit codes are `0` for success, `1` for
-query/configuration failures, `2` for invalid commands or arguments, and `130` for
-interruption. Query failures end with a JSON `error` object on stderr; risk-control
-errors retain `code` and `retry_after`. A snapshot can succeed with incomplete
+query/configuration failures (including an unhealthy `doctor` report), `2` for
+invalid commands or arguments, and `130` for interruption. Query and argument
+failures end with a JSON `error` object on stderr; risk-control errors
+retain `code` and `retry_after`. A snapshot can succeed with incomplete
 sections: inspect its `errors` field before interpreting it.
 
 `uv run python -m bili_stalker_mcp ...` accepts the same arguments. With an
@@ -350,9 +357,10 @@ package is licensed GPL-3.0-or-later, which means its source **cannot be
 vendored or forked into this MIT-licensed repository**.
 
 The mitigation path is incremental migration of the remaining SDK-backed
-endpoints (user info, video list/details, dynamics, articles) onto this
-project's own raw HTTP stack (`SharedRawHttpClient`), which already serves
-comments, followings, and relation stats independently of the SDK. The pin
+endpoints (user info, video lists, subtitles in video details, dynamics, articles)
+onto this project's own raw HTTP stack (`SharedRawHttpClient`), which already
+serves comments, followings, relation stats, and video details without subtitles
+independently of the SDK. The pin
 should be kept exact so installs never pick up an unknown future version.
 
 ## License

@@ -56,6 +56,11 @@ uv run bili-stalker-mcp call get_user_snapshot --args-file args.json --pretty
 
 ## Credentials and output
 
+Run `bili-stalker-mcp doctor` when local configuration blocks a query. It prints
+JSON diagnostics without making network requests, changing credential files, or
+printing secret values. Use `doctor --network` only when a TCP connectivity check
+is needed; it does not verify login or an API response.
+
 The CLI reads the same environment variables as MCP: `SESSDATA` or
 `BILI_COOKIE_FILE`, optional `BILI_JCT`/`BUVID3`, and `BILI_PROXY` when configured.
 Use existing authorized credential files or environment settings without printing
@@ -90,7 +95,7 @@ Exit codes:
 - `130`: the user interrupted execution.
 
 Query failures leave stdout empty and end stderr with a JSON `error` object.
-Argument-parser errors instead print usage text. Error objects preserve available
+Argument-parser errors use the same JSON format. Error objects preserve available
 server fields such as `reason`, `code`, `retry_after`, and `request_id`. Respect
 `retry_after` for risk-control failures and report unavailable evidence instead of
 issuing rapid repeat queries.

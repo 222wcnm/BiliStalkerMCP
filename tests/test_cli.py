@@ -2,6 +2,7 @@ import asyncio
 import io
 import json
 import os
+import socket
 import subprocess
 import sys
 from unittest.mock import AsyncMock
@@ -328,6 +329,124 @@ def test_unexpected_error_is_sanitized(monkeypatch, capsys):
 
     monkeypatch.setattr(server, "search_users_service", fail)
     assert cli.main(["call", "search_users", "--args", '{"keyword":"demo"}']) == 1
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "private-cookie-value" not in captured.err
+    assert json.loads(captured.err)["error"]["reason"] == "internal_error"
+
+
+@pytest.mark.parametrize("argv", [["call"], ["call", "search_users", "--wrong"]])
+def test_parser_errors_are_json(monkeypatch, capsys, argv):
+    monkeypatch.setattr(server, "create_server", lambda: pytest.fail("server started"))
+    with pytest.raises(SystemExit) as exc:
+        cli.main(argv)
+    assert exc.value.code == 2
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert json.loads(captured.err.splitlines()[-1])["error"]["reason"] == (
+        "invalid_arguments"
+    )
+
+
+def test_doctor_is_offline_and_does_not_expose_credentials(
+    monkeypatch, tmp_path, capsys
+):
+    cookie_file = tmp_path / "cookie.txt"
+    token_file = tmp_path / "token.txt"
+    cookie_file.write_text(
+        "SESSDATA=private-session; bili_jct=private-jct\n", encoding="utf-8"
+    )
+    token_file.write_text("private-token\n", encoding="utf-8")
+    monkeypatch.setenv("BILI_COOKIE_FILE", str(cookie_file))
+    monkeypatch.setenv("BILI_REFRESH_TOKEN_FILE", str(token_file))
+    monkeypatch.setenv("BILI_ENABLE_COOKIE_REFRESH", "true")
+    monkeypatch.setenv("BILI_PROXY", "http://user:private-proxy@127.0.0.1:9")
+    monkeypatch.setattr(
+        socket,
+        "create_connection",
+        lambda *_args, **_kwargs: pytest.fail("network used"),
+    )
+    before = set(tmp_path.iterdir())
+
+    assert cli.main(["doctor"]) == 0
+    captured = capsys.readouterr()
+    report = json.loads(captured.out)
+    assert report["ok"] is True
+    assert report["checks"]["credential"]["source"] == "cookie_file"
+    assert report["checks"]["refresh"]["enabled"] is True
+    assert report["checks"]["proxy"]["configured"] is True
+    assert "private" not in captured.out + captured.err
+    assert set(tmp_path.iterdir()) == before
+    assert cookie_file.read_text(encoding="utf-8").startswith("SESSDATA=private")
+
+
+def test_doctor_network_probe_is_explicit(monkeypatch, capsys):
+    class _Connection:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+    targets = []
+    monkeypatch.setenv("SESSDATA", "private-session")
+    monkeypatch.setenv("BILI_PROXY", "")
+    monkeypatch.setattr(
+        socket,
+        "create_connection",
+        lambda target, timeout: (targets.append((target, timeout)), _Connection())[1],
+    )
+    assert cli.main(["doctor", "--network"]) == 0
+    report = json.loads(capsys.readouterr().out)
+    assert report["checks"]["network"] == {
+        "status": "ok",
+        "target": "bilibili",
+        "kind": "tcp",
+    }
+    assert targets == [(("api.bilibili.com", 443), 3)]
+
+
+def test_doctor_does_not_import_runtime_proxy_probe():
+    script = (
+        "import sys; from bili_stalker_mcp.cli import main; "
+        "assert main(['doctor']) == 0; "
+        "assert 'bili_stalker_mcp.config' not in sys.modules"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        env={
+            **os.environ,
+            "SESSDATA": "smoke-session",
+            "BILI_ENABLE_COOKIE_REFRESH": "false",
+            "BILI_COOKIE_FILE": "",
+            "BILI_REFRESH_TOKEN_FILE": "",
+            "BILI_PROXY": "http://user:secret@127.0.0.1:9",
+        },
+        timeout=20,
+    )
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout)["ok"] is True
+    assert "secret" not in result.stdout + result.stderr
+
+
+def test_doctor_reports_refresh_configuration_issues(monkeypatch, capsys):
+    monkeypatch.setenv("SESSDATA", "private-session")
+    monkeypatch.setenv("BILI_ENABLE_COOKIE_REFRESH", "true")
+    assert cli.main(["doctor"]) == 1
+    report = json.loads(capsys.readouterr().out)
+    assert "refresh_files_missing" in report["checks"]["refresh"]["issues"]
+    assert "rotating_cookie_env_override" in report["checks"]["refresh"]["issues"]
+
+
+def test_doctor_unexpected_error_is_sanitized(monkeypatch, capsys):
+    def fail(*, network):
+        raise RuntimeError("private-cookie-value")
+
+    monkeypatch.setattr("bili_stalker_mcp.doctor.run_doctor", fail)
+    assert cli.main(["doctor"]) == 1
     captured = capsys.readouterr()
     assert captured.out == ""
     assert "private-cookie-value" not in captured.err

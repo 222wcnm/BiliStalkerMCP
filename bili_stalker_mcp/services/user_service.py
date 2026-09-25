@@ -452,10 +452,24 @@ async def _fetch_video_detail_cached(
     subtitle_lang: str = DEFAULT_SUBTITLE_LANG,
     subtitle_max_chars: int = DEFAULT_SUBTITLE_MAX_CHARS,
 ) -> dict[str, Any]:
-    v = video.Video(bvid=bvid, credential=cred)
-
-    video_info = await timed_upstream_call(v.get_info())
-    video_data = video_info if isinstance(video_info, dict) else {}
+    v = video.Video(bvid=bvid, credential=cred) if fetch_subtitles else None
+    video_data: Any
+    if v is not None:
+        video_data = await timed_upstream_call(v.get_info())
+    else:
+        response = await get_json(
+            "https://api.bilibili.com/x/web-interface/view",
+            params={"bvid": bvid},
+            cred=cred,
+        )
+        code = response.get("code")
+        if code != 0:
+            if isinstance(code, int):
+                raise RetryableBiliApiError(code, "Video detail query failed")
+            raise ValueError("Invalid video detail response code")
+        video_data = response.get("data")
+    if not isinstance(video_data, dict):
+        raise ValueError("Invalid video detail response data")
     normalized_pages = _normalize_video_pages(video_data.get("pages") or [])
 
     stat = video_data.get("stat")
@@ -482,6 +496,7 @@ async def _fetch_video_detail_cached(
     )
 
     if fetch_subtitles:
+        assert v is not None
         subtitles = await collect_subtitles(
             v,
             normalized_pages,

@@ -121,12 +121,14 @@ function Get-VenvExecutables {
     if ($isWin) {
         return @(
             (Join-Path $VenvPath "Scripts\python.exe"),
-            (Join-Path $VenvPath "Scripts\bili-stalker-cookie-setup.exe")
+            (Join-Path $VenvPath "Scripts\bili-stalker-cookie-setup.exe"),
+            (Join-Path $VenvPath "Scripts\bili-stalker-mcp.exe")
         )
     }
     return @(
         (Join-Path $VenvPath "bin/python"),
-        (Join-Path $VenvPath "bin/bili-stalker-cookie-setup")
+        (Join-Path $VenvPath "bin/bili-stalker-cookie-setup"),
+        (Join-Path $VenvPath "bin/bili-stalker-mcp")
     )
 }
 
@@ -139,11 +141,15 @@ function Test-InstalledEnvironment {
     $executables = Get-VenvExecutables -VenvPath $VenvPath
     $pythonPath = $executables[0]
     $setupPath = $executables[1]
+    $cliPath = $executables[2]
     if (-not (Test-Path -LiteralPath $pythonPath)) {
         throw "Smoke-test Python is missing."
     }
     if (-not (Test-Path -LiteralPath $setupPath)) {
         throw "Packaged bili-stalker-cookie-setup entry point is missing."
+    }
+    if (-not (Test-Path -LiteralPath $cliPath)) {
+        throw "Packaged bili-stalker-mcp entry point is missing."
     }
 
     $smokeCode = @'
@@ -179,14 +185,35 @@ assert len({tool.name for tool in tools}) == 12
     else {
         $null
     }
+    $hadRefresh = Test-Path Env:BILI_ENABLE_COOKIE_REFRESH
+    $previousRefresh = if ($hadRefresh) { $env:BILI_ENABLE_COOKIE_REFRESH } else { $null }
+    $hadProxy = Test-Path Env:BILI_PROXY
+    $previousProxy = if ($hadProxy) { $env:BILI_PROXY } else { $null }
     $tempScript = Join-Path ([IO.Path]::GetTempPath()) ("bili-smoke-" + [guid]::NewGuid() + ".py")
     try {
         $env:BILI_RELEASE_EXPECTED_VERSION = $ExpectedVersion
+        $env:BILI_ENABLE_COOKIE_REFRESH = "false"
+        Remove-Item Env:BILI_PROXY -ErrorAction SilentlyContinue
         Set-Content -LiteralPath $tempScript -Value $smokeCode -Encoding UTF8
         & $pythonPath -I $tempScript
         Assert-LastExitCode -Operation "Installed-package smoke test"
         & $setupPath --help | Out-Null
         Assert-LastExitCode -Operation "Setup entry-point smoke test"
+        $reportedVersion = (& $cliPath --version).Trim()
+        Assert-LastExitCode -Operation "CLI version smoke test"
+        if ($reportedVersion -ne $ExpectedVersion) {
+            throw "CLI reported version '$reportedVersion'; expected '$ExpectedVersion'."
+        }
+        $cliTools = & $cliPath tools | ConvertFrom-Json
+        Assert-LastExitCode -Operation "CLI tools smoke test"
+        if (@($cliTools).Count -ne 12) {
+            throw "Packaged CLI did not list 12 tools."
+        }
+        $moduleTools = & $pythonPath -m bili_stalker_mcp tools | ConvertFrom-Json
+        Assert-LastExitCode -Operation "Python module tools smoke test"
+        if (@($moduleTools).Count -ne 12) {
+            throw "Packaged Python module did not list 12 tools."
+        }
     }
     finally {
         if (Test-Path -LiteralPath $tempScript) {
@@ -197,6 +224,18 @@ assert len({tool.name for tool in tools}) == 12
         }
         else {
             Remove-Item Env:BILI_RELEASE_EXPECTED_VERSION -ErrorAction SilentlyContinue
+        }
+        if ($hadRefresh) {
+            $env:BILI_ENABLE_COOKIE_REFRESH = $previousRefresh
+        }
+        else {
+            Remove-Item Env:BILI_ENABLE_COOKIE_REFRESH -ErrorAction SilentlyContinue
+        }
+        if ($hadProxy) {
+            $env:BILI_PROXY = $previousProxy
+        }
+        else {
+            Remove-Item Env:BILI_PROXY -ErrorAction SilentlyContinue
         }
     }
 }

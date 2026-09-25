@@ -53,3 +53,6 @@ jobs:
 
       - name: Check distribution metadata
         run: uvx --from twine twine check dist/*
+
+      - name: Smoke test installed wheel
+        run: uv run --no-sync python scripts/smoke_wheel.py

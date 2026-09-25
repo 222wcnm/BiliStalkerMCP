@@ -84,6 +84,8 @@ cd BiliStalkerMCP
 
 ```powershell
 uv run bili-stalker-mcp --help
+uv run bili-stalker-mcp doctor
+uv run bili-stalker-mcp doctor --network
 uv run bili-stalker-mcp tools
 uv run bili-stalker-mcp tools get_user_snapshot --pretty
 uv run bili-stalker-mcp call search_users --args '{"keyword":"用户名","limit":5}'
@@ -93,6 +95,9 @@ uv run bili-stalker-mcp call get_video_detail --args '{"bvid":"BV1xx411c7mD","fe
 
 `tools` 列出工具名称与简介；`tools 工具名` 返回完整 MCP schema，包含必填参数、默认值
 和取值范围。`call 工具名` 使用与 MCP 完全相同的工具名称及 JSON 参数。
+`doctor` 输出 JSON 格式的本地诊断，包括凭据来源、自动刷新配置、代理设置和依赖版本；
+默认不联网、不修改凭据文件，也不输出凭据内容。`doctor --network` 额外进行 TCP 连通性检查，
+不验证登录状态或 B 站接口响应。
 schema 中标为字符串的 ID 必须加引号，包括数字 UID 和较长的专栏、动态 ID。
 
 参数较多或需要避免 shell 引号转义时，可以读取 UTF-8 JSON 文件，或从管道读取 JSON 对象：
@@ -114,9 +119,9 @@ uv run --env-file .env bili-stalker-mcp call get_user_info --args '{"user_id_or_
 ```
 
 成功查询只向标准输出写入一个 UTF-8 JSON 值，日志和错误写入标准错误，可用重定向保存
-查询结果。退出码：`0` 成功，`1` 查询或配置失败，`2` 命令或参数错误，`130` 用户中断。
-查询失败时，标准错误最后一行是包含 `error` 的 JSON 对象；风控错误保留 `code` 和
-`retry_after`。用户概览允许部分成功，分析前应检查返回值的 `errors` 字段。
+查询结果。退出码：`0` 成功，`1` 查询或配置失败（包括 `doctor` 检出问题），`2` 命令或参数错误，`130` 用户中断。
+查询及参数失败时，标准错误最后一行是包含 `error` 的 JSON 对象；风控错误保留 `code` 和
+`retry_after`；argparse 参数错误也遵循这一格式。用户概览允许部分成功，分析前应检查返回值的 `errors` 字段。
 
 也可以使用 `uv run python -m bili_stalker_mcp ...`，参数相同。
 安装包后可直接运行 `bili-stalker-mcp ...`。不传子命令时仍然启动 MCP stdio 服务，
@@ -331,9 +336,9 @@ docker run -e SESSDATA=... bilistalker-mcp
 无法再指望该项目提供维护或修复。此外该包采用 GPL-3.0-or-later 许可证，因此其源码
 **不能 vendor 或 fork 进本 MIT 协议仓库**。
 
-缓解方案是将剩余仍依赖 SDK 的端点（用户信息、视频列表/详情、动态、专栏）逐步迁移到
+缓解方案是将剩余仍依赖 SDK 的端点（用户信息、视频列表、视频详情的字幕路径、动态、专栏）逐步迁移到
 本项目自建的 HTTP 栈（`SharedRawHttpClient`）——评论区、关注列表、粉丝数等已经独立于
-SDK 走这条路径。版本锁定应保持精确匹配，避免安装到未知的未来版本。
+SDK 走这条路径；默认不抓字幕的视频详情也已迁移。版本锁定应保持精确匹配，避免安装到未知的未来版本。
 
 ## 开源协议
 
