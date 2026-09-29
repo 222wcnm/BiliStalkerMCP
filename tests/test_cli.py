@@ -321,6 +321,7 @@ def test_request_cleanup_runs_on_same_loop_on_success_and_failure(
         assert error["code"] == 412
         assert error["reason"] == "risk_control"
         assert error["retry_after"] == 300
+        assert error["tool"] == "search_users"
 
 
 def test_unexpected_error_is_sanitized(monkeypatch, capsys):

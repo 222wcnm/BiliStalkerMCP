@@ -161,6 +161,11 @@ def decode_cursor_token(
 
 
 @with_retry(max_retries=3, base_delay=2.0)
+async def _fetch_dynamics_page(u: user.User, offset: str) -> dict[str, Any]:
+    # Retry only the failed page, preserving completed pages and lazy pauses.
+    return await timed_upstream_call(u.get_dynamics_new(offset=offset))
+
+
 async def _fetch_user_dynamics_uncached(
     user_id: int,
     limit: int,
@@ -227,9 +232,7 @@ async def _fetch_user_dynamics_uncached(
             break
         seen_offsets.add(current_key)
 
-        raw_dynamics_data = await timed_upstream_call(
-            u.get_dynamics_new(offset=str(current_cursor))
-        )
+        raw_dynamics_data = await _fetch_dynamics_page(u, str(current_cursor))
 
         cards = (raw_dynamics_data or {}).get("items") or []
         page_next_offset = (raw_dynamics_data or {}).get("offset")

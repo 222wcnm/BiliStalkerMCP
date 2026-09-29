@@ -172,7 +172,7 @@ def create_server() -> FastMCP:
         except Exception as exc:
             total_duration_ms = round((time.perf_counter() - started) * 1000, 3)
             metrics = snapshot_metrics()
-            public_error = public_error_json(exc, request_id=request_id)
+            public_error = public_error_json(exc, request_id=request_id, tool=tool_name)
             logger.error(
                 "tool_call_failed",
                 extra={
@@ -192,7 +192,7 @@ def create_server() -> FastMCP:
                     "error": public_error,
                 },
             )
-            if isinstance(exc, ToolError):
+            if isinstance(exc, ToolError) and getattr(exc, "code", None) != 412:
                 raise
             raise ToolError(public_error) from exc
 
@@ -325,7 +325,11 @@ def create_server() -> FastMCP:
                     return name, await factory(), None
                 except Exception as exc:
                     logger.warning("snapshot section %s failed: %r", name, exc)
-                    return name, None, public_error_json(exc)
+                    return (
+                        name,
+                        None,
+                        public_error_json(exc, tool="get_user_snapshot", section=name),
+                    )
 
             sections = await asyncio.gather(
                 _section("user", lambda: fetch_user_info(target_uid, cred), True),
@@ -518,7 +522,7 @@ def create_server() -> FastMCP:
             str,
             Field(
                 min_length=3,
-                description="Video BVID (e.g. BV1xx411c7mD), AV number (e.g. av170001), or a Bilibili video URL.",
+                description="Video BVID (e.g. BV1xx411c7mD), AV number (e.g. av170001), full Bilibili video URL, or b23.tv short link.",
             ),
         ],
         fetch_subtitles: Annotated[

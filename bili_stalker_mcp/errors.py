@@ -9,7 +9,9 @@ import httpx
 
 RISK_CONTROL_CODES = {-412, 412}
 RISK_CONTROL_MESSAGE = (
-    "Bilibili risk control is active; upstream requests are temporarily paused."
+    "Bilibili returned 412 or the shared risk-control circuit is open. "
+    "Respect retry_after (seconds) before further upstream requests; "
+    "if absent, pause and retry later. Use already retrieved data where sufficient."
 )
 
 
@@ -45,6 +47,26 @@ class RiskControlError(Exception):
     def __init__(self, *, retry_after: int | None = None) -> None:
         self.retry_after = retry_after
         super().__init__(risk_control_error(retry_after=retry_after).to_json())
+
+
+class InvalidVideoIdentifierError(ValueError):
+    """Input could not be normalized to a video identifier."""
+
+    reason = "invalid_video_identifier"
+    message = "Provide a valid 12-character BVID, AV number, or Bilibili video URL."
+
+    def __init__(self) -> None:
+        super().__init__(self.message)
+
+
+class ShortLinkResolutionError(InvalidVideoIdentifierError):
+    """A short link failed to resolve to a video identifier."""
+
+    reason = "short_link_resolution_failed"
+    message = (
+        "Could not resolve the b23.tv link to a video. "
+        "Provide the full Bilibili video URL or BVID, or retry later."
+    )
 
 
 def normalize_retry_after(seconds: float | int | None) -> int | None:
@@ -94,6 +116,15 @@ def public_error_from_exception(
     *,
     request_id: str | None = None,
 ) -> PublicError:
+    if isinstance(exc, InvalidVideoIdentifierError):
+        return PublicError(
+            code=None,
+            reason=exc.reason,
+            retry_after=None,
+            message=exc.message,
+            request_id=request_id,
+        )
+
     if isinstance(exc, RiskControlError):
         return risk_control_error(
             retry_after=exc.retry_after,
@@ -119,5 +150,27 @@ def public_error_from_exception(
     )
 
 
-def public_error_json(exc: Exception, *, request_id: str | None = None) -> str:
-    return public_error_from_exception(exc, request_id=request_id).to_json()
+def public_error_json(
+    exc: Exception,
+    *,
+    request_id: str | None = None,
+    tool: str | None = None,
+    section: str | None = None,
+) -> str:
+    payload = public_error_from_exception(exc, request_id=request_id).as_dict()
+    if payload["reason"] == "risk_control":
+        # These identify the affected operation, not the endpoint that caused
+        # the shared circuit to open. Callers supply static names, never URLs.
+        if tool:
+            payload["tool"] = tool
+        if section:
+            payload["section"] = section
+        if tool in {"get_user_videos", "search_user_videos"} or (
+            tool == "get_user_snapshot" and section == "videos"
+        ):
+            payload["message"] += (
+                ' For recent video clues, get_user_dynamics with dynamic_type="VIDEO" '
+                "may help after the cooldown, or use dynamics already retrieved. "
+                "Dynamics are not a complete upload list or a substitute for video search."
+            )
+    return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))

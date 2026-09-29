@@ -15,6 +15,7 @@ description: Deep analysis and tracking of Bilibili creators, videos, dynamics, 
 
 1. Clarify target and scope
 - Extract target identifier from user input (`uid`/username, `bvid`, `article_id`, keyword).
+- Video inputs accept a BVID, AV number, full video URL, or `https://b23.tv/...` short link; the tool resolves them. If `short_link_resolution_failed` is returned, use an available full video URL or BVID, or request one from the user. For `invalid_video_identifier`, correct the input before retrying.
 - Resolve usernames with `search_users` and reuse the selected numeric UID. Ask when candidates cannot be distinguished from the user's context.
 - Keep response language aligned with the user unless explicitly requested otherwise.
 - Ask for missing identifiers only when tools cannot resolve them safely.
@@ -23,6 +24,7 @@ description: Deep analysis and tracking of Bilibili creators, videos, dynamics, 
 - For a broad user overview, start with `get_user_snapshot`; set unneeded section limits to 0 and check `errors` for incomplete sections.
 - For a specific video or article, fetch its detail directly. Video transcripts require `fetch_subtitles=true`; use `smart` and a suitable `subtitle_max_chars` unless broader subtitle coverage is needed.
 - Use `get_user_videos`, `search_user_videos`, `get_user_dynamics`, or `get_user_articles` for targeted discovery and deeper pagination. Prefer lightweight lists and fetch heavy detail only for selected items.
+- For video clues in recent dynamics, use `get_user_dynamics` with `dynamic_type="VIDEO"`. Use video list/search tools for upload history, totals, or keyword search; dynamics provide only partial coverage. Video dynamics carry top-level `type="VIDEO"` and `video`; `origin.video` belongs to a repost and may be another creator's work.
 - For discussion analysis, use `get_content_comments` and fetch a selected thread with `get_content_comment_replies`. Note-style comments may be previews; retrieve `note.cvid` with `get_article_content` when full text is needed.
 
 3. Reconstruct source before interpreting
@@ -43,6 +45,7 @@ description: Deep analysis and tracking of Bilibili creators, videos, dynamics, 
 6. Handle failures safely
 - If required data is missing or retrieval fails, state exact blockers and stop speculation.
 - Treat partial snapshots and unavailable subtitles as incomplete evidence. Respect a returned `retry_after` instead of immediately repeating blocked queries.
+- A 412 can also reflect the shared circuit being open: switching tools does not bypass its cooldown. Use successful snapshot sections or already retrieved dynamics where sufficient, and state the missing coverage. After the cooldown, dynamics may provide recent video clues if the video list remains unavailable; keep their source and limits explicit.
 - Provide concrete next actions (for example: request missing id, retry with cursor/page, fetch detail for candidate items).
 
 ## Output contract

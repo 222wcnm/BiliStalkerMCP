@@ -533,7 +533,8 @@ async def fetch_video_detail(
     )
     after = _fetch_video_detail_cached.cache_info()
     record_cache_hit("video_detail", _cache_hit(before, after))
-    return payload
+    # Match the other cached services: callers must not mutate the cache entry.
+    return VideoDetailResponse(**payload).model_dump()
 
 
 @with_retry(max_retries=3, base_delay=2.0)

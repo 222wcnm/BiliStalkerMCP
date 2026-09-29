@@ -2,7 +2,11 @@ import json
 
 import pytest
 
-from bili_stalker_mcp.errors import RiskControlError, public_error_json
+from bili_stalker_mcp.errors import (
+    RISK_CONTROL_MESSAGE,
+    RiskControlError,
+    public_error_json,
+)
 from bili_stalker_mcp.infra.circuit_breaker import reset_risk_control_circuit
 from bili_stalker_mcp.infra.http_client import get_json
 
@@ -33,12 +37,31 @@ def test_public_risk_control_error_is_json_and_sanitized():
         "code": 412,
         "reason": "risk_control",
         "retry_after": 300,
-        "message": (
-            "Bilibili risk control is active; upstream requests are temporarily paused."
-        ),
+        "message": RISK_CONTROL_MESSAGE,
         "request_id": "req-1",
     }
     assert raw_html not in json.dumps(payload)
+
+
+@pytest.mark.parametrize("code", [412, -412])
+def test_video_risk_error_preserves_context_without_raw_details(code):
+    exc = RuntimeError("private-cookie-value https://private.example/?token=secret")
+    exc.code = code
+    exc.retry_after = 1.2
+    payload = json.loads(public_error_json(exc, tool="get_user_videos"))
+    assert payload["tool"] == "get_user_videos"
+    assert payload["retry_after"] == 2
+    assert 'dynamic_type="VIDEO"' in payload["message"]
+    assert "not a complete upload list" in payload["message"]
+    assert "private" not in json.dumps(payload)
+
+
+def test_nonvideo_risk_error_has_no_video_fallback_advice():
+    payload = json.loads(public_error_json(RiskControlError(), tool="search_users"))
+    assert payload["tool"] == "search_users"
+    assert payload["retry_after"] is None
+    assert "pause and retry later" in payload["message"]
+    assert "get_user_dynamics" not in payload["message"]
 
 
 @pytest.mark.asyncio

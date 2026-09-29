@@ -39,7 +39,7 @@ async def test_complete_public_tool_contract_is_stable():
         separators=(",", ":"),
     ).encode("utf-8")
     assert hashlib.sha256(canonical_contract).hexdigest() == (
-        "97261d0c5b8bf37223fdd264dca25c3adf9a6b0b1ee4b15a16eab2cceac42392"
+        "5aca5652a7ec5843ce26aa808a938b2e46ed48dffc46b18ab47adbbd04082d1b"
     )
 
 

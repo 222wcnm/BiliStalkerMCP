@@ -67,6 +67,8 @@ Use existing authorized credential files or environment settings without printin
 their contents or putting secrets in command arguments. A terminal does not inherit
 an MCP client's private `env` block. Report missing credentials when they block a
 query; help, version, and tool discovery need no login.
+Queries requiring credentials fail with `Missing SESSDATA` when neither source
+provides it; the CLI does not automatically switch to anonymous queries.
 
 If the checkout has an existing authorized `.env` file, load it explicitly with
 `uv run --env-file .env bili-stalker-mcp ...`. Neither the CLI nor plain `uv run`

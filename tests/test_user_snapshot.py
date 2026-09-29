@@ -1,8 +1,10 @@
 import asyncio
+import json
 
 import pytest
 
 from bili_stalker_mcp import server as server_module
+from bili_stalker_mcp.errors import RiskControlError
 
 
 @pytest.fixture(autouse=True)
@@ -99,3 +101,35 @@ async def test_user_snapshot_reports_partial_failures_and_skips_sections(monkeyp
     assert result["dynamics"] is None
     assert result["articles"] == {"articles": []}
     assert set(result["errors"]) == {"videos"}
+
+
+@pytest.mark.asyncio
+async def test_snapshot_video_risk_error_keeps_successful_dynamics(monkeypatch):
+    dynamics = {"dynamics": [{"type": "VIDEO", "video": {"bvid": "example"}}]}
+    dynamic_calls = 0
+
+    async def fake_user_info(uid, cred):
+        return {"mid": uid}
+
+    async def fake_videos(*args, **kwargs):
+        raise RiskControlError(retry_after=120)
+
+    async def fake_dynamics(**kwargs):
+        nonlocal dynamic_calls
+        dynamic_calls += 1
+        return dynamics
+
+    monkeypatch.setattr(server_module, "fetch_user_info", fake_user_info)
+    monkeypatch.setattr(server_module, "fetch_user_videos", fake_videos)
+    monkeypatch.setattr(server_module, "fetch_user_dynamics", fake_dynamics)
+    tool = await _snapshot_tool()
+    result = await tool.fn(ctx=None, user_id_or_username="777", article_limit=0)
+
+    assert result["videos"] is None
+    assert result["dynamics"] == dynamics
+    assert dynamic_calls == 1
+    error = json.loads(result["errors"]["videos"])
+    assert error["tool"] == "get_user_snapshot"
+    assert error["section"] == "videos"
+    assert error["retry_after"] == 120
+    assert "not a complete upload list" in error["message"]
