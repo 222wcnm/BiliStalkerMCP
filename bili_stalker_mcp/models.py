@@ -1,5 +1,3 @@
-﻿from typing import Any
-
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -21,7 +19,7 @@ class UserLiveRoomInfo(BaseModel):
 
 
 class UserInfoResponse(BaseModel):
-    mid: int
+    mid: int = Field(description="Bilibili user ID; the same identifier as uid.")
     name: str
     face: str | None = None
     sign: str | None = None
@@ -87,15 +85,44 @@ class VideoStatResponse(BaseModel):
     like: int | None = None
 
 
+class VideoOwnerItem(BaseModel):
+    mid: int | None = Field(
+        default=None, description="Uploader's Bilibili user ID (uid)."
+    )
+    name: str | None = None
+    face: str | None = None
+
+
+class VideoPageItem(BaseModel):
+    cid: int | None = None
+    page: int | None = None
+    part: str | None = None
+    duration: int | None = Field(default=None, description="Part duration in seconds.")
+
+
 class VideoDetailItem(BaseModel):
     bvid: str | None = None
     aid: int | None = None
     title: str | None = None
     desc: str | None = None
     publish_time: str | None = None
+    owner: VideoOwnerItem | None = None
+    duration: int | None = Field(
+        default=None, description="Total video duration in seconds, across all parts."
+    )
+    pic: str | None = Field(default=None, description="Cover image URL.")
+    tname: str | None = Field(default=None, description="Upstream category name.")
+    videos: int | None = Field(default=None, description="Number of video parts.")
+    ctime: int | None = Field(
+        default=None,
+        description="Upstream creation time as a Unix timestamp in seconds.",
+    )
     stat: VideoStatResponse = Field(default_factory=VideoStatResponse)
-    tags: list[str] = Field(default_factory=list)
-    pages: list[dict[str, Any]] = Field(default_factory=list)
+    tags: list[str] = Field(
+        default_factory=list,
+        description="Tags supplied by the detail source. Empty can mean unavailable, not no tags.",
+    )
+    pages: list[VideoPageItem] = Field(default_factory=list)
 
 
 class SubtitleTrack(BaseModel):
@@ -104,7 +131,10 @@ class SubtitleTrack(BaseModel):
     lan: str | None = None
     lan_doc: str | None = None
     is_ai_generated: bool = False
-    text: str = ""
+    text: str = Field(
+        default="",
+        description="Compatibility field, always empty. Read subtitles.full_text for text.",
+    )
 
 
 class SubtitleResponse(BaseModel):
@@ -112,14 +142,23 @@ class SubtitleResponse(BaseModel):
     mode: str = "full"
     requested_language: str = "auto"
     available_languages: list[str] = Field(default_factory=list)
-    selected_language: str | None = None
+    selected_language: str | None = Field(
+        default=None,
+        description="Selected track language in smart mode. Null in full/minimal/disabled modes; use tracks[].lan for full mode.",
+    )
     fallback_reason: str | None = None
     truncated: bool = False
     returned_chars: int = 0
     dropped_tracks: int = 0
     track_count: int = 0
-    tracks: list[SubtitleTrack] = Field(default_factory=list)
-    full_text: str = ""
+    tracks: list[SubtitleTrack] = Field(
+        default_factory=list,
+        description="Track metadata only. A track can be listed even if its text failed to download; inspect errors.",
+    )
+    full_text: str = Field(
+        default="",
+        description="Subtitle text, returned once within subtitle_max_chars; multiple full-mode tracks have language/part labels. No timecodes.",
+    )
     errors: list[str] = Field(default_factory=list)
 
 
@@ -286,3 +325,15 @@ class CommentRepliesResponse(BaseModel):
     total: int = 0
     page: int = 1
     has_more: bool = False
+
+
+class UserSnapshotResponse(BaseModel):
+    uid: int
+    user: UserInfoResponse | None = None
+    videos: VideoListResponse | None = None
+    dynamics: DynamicListResponse | None = None
+    articles: ArticlesResponse | None = None
+    errors: dict[str, str] = Field(
+        default_factory=dict,
+        description="Section names mapped to JSON-encoded errors. Null sections without errors were skipped.",
+    )

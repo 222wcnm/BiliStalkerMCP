@@ -243,12 +243,23 @@ uv run mypy bili_stalker_mcp
 - `full`: 下载所有字幕轨正文（开销较高）。
 - `minimal`: 跳过字幕元数据与正文拉取。
 
-`subtitle_lang` 可指定语言（如 `en-US`）；`auto` 会按内置优先级自动回退。  
+在 `smart` 模式下，`subtitle_lang` 可请求指定语言（如 `en-US`）；
+`auto` 会按内置优先级自动回退。
 `subtitle_max_chars` 可限制字幕正文最大返回字符数，避免 token 膨胀。
 
 字幕正文只通过 `full_text` 返回一次；`tracks` 仅承载元数据（`text` 恒为空），
 避免同一内容重复计费 token。`full` 模式多轨时，`full_text` 中每段正文前会带
 `[语言 · 分P]` 标签以保留归属信息。
+
+视频详情增加 `owner: {mid, name, face}`（缺失为 `null`）、`duration`（上游视频总时长，秒）、
+`pic`、`tname`、`videos` 和 `ctime`（Unix 秒时间戳）。缺失元数据为 `null`；
+`pages[]` 保留 `cid/page/part/duration`，其中分 P 的 `duration` 单位也是秒。
+`mid` 与 `uid` 都指 B 站用户标识；`tags=[]` 也可能是详情数据源未提供标签。
+
+`selected_language` 仅在 `smart` 模式表示选中语言；`full` 模式为 `null`，
+各轨语言见 `tracks[].lan`。`truncated=true` 表示字符上限截断或舍弃了字幕正文。
+字幕下载失败时，轨道仍可能留在 `tracks` 中；需同时检查 `errors` 与 `full_text`。
+字幕正文不含时间码。
 
 ## 📎 附带 Skill
 

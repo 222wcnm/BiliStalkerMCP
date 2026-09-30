@@ -261,12 +261,24 @@ an empty `images` list.
 - `full`: download text for all subtitle tracks (higher cost).
 - `minimal`: skip subtitle metadata and subtitle text fetching.
 
-`subtitle_lang` can force a language (for example `en-US`); `auto` uses built-in priority fallback.  
+In `smart` mode, `subtitle_lang` can request a language (for example `en-US`);
+`auto` uses built-in priority fallback.
 `subtitle_max_chars` caps returned subtitle text size to avoid token explosion.
 
 Subtitle text is returned once via `full_text`; `tracks` carry metadata only
 (`text` is always empty). In `full` mode with multiple tracks, each segment in
 `full_text` is prefixed with a `[language · part]` label.
+
+Video detail includes `owner: {mid, name, face}` (or `null`), `duration` (upstream
+total seconds across all parts), `pic`, `tname`, `videos`, and `ctime` (Unix
+seconds). Missing metadata is `null`; `pages[]` keeps `cid/page/part/duration`
+with each part's duration in seconds. `mid` and `uid` both identify a Bilibili
+user. An empty `tags` array can also mean the detail source omitted tags.
+
+`selected_language` is set only in `smart` mode; `full` mode returns `null`
+and lists languages in `tracks[].lan`. `truncated=true` means the character
+budget cut or dropped subtitle text. A track can remain in `tracks` when its
+download fails; check `errors` and `full_text`. Subtitle text has no timecodes.
 
 ## Bundled Skill
 

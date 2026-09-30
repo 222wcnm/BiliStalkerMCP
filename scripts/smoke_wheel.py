@@ -21,6 +21,23 @@ def main() -> None:
     with tempfile.TemporaryDirectory(prefix="bili-wheel-smoke-") as temporary:
         workspace = Path(temporary)
         venv = workspace / "venv"
+        requirements = workspace / "requirements.txt"
+        subprocess.run(
+            [
+                "uv",
+                "export",
+                "--project",
+                str(root),
+                "--locked",
+                "--no-dev",
+                "--no-emit-project",
+                "--no-hashes",
+                "--output-file",
+                str(requirements),
+            ],
+            stdout=subprocess.DEVNULL,
+            check=True,
+        )
         subprocess.run(
             ["uv", "--quiet", "venv", str(venv), "--python", sys.executable],
             check=True,
@@ -31,6 +48,21 @@ def main() -> None:
             if os.name == "nt"
             else "bin/bili-stalker-mcp"
         )
+        locked_install = [
+            "uv",
+            "--quiet",
+            "pip",
+            "install",
+            "--python",
+            str(python),
+            "--no-deps",
+            "--requirement",
+            str(requirements),
+        ]
+        wheelhouse = os.environ.get("BILI_QRCODE_WHEELHOUSE")
+        if wheelhouse:
+            locked_install.extend(["--find-links", wheelhouse])
+        subprocess.run(locked_install, check=True)
         subprocess.run(
             [
                 "uv",
@@ -39,6 +71,7 @@ def main() -> None:
                 "install",
                 "--python",
                 str(python),
+                "--no-deps",
                 str(wheels[0]),
             ],
             check=True,

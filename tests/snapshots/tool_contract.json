@@ -1,0 +1,4262 @@
+{
+  "get_article_content": {
+    "_meta": {
+      "fastmcp": {
+        "tags": []
+      }
+    },
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "readOnlyHint": true
+    },
+    "description": "Get full article markdown content (supports both CV and opus ids).",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "article_id": {
+          "description": "Article id. Accepts a CV id (old format, e.g. 21032785) or an opus dynamic id from a bilibili.com/opus/{id} URL (e.g. 748254891671027745). Passed as a string because opus ids are 64-bit snowflake ids that overflow JS safe integers.",
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "article_id"
+      ],
+      "type": "object"
+    },
+    "name": "get_article_content",
+    "outputSchema": {
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "markdown_content": {
+          "default": "",
+          "title": "Markdown Content",
+          "type": "string"
+        },
+        "title": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Title"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "title": "ArticleContentResponse",
+      "type": "object"
+    },
+    "title": "Get Article Content"
+  },
+  "get_content_comment_replies": {
+    "_meta": {
+      "fastmcp": {
+        "tags": []
+      }
+    },
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "readOnlyHint": true
+    },
+    "description": "Get paginated replies under one top-level video, article, or dynamic comment.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "content_id": {
+          "description": "Video BVID/AV/URL, article CV id or opus id, or dynamic/opus id. Keep 64-bit IDs as strings.",
+          "minLength": 1,
+          "type": "string"
+        },
+        "content_type": {
+          "description": "Content type: video, article, or dynamic.",
+          "enum": [
+            "video",
+            "article",
+            "dynamic"
+          ],
+          "type": "string"
+        },
+        "limit": {
+          "default": 20,
+          "description": "Replies per page, 1-20.",
+          "maximum": 20,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "page": {
+          "default": 1,
+          "description": "Page number starting from 1.",
+          "maximum": 1000,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "root_rpid": {
+          "description": "Top-level comment rpid returned by `get_content_comments`.",
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "content_type",
+        "content_id",
+        "root_rpid"
+      ],
+      "type": "object"
+    },
+    "name": "get_content_comment_replies",
+    "outputSchema": {
+      "$defs": {
+        "CommentItemResponse": {
+          "properties": {
+            "content": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Content"
+            },
+            "like": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Like"
+            },
+            "member": {
+              "$ref": "#/$defs/CommentMemberResponse"
+            },
+            "note": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/CommentNoteResponse"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null
+            },
+            "parent_rpid": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Parent Rpid"
+            },
+            "pictures": {
+              "items": {
+                "$ref": "#/$defs/CommentPictureResponse"
+              },
+              "title": "Pictures",
+              "type": "array"
+            },
+            "publish_time": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Publish Time"
+            },
+            "replies": {
+              "items": {
+                "$ref": "#/$defs/CommentItemResponse"
+              },
+              "title": "Replies",
+              "type": "array"
+            },
+            "reply_count": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Reply Count"
+            },
+            "root_rpid": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Root Rpid"
+            },
+            "rpid": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Rpid"
+            }
+          },
+          "title": "CommentItemResponse",
+          "type": "object"
+        },
+        "CommentMemberResponse": {
+          "properties": {
+            "mid": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Mid"
+            },
+            "uname": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Uname"
+            }
+          },
+          "title": "CommentMemberResponse",
+          "type": "object"
+        },
+        "CommentNoteResponse": {
+          "properties": {
+            "content_is_preview": {
+              "default": true,
+              "title": "Content Is Preview",
+              "type": "boolean"
+            },
+            "cvid": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Cvid"
+            },
+            "images": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Images",
+              "type": "array"
+            },
+            "summary": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Summary"
+            },
+            "url": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Url"
+            }
+          },
+          "title": "CommentNoteResponse",
+          "type": "object"
+        },
+        "CommentPictureResponse": {
+          "properties": {
+            "height": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Height"
+            },
+            "size_kb": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Size Kb"
+            },
+            "url": {
+              "title": "Url",
+              "type": "string"
+            },
+            "width": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Width"
+            }
+          },
+          "required": [
+            "url"
+          ],
+          "title": "CommentPictureResponse",
+          "type": "object"
+        }
+      },
+      "properties": {
+        "count": {
+          "default": 0,
+          "title": "Count",
+          "type": "integer"
+        },
+        "has_more": {
+          "default": false,
+          "title": "Has More",
+          "type": "boolean"
+        },
+        "page": {
+          "default": 1,
+          "title": "Page",
+          "type": "integer"
+        },
+        "replies": {
+          "items": {
+            "$ref": "#/$defs/CommentItemResponse"
+          },
+          "title": "Replies",
+          "type": "array"
+        },
+        "total": {
+          "default": 0,
+          "title": "Total",
+          "type": "integer"
+        }
+      },
+      "title": "CommentRepliesResponse",
+      "type": "object"
+    },
+    "title": "Get Content Comment Replies"
+  },
+  "get_content_comments": {
+    "_meta": {
+      "fastmcp": {
+        "tags": []
+      }
+    },
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "readOnlyHint": true
+    },
+    "description": "Get top-level comments for a video, article, or dynamic.\n\nEach comment includes up to 3 preview sub-replies, image metadata, and note\nmetadata. Use the comment's `rpid` as `root_rpid` with\n`get_content_comment_replies` to retrieve the complete reply thread. Pagination\nis cursor-based; keep `sort` unchanged while paging. The pinned `top` comment is\nonly present on the first page. For a note, pass `note.cvid` to\n`get_article_content` to retrieve its full content; the comment API may return\nonly a preview.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "content_id": {
+          "description": "Video BVID/AV/URL, article CV id or opus id, or dynamic/opus id. Keep 64-bit IDs as strings.",
+          "minLength": 1,
+          "type": "string"
+        },
+        "content_type": {
+          "description": "Content type: video, article, or dynamic. Dynamic IDs are resolved to Bilibili's actual comment type and oid.",
+          "enum": [
+            "video",
+            "article",
+            "dynamic"
+          ],
+          "type": "string"
+        },
+        "cursor": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Pagination cursor from the previous response. Omit for the first page and keep sort unchanged while paging."
+        },
+        "limit": {
+          "default": 20,
+          "description": "Comments per page, 1-20.",
+          "maximum": 20,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "sort": {
+          "default": "hot",
+          "description": "Sort order: hot or time.",
+          "enum": [
+            "hot",
+            "time"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "content_type",
+        "content_id"
+      ],
+      "type": "object"
+    },
+    "name": "get_content_comments",
+    "outputSchema": {
+      "$defs": {
+        "CommentItemResponse": {
+          "properties": {
+            "content": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Content"
+            },
+            "like": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Like"
+            },
+            "member": {
+              "$ref": "#/$defs/CommentMemberResponse"
+            },
+            "note": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/CommentNoteResponse"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null
+            },
+            "parent_rpid": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Parent Rpid"
+            },
+            "pictures": {
+              "items": {
+                "$ref": "#/$defs/CommentPictureResponse"
+              },
+              "title": "Pictures",
+              "type": "array"
+            },
+            "publish_time": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Publish Time"
+            },
+            "replies": {
+              "items": {
+                "$ref": "#/$defs/CommentItemResponse"
+              },
+              "title": "Replies",
+              "type": "array"
+            },
+            "reply_count": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Reply Count"
+            },
+            "root_rpid": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Root Rpid"
+            },
+            "rpid": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Rpid"
+            }
+          },
+          "title": "CommentItemResponse",
+          "type": "object"
+        },
+        "CommentMemberResponse": {
+          "properties": {
+            "mid": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Mid"
+            },
+            "uname": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Uname"
+            }
+          },
+          "title": "CommentMemberResponse",
+          "type": "object"
+        },
+        "CommentNoteResponse": {
+          "properties": {
+            "content_is_preview": {
+              "default": true,
+              "title": "Content Is Preview",
+              "type": "boolean"
+            },
+            "cvid": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Cvid"
+            },
+            "images": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Images",
+              "type": "array"
+            },
+            "summary": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Summary"
+            },
+            "url": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Url"
+            }
+          },
+          "title": "CommentNoteResponse",
+          "type": "object"
+        },
+        "CommentPictureResponse": {
+          "properties": {
+            "height": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Height"
+            },
+            "size_kb": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Size Kb"
+            },
+            "url": {
+              "title": "Url",
+              "type": "string"
+            },
+            "width": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Width"
+            }
+          },
+          "required": [
+            "url"
+          ],
+          "title": "CommentPictureResponse",
+          "type": "object"
+        }
+      },
+      "properties": {
+        "comments": {
+          "items": {
+            "$ref": "#/$defs/CommentItemResponse"
+          },
+          "title": "Comments",
+          "type": "array"
+        },
+        "count": {
+          "default": 0,
+          "title": "Count",
+          "type": "integer"
+        },
+        "has_more": {
+          "default": false,
+          "title": "Has More",
+          "type": "boolean"
+        },
+        "next_cursor": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Next Cursor"
+        },
+        "top": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CommentItemResponse"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "total": {
+          "default": 0,
+          "title": "Total",
+          "type": "integer"
+        }
+      },
+      "title": "CommentsResponse",
+      "type": "object"
+    },
+    "title": "Get Content Comments"
+  },
+  "get_user_articles": {
+    "_meta": {
+      "fastmcp": {
+        "tags": []
+      }
+    },
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "readOnlyHint": true
+    },
+    "description": "Get lightweight article list for a user.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "limit": {
+          "default": 10,
+          "description": "Items per page, 1-30.",
+          "maximum": 30,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "page": {
+          "default": 1,
+          "description": "Page number starting from 1.",
+          "maximum": 1000,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "user_id_or_username": {
+          "description": "Bilibili user id (numeric) or username.",
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "user_id_or_username"
+      ],
+      "type": "object"
+    },
+    "name": "get_user_articles",
+    "outputSchema": {
+      "properties": {
+        "articles": {
+          "items": {
+            "properties": {
+              "id": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Id"
+              },
+              "publish_time_str": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Publish Time Str"
+              },
+              "stats": {
+                "properties": {
+                  "coin": {
+                    "anyOf": [
+                      {
+                        "type": "integer"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "title": "Coin"
+                  },
+                  "like": {
+                    "anyOf": [
+                      {
+                        "type": "integer"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "title": "Like"
+                  },
+                  "reply": {
+                    "anyOf": [
+                      {
+                        "type": "integer"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "title": "Reply"
+                  },
+                  "share": {
+                    "anyOf": [
+                      {
+                        "type": "integer"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "title": "Share"
+                  },
+                  "view": {
+                    "anyOf": [
+                      {
+                        "type": "integer"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "title": "View"
+                  }
+                },
+                "title": "ArticleStatsResponse",
+                "type": "object"
+              },
+              "summary": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Summary"
+              },
+              "title": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Title"
+              }
+            },
+            "title": "ArticleListItem",
+            "type": "object"
+          },
+          "title": "Articles",
+          "type": "array"
+        },
+        "total": {
+          "default": 0,
+          "title": "Total",
+          "type": "integer"
+        }
+      },
+      "title": "ArticlesResponse",
+      "type": "object"
+    },
+    "title": "Get User Articles"
+  },
+  "get_user_dynamics": {
+    "_meta": {
+      "fastmcp": {
+        "tags": []
+      }
+    },
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "readOnlyHint": true
+    },
+    "description": "Get user dynamics with type filtering and cursor pagination.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "cursor": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Opaque cursor for cursor-based pagination."
+        },
+        "dynamic_type": {
+          "default": "ALL",
+          "description": "Allowed values: ALL, ALL_RAW, VIDEO, ARTICLE, DRAW, TEXT, REVIEW. REVIEW includes only recognized five-slot rating cards, not other common cards.",
+          "enum": [
+            "ALL",
+            "ALL_RAW",
+            "VIDEO",
+            "ARTICLE",
+            "DRAW",
+            "TEXT",
+            "REVIEW"
+          ],
+          "type": "string"
+        },
+        "limit": {
+          "default": 10,
+          "description": "Items to fetch, 1-30.",
+          "maximum": 30,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "user_id_or_username": {
+          "description": "Bilibili user id (numeric) or username.",
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "user_id_or_username"
+      ],
+      "type": "object"
+    },
+    "name": "get_user_dynamics",
+    "outputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "dynamics": {
+          "items": {
+            "properties": {
+              "article": {
+                "anyOf": [
+                  {
+                    "properties": {
+                      "id": {
+                        "anyOf": [
+                          {
+                            "type": "integer"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "default": null,
+                        "title": "Id"
+                      },
+                      "title": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "default": null,
+                        "title": "Title"
+                      }
+                    },
+                    "title": "DynamicArticleRef",
+                    "type": "object"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null
+              },
+              "dynamic_id": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Dynamic Id"
+              },
+              "image_count": {
+                "default": 0,
+                "title": "Image Count",
+                "type": "integer"
+              },
+              "images": {
+                "items": {
+                  "properties": {
+                    "height": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Height"
+                    },
+                    "url": {
+                      "title": "Url",
+                      "type": "string"
+                    },
+                    "width": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Width"
+                    }
+                  },
+                  "required": [
+                    "url"
+                  ],
+                  "title": "DynamicImageResponse",
+                  "type": "object"
+                },
+                "title": "Images",
+                "type": "array"
+              },
+              "origin": {
+                "anyOf": [
+                  {
+                    "properties": {
+                      "article": {
+                        "anyOf": [
+                          {
+                            "properties": {
+                              "id": {
+                                "anyOf": [
+                                  {
+                                    "type": "integer"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ],
+                                "default": null,
+                                "title": "Id"
+                              },
+                              "title": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ],
+                                "default": null,
+                                "title": "Title"
+                              }
+                            },
+                            "title": "DynamicArticleRef",
+                            "type": "object"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "default": null
+                      },
+                      "image_count": {
+                        "default": 0,
+                        "title": "Image Count",
+                        "type": "integer"
+                      },
+                      "images": {
+                        "items": {
+                          "properties": {
+                            "height": {
+                              "anyOf": [
+                                {
+                                  "type": "integer"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ],
+                              "default": null,
+                              "title": "Height"
+                            },
+                            "url": {
+                              "title": "Url",
+                              "type": "string"
+                            },
+                            "width": {
+                              "anyOf": [
+                                {
+                                  "type": "integer"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ],
+                              "default": null,
+                              "title": "Width"
+                            }
+                          },
+                          "required": [
+                            "url"
+                          ],
+                          "title": "DynamicImageResponse",
+                          "type": "object"
+                        },
+                        "title": "Images",
+                        "type": "array"
+                      },
+                      "text_content": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "default": null,
+                        "title": "Text Content"
+                      },
+                      "type": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "default": null,
+                        "title": "Type"
+                      },
+                      "user_id": {
+                        "anyOf": [
+                          {
+                            "type": "integer"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "default": null,
+                        "title": "User Id"
+                      },
+                      "user_name": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "default": null,
+                        "title": "User Name"
+                      },
+                      "video": {
+                        "anyOf": [
+                          {
+                            "properties": {
+                              "bvid": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ],
+                                "default": null,
+                                "title": "Bvid"
+                              },
+                              "title": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ],
+                                "default": null,
+                                "title": "Title"
+                              }
+                            },
+                            "title": "DynamicVideoRef",
+                            "type": "object"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "default": null
+                      }
+                    },
+                    "title": "DynamicOriginResponse",
+                    "type": "object"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null
+              },
+              "publish_time": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Publish Time"
+              },
+              "review": {
+                "anyOf": [
+                  {
+                    "properties": {
+                      "biz_id": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "default": null,
+                        "title": "Biz Id"
+                      },
+                      "biz_type": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "default": null,
+                        "title": "Biz Type"
+                      },
+                      "cover_url": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "default": null,
+                        "title": "Cover Url"
+                      },
+                      "jump_url": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "default": null,
+                        "title": "Jump Url"
+                      },
+                      "rating": {
+                        "anyOf": [
+                          {
+                            "type": "integer"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "default": null,
+                        "title": "Rating"
+                      },
+                      "score_description": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "default": null,
+                        "title": "Score Description"
+                      },
+                      "text": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "default": null,
+                        "title": "Text"
+                      },
+                      "title": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "default": null,
+                        "title": "Title"
+                      }
+                    },
+                    "title": "DynamicReviewRef",
+                    "type": "object"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null
+              },
+              "stats": {
+                "properties": {
+                  "comment": {
+                    "default": 0,
+                    "title": "Comment",
+                    "type": "integer"
+                  },
+                  "forward": {
+                    "default": 0,
+                    "title": "Forward",
+                    "type": "integer"
+                  },
+                  "like": {
+                    "default": 0,
+                    "title": "Like",
+                    "type": "integer"
+                  }
+                },
+                "title": "DynamicStatsResponse",
+                "type": "object"
+              },
+              "text_content": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Text Content"
+              },
+              "type": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Type"
+              },
+              "video": {
+                "anyOf": [
+                  {
+                    "properties": {
+                      "bvid": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "default": null,
+                        "title": "Bvid"
+                      },
+                      "title": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "default": null,
+                        "title": "Title"
+                      }
+                    },
+                    "title": "DynamicVideoRef",
+                    "type": "object"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null
+              }
+            },
+            "title": "DynamicItemResponse",
+            "type": "object"
+          },
+          "title": "Dynamics",
+          "type": "array"
+        },
+        "filter_type": {
+          "title": "Filter Type",
+          "type": "string"
+        },
+        "has_more": {
+          "default": false,
+          "title": "Has More",
+          "type": "boolean"
+        },
+        "next_cursor": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Next Cursor"
+        },
+        "total_fetched": {
+          "default": 0,
+          "title": "Total Fetched",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "filter_type"
+      ],
+      "title": "DynamicListResponse",
+      "type": "object"
+    },
+    "title": "Get User Dynamics"
+  },
+  "get_user_followings": {
+    "_meta": {
+      "fastmcp": {
+        "tags": []
+      }
+    },
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "readOnlyHint": true
+    },
+    "description": "Get user followings.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "limit": {
+          "default": 20,
+          "description": "Items per page, 1-50.",
+          "maximum": 50,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "page": {
+          "default": 1,
+          "description": "Page number starting from 1.",
+          "maximum": 1000,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "user_id_or_username": {
+          "description": "Bilibili user id (numeric) or username.",
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "user_id_or_username"
+      ],
+      "type": "object"
+    },
+    "name": "get_user_followings",
+    "outputSchema": {
+      "properties": {
+        "followings": {
+          "items": {
+            "properties": {
+              "mid": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Mid"
+              },
+              "sign": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Sign"
+              },
+              "uname": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Uname"
+              }
+            },
+            "title": "FollowingItemResponse",
+            "type": "object"
+          },
+          "title": "Followings",
+          "type": "array"
+        },
+        "total": {
+          "default": 0,
+          "title": "Total",
+          "type": "integer"
+        }
+      },
+      "title": "FollowingsResponse",
+      "type": "object"
+    },
+    "title": "Get User Followings"
+  },
+  "get_user_info": {
+    "_meta": {
+      "fastmcp": {
+        "tags": []
+      }
+    },
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "readOnlyHint": true
+    },
+    "description": "Get profile information for a Bilibili user.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "user_id_or_username": {
+          "description": "Bilibili user id (numeric) or username.",
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "user_id_or_username"
+      ],
+      "type": "object"
+    },
+    "name": "get_user_info",
+    "outputSchema": {
+      "properties": {
+        "birthday": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Birthday"
+        },
+        "face": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Face"
+        },
+        "follower": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Follower"
+        },
+        "following": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Following"
+        },
+        "is_banned": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Is Banned"
+        },
+        "is_senior_member": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Is Senior Member"
+        },
+        "level": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Level"
+        },
+        "live_room": {
+          "anyOf": [
+            {
+              "properties": {
+                "is_live": {
+                  "default": false,
+                  "title": "Is Live",
+                  "type": "boolean"
+                },
+                "title": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Title"
+                },
+                "url": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Url"
+                },
+                "watched": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Watched"
+                }
+              },
+              "title": "UserLiveRoomInfo",
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "mid": {
+          "description": "Bilibili user ID; the same identifier as uid.",
+          "title": "Mid",
+          "type": "integer"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "official": {
+          "anyOf": [
+            {
+              "properties": {
+                "role": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Role"
+                },
+                "title": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Title"
+                }
+              },
+              "title": "UserOfficialInfo",
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "profession": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Profession"
+        },
+        "school": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "School"
+        },
+        "sex": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sex"
+        },
+        "sign": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sign"
+        },
+        "total_article_views": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Total Article Views"
+        },
+        "total_likes": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Total Likes"
+        },
+        "total_video_views": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Total Video Views"
+        },
+        "vip": {
+          "anyOf": [
+            {
+              "properties": {
+                "label": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Label"
+                },
+                "status": {
+                  "default": false,
+                  "title": "Status",
+                  "type": "boolean"
+                }
+              },
+              "title": "UserVipInfo",
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "mid",
+        "name"
+      ],
+      "title": "UserInfoResponse",
+      "type": "object"
+    },
+    "title": "Get User Info"
+  },
+  "get_user_snapshot": {
+    "_meta": {
+      "fastmcp": {
+        "tags": []
+      }
+    },
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "readOnlyHint": true
+    },
+    "description": "Get a one-call user overview: profile plus recent videos, dynamics and articles.\n\nSections are fetched concurrently, so prefer this over separate\nget_user_info/get_user_videos/get_user_dynamics/get_user_articles calls\nwhen you need a broad view of a user. A failed section is reported under\n`errors` while the remaining sections are still returned. Set a\nsection's limit to 0 to skip it.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "article_limit": {
+          "default": 10,
+          "description": "Recent articles to include, 0-30. 0 skips the section.",
+          "maximum": 30,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "dynamic_limit": {
+          "default": 10,
+          "description": "Recent dynamics to include, 0-30. 0 skips the section.",
+          "maximum": 30,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "user_id_or_username": {
+          "description": "Bilibili user id (numeric) or username.",
+          "minLength": 1,
+          "type": "string"
+        },
+        "video_limit": {
+          "default": 10,
+          "description": "Recent videos to include, 0-30. 0 skips the section.",
+          "maximum": 30,
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "user_id_or_username"
+      ],
+      "type": "object"
+    },
+    "name": "get_user_snapshot",
+    "outputSchema": {
+      "properties": {
+        "articles": {
+          "anyOf": [
+            {
+              "properties": {
+                "articles": {
+                  "items": {
+                    "properties": {
+                      "id": {
+                        "anyOf": [
+                          {
+                            "type": "integer"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "default": null,
+                        "title": "Id"
+                      },
+                      "publish_time_str": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "default": null,
+                        "title": "Publish Time Str"
+                      },
+                      "stats": {
+                        "properties": {
+                          "coin": {
+                            "anyOf": [
+                              {
+                                "type": "integer"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ],
+                            "default": null,
+                            "title": "Coin"
+                          },
+                          "like": {
+                            "anyOf": [
+                              {
+                                "type": "integer"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ],
+                            "default": null,
+                            "title": "Like"
+                          },
+                          "reply": {
+                            "anyOf": [
+                              {
+                                "type": "integer"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ],
+                            "default": null,
+                            "title": "Reply"
+                          },
+                          "share": {
+                            "anyOf": [
+                              {
+                                "type": "integer"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ],
+                            "default": null,
+                            "title": "Share"
+                          },
+                          "view": {
+                            "anyOf": [
+                              {
+                                "type": "integer"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ],
+                            "default": null,
+                            "title": "View"
+                          }
+                        },
+                        "title": "ArticleStatsResponse",
+                        "type": "object"
+                      },
+                      "summary": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "default": null,
+                        "title": "Summary"
+                      },
+                      "title": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "default": null,
+                        "title": "Title"
+                      }
+                    },
+                    "title": "ArticleListItem",
+                    "type": "object"
+                  },
+                  "title": "Articles",
+                  "type": "array"
+                },
+                "total": {
+                  "default": 0,
+                  "title": "Total",
+                  "type": "integer"
+                }
+              },
+              "title": "ArticlesResponse",
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "dynamics": {
+          "anyOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "dynamics": {
+                  "items": {
+                    "properties": {
+                      "article": {
+                        "anyOf": [
+                          {
+                            "properties": {
+                              "id": {
+                                "anyOf": [
+                                  {
+                                    "type": "integer"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ],
+                                "default": null,
+                                "title": "Id"
+                              },
+                              "title": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ],
+                                "default": null,
+                                "title": "Title"
+                              }
+                            },
+                            "title": "DynamicArticleRef",
+                            "type": "object"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "default": null
+                      },
+                      "dynamic_id": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "default": null,
+                        "title": "Dynamic Id"
+                      },
+                      "image_count": {
+                        "default": 0,
+                        "title": "Image Count",
+                        "type": "integer"
+                      },
+                      "images": {
+                        "items": {
+                          "properties": {
+                            "height": {
+                              "anyOf": [
+                                {
+                                  "type": "integer"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ],
+                              "default": null,
+                              "title": "Height"
+                            },
+                            "url": {
+                              "title": "Url",
+                              "type": "string"
+                            },
+                            "width": {
+                              "anyOf": [
+                                {
+                                  "type": "integer"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ],
+                              "default": null,
+                              "title": "Width"
+                            }
+                          },
+                          "required": [
+                            "url"
+                          ],
+                          "title": "DynamicImageResponse",
+                          "type": "object"
+                        },
+                        "title": "Images",
+                        "type": "array"
+                      },
+                      "origin": {
+                        "anyOf": [
+                          {
+                            "properties": {
+                              "article": {
+                                "anyOf": [
+                                  {
+                                    "properties": {
+                                      "id": {
+                                        "anyOf": [
+                                          {
+                                            "type": "integer"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ],
+                                        "default": null,
+                                        "title": "Id"
+                                      },
+                                      "title": {
+                                        "anyOf": [
+                                          {
+                                            "type": "string"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ],
+                                        "default": null,
+                                        "title": "Title"
+                                      }
+                                    },
+                                    "title": "DynamicArticleRef",
+                                    "type": "object"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ],
+                                "default": null
+                              },
+                              "image_count": {
+                                "default": 0,
+                                "title": "Image Count",
+                                "type": "integer"
+                              },
+                              "images": {
+                                "items": {
+                                  "properties": {
+                                    "height": {
+                                      "anyOf": [
+                                        {
+                                          "type": "integer"
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ],
+                                      "default": null,
+                                      "title": "Height"
+                                    },
+                                    "url": {
+                                      "title": "Url",
+                                      "type": "string"
+                                    },
+                                    "width": {
+                                      "anyOf": [
+                                        {
+                                          "type": "integer"
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ],
+                                      "default": null,
+                                      "title": "Width"
+                                    }
+                                  },
+                                  "required": [
+                                    "url"
+                                  ],
+                                  "title": "DynamicImageResponse",
+                                  "type": "object"
+                                },
+                                "title": "Images",
+                                "type": "array"
+                              },
+                              "text_content": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ],
+                                "default": null,
+                                "title": "Text Content"
+                              },
+                              "type": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ],
+                                "default": null,
+                                "title": "Type"
+                              },
+                              "user_id": {
+                                "anyOf": [
+                                  {
+                                    "type": "integer"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ],
+                                "default": null,
+                                "title": "User Id"
+                              },
+                              "user_name": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ],
+                                "default": null,
+                                "title": "User Name"
+                              },
+                              "video": {
+                                "anyOf": [
+                                  {
+                                    "properties": {
+                                      "bvid": {
+                                        "anyOf": [
+                                          {
+                                            "type": "string"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ],
+                                        "default": null,
+                                        "title": "Bvid"
+                                      },
+                                      "title": {
+                                        "anyOf": [
+                                          {
+                                            "type": "string"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ],
+                                        "default": null,
+                                        "title": "Title"
+                                      }
+                                    },
+                                    "title": "DynamicVideoRef",
+                                    "type": "object"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ],
+                                "default": null
+                              }
+                            },
+                            "title": "DynamicOriginResponse",
+                            "type": "object"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "default": null
+                      },
+                      "publish_time": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "default": null,
+                        "title": "Publish Time"
+                      },
+                      "review": {
+                        "anyOf": [
+                          {
+                            "properties": {
+                              "biz_id": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ],
+                                "default": null,
+                                "title": "Biz Id"
+                              },
+                              "biz_type": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ],
+                                "default": null,
+                                "title": "Biz Type"
+                              },
+                              "cover_url": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ],
+                                "default": null,
+                                "title": "Cover Url"
+                              },
+                              "jump_url": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ],
+                                "default": null,
+                                "title": "Jump Url"
+                              },
+                              "rating": {
+                                "anyOf": [
+                                  {
+                                    "type": "integer"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ],
+                                "default": null,
+                                "title": "Rating"
+                              },
+                              "score_description": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ],
+                                "default": null,
+                                "title": "Score Description"
+                              },
+                              "text": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ],
+                                "default": null,
+                                "title": "Text"
+                              },
+                              "title": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ],
+                                "default": null,
+                                "title": "Title"
+                              }
+                            },
+                            "title": "DynamicReviewRef",
+                            "type": "object"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "default": null
+                      },
+                      "stats": {
+                        "properties": {
+                          "comment": {
+                            "default": 0,
+                            "title": "Comment",
+                            "type": "integer"
+                          },
+                          "forward": {
+                            "default": 0,
+                            "title": "Forward",
+                            "type": "integer"
+                          },
+                          "like": {
+                            "default": 0,
+                            "title": "Like",
+                            "type": "integer"
+                          }
+                        },
+                        "title": "DynamicStatsResponse",
+                        "type": "object"
+                      },
+                      "text_content": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "default": null,
+                        "title": "Text Content"
+                      },
+                      "type": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "default": null,
+                        "title": "Type"
+                      },
+                      "video": {
+                        "anyOf": [
+                          {
+                            "properties": {
+                              "bvid": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ],
+                                "default": null,
+                                "title": "Bvid"
+                              },
+                              "title": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ],
+                                "default": null,
+                                "title": "Title"
+                              }
+                            },
+                            "title": "DynamicVideoRef",
+                            "type": "object"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "default": null
+                      }
+                    },
+                    "title": "DynamicItemResponse",
+                    "type": "object"
+                  },
+                  "title": "Dynamics",
+                  "type": "array"
+                },
+                "filter_type": {
+                  "title": "Filter Type",
+                  "type": "string"
+                },
+                "has_more": {
+                  "default": false,
+                  "title": "Has More",
+                  "type": "boolean"
+                },
+                "next_cursor": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Next Cursor"
+                },
+                "total_fetched": {
+                  "default": 0,
+                  "title": "Total Fetched",
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "filter_type"
+              ],
+              "title": "DynamicListResponse",
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "errors": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Section names mapped to JSON-encoded errors. Null sections without errors were skipped.",
+          "title": "Errors",
+          "type": "object"
+        },
+        "uid": {
+          "title": "Uid",
+          "type": "integer"
+        },
+        "user": {
+          "anyOf": [
+            {
+              "properties": {
+                "birthday": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Birthday"
+                },
+                "face": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Face"
+                },
+                "follower": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Follower"
+                },
+                "following": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Following"
+                },
+                "is_banned": {
+                  "anyOf": [
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Is Banned"
+                },
+                "is_senior_member": {
+                  "anyOf": [
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Is Senior Member"
+                },
+                "level": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Level"
+                },
+                "live_room": {
+                  "anyOf": [
+                    {
+                      "properties": {
+                        "is_live": {
+                          "default": false,
+                          "title": "Is Live",
+                          "type": "boolean"
+                        },
+                        "title": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ],
+                          "default": null,
+                          "title": "Title"
+                        },
+                        "url": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ],
+                          "default": null,
+                          "title": "Url"
+                        },
+                        "watched": {
+                          "anyOf": [
+                            {
+                              "type": "integer"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ],
+                          "default": null,
+                          "title": "Watched"
+                        }
+                      },
+                      "title": "UserLiveRoomInfo",
+                      "type": "object"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null
+                },
+                "mid": {
+                  "description": "Bilibili user ID; the same identifier as uid.",
+                  "title": "Mid",
+                  "type": "integer"
+                },
+                "name": {
+                  "title": "Name",
+                  "type": "string"
+                },
+                "official": {
+                  "anyOf": [
+                    {
+                      "properties": {
+                        "role": {
+                          "anyOf": [
+                            {
+                              "type": "integer"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ],
+                          "default": null,
+                          "title": "Role"
+                        },
+                        "title": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ],
+                          "default": null,
+                          "title": "Title"
+                        }
+                      },
+                      "title": "UserOfficialInfo",
+                      "type": "object"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null
+                },
+                "profession": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Profession"
+                },
+                "school": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "School"
+                },
+                "sex": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Sex"
+                },
+                "sign": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Sign"
+                },
+                "total_article_views": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Total Article Views"
+                },
+                "total_likes": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Total Likes"
+                },
+                "total_video_views": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Total Video Views"
+                },
+                "vip": {
+                  "anyOf": [
+                    {
+                      "properties": {
+                        "label": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ],
+                          "default": null,
+                          "title": "Label"
+                        },
+                        "status": {
+                          "default": false,
+                          "title": "Status",
+                          "type": "boolean"
+                        }
+                      },
+                      "title": "UserVipInfo",
+                      "type": "object"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null
+                }
+              },
+              "required": [
+                "mid",
+                "name"
+              ],
+              "title": "UserInfoResponse",
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "videos": {
+          "anyOf": [
+            {
+              "properties": {
+                "total": {
+                  "default": 0,
+                  "title": "Total",
+                  "type": "integer"
+                },
+                "videos": {
+                  "items": {
+                    "properties": {
+                      "aid": {
+                        "anyOf": [
+                          {
+                            "type": "integer"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "default": null,
+                        "title": "Aid"
+                      },
+                      "author": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "default": null,
+                        "title": "Author"
+                      },
+                      "bvid": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "default": null,
+                        "title": "Bvid"
+                      },
+                      "created_time": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "default": null,
+                        "title": "Created Time"
+                      },
+                      "description": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "default": null,
+                        "title": "Description"
+                      },
+                      "length": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "default": null,
+                        "title": "Length"
+                      },
+                      "play": {
+                        "anyOf": [
+                          {
+                            "type": "integer"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "default": null,
+                        "title": "Play"
+                      },
+                      "review": {
+                        "anyOf": [
+                          {
+                            "type": "integer"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "default": null,
+                        "title": "Review"
+                      },
+                      "title": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "default": null,
+                        "title": "Title"
+                      }
+                    },
+                    "title": "VideoListItem",
+                    "type": "object"
+                  },
+                  "title": "Videos",
+                  "type": "array"
+                }
+              },
+              "title": "VideoListResponse",
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "uid"
+      ],
+      "title": "UserSnapshotResponse",
+      "type": "object"
+    },
+    "title": "Get User Snapshot"
+  },
+  "get_user_videos": {
+    "_meta": {
+      "fastmcp": {
+        "tags": []
+      }
+    },
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "readOnlyHint": true
+    },
+    "description": "Get lightweight video list for a user.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "limit": {
+          "default": 10,
+          "description": "Items per page, 1-30.",
+          "maximum": 30,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "page": {
+          "default": 1,
+          "description": "Page number starting from 1.",
+          "maximum": 1000,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "user_id_or_username": {
+          "description": "Bilibili user id (numeric) or username.",
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "user_id_or_username"
+      ],
+      "type": "object"
+    },
+    "name": "get_user_videos",
+    "outputSchema": {
+      "properties": {
+        "total": {
+          "default": 0,
+          "title": "Total",
+          "type": "integer"
+        },
+        "videos": {
+          "items": {
+            "properties": {
+              "aid": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Aid"
+              },
+              "author": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Author"
+              },
+              "bvid": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Bvid"
+              },
+              "created_time": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Created Time"
+              },
+              "description": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Description"
+              },
+              "length": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Length"
+              },
+              "play": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Play"
+              },
+              "review": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Review"
+              },
+              "title": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Title"
+              }
+            },
+            "title": "VideoListItem",
+            "type": "object"
+          },
+          "title": "Videos",
+          "type": "array"
+        }
+      },
+      "title": "VideoListResponse",
+      "type": "object"
+    },
+    "title": "Get User Videos"
+  },
+  "get_video_detail": {
+    "_meta": {
+      "fastmcp": {
+        "tags": []
+      }
+    },
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "readOnlyHint": true
+    },
+    "description": "Get video detail including owner.mid (uploader UID) and total duration in seconds.\n\nSubtitle text is returned only in subtitles.full_text; tracks contain\nmetadata and their text field is always empty. selected_language applies\nonly to smart mode; full mode returns null and identifies languages in\ntracks[].lan. Check errors and truncated for incomplete text. Subtitles\nhave no timecodes. Empty video.tags can mean the source omitted tags.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "bvid": {
+          "description": "Video BVID (e.g. BV1xx411c7mD), AV number (e.g. av170001), full Bilibili video URL, or b23.tv short link.",
+          "minLength": 3,
+          "type": "string"
+        },
+        "fetch_subtitles": {
+          "default": false,
+          "description": "Whether to fetch and aggregate subtitle tracks.",
+          "type": "boolean"
+        },
+        "subtitle_lang": {
+          "default": "auto",
+          "description": "Requested subtitle language code in smart mode (e.g. zh-CN, en-US). Use auto for built-in priority fallback.",
+          "type": "string"
+        },
+        "subtitle_max_chars": {
+          "default": 12000,
+          "description": "Maximum subtitle text characters returned in this response.",
+          "maximum": 200000,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "subtitle_mode": {
+          "default": "smart",
+          "description": "Subtitle fetch mode when fetch_subtitles=true: minimal (no subtitle API), smart (single best track text), full (all track texts).",
+          "enum": [
+            "minimal",
+            "smart",
+            "full"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "bvid"
+      ],
+      "type": "object"
+    },
+    "name": "get_video_detail",
+    "outputSchema": {
+      "properties": {
+        "subtitles": {
+          "properties": {
+            "available_languages": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Available Languages",
+              "type": "array"
+            },
+            "dropped_tracks": {
+              "default": 0,
+              "title": "Dropped Tracks",
+              "type": "integer"
+            },
+            "enabled": {
+              "default": true,
+              "title": "Enabled",
+              "type": "boolean"
+            },
+            "errors": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Errors",
+              "type": "array"
+            },
+            "fallback_reason": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Fallback Reason"
+            },
+            "full_text": {
+              "default": "",
+              "description": "Subtitle text, returned once within subtitle_max_chars; multiple full-mode tracks have language/part labels. No timecodes.",
+              "title": "Full Text",
+              "type": "string"
+            },
+            "mode": {
+              "default": "full",
+              "title": "Mode",
+              "type": "string"
+            },
+            "requested_language": {
+              "default": "auto",
+              "title": "Requested Language",
+              "type": "string"
+            },
+            "returned_chars": {
+              "default": 0,
+              "title": "Returned Chars",
+              "type": "integer"
+            },
+            "selected_language": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Selected track language in smart mode. Null in full/minimal/disabled modes; use tracks[].lan for full mode.",
+              "title": "Selected Language"
+            },
+            "track_count": {
+              "default": 0,
+              "title": "Track Count",
+              "type": "integer"
+            },
+            "tracks": {
+              "description": "Track metadata only. A track can be listed even if its text failed to download; inspect errors.",
+              "items": {
+                "properties": {
+                  "cid": {
+                    "anyOf": [
+                      {
+                        "type": "integer"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "title": "Cid"
+                  },
+                  "is_ai_generated": {
+                    "default": false,
+                    "title": "Is Ai Generated",
+                    "type": "boolean"
+                  },
+                  "lan": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "title": "Lan"
+                  },
+                  "lan_doc": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "title": "Lan Doc"
+                  },
+                  "part": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "title": "Part"
+                  },
+                  "text": {
+                    "default": "",
+                    "description": "Compatibility field, always empty. Read subtitles.full_text for text.",
+                    "title": "Text",
+                    "type": "string"
+                  }
+                },
+                "title": "SubtitleTrack",
+                "type": "object"
+              },
+              "title": "Tracks",
+              "type": "array"
+            },
+            "truncated": {
+              "default": false,
+              "title": "Truncated",
+              "type": "boolean"
+            }
+          },
+          "title": "SubtitleResponse",
+          "type": "object"
+        },
+        "video": {
+          "properties": {
+            "aid": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Aid"
+            },
+            "bvid": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Bvid"
+            },
+            "ctime": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Upstream creation time as a Unix timestamp in seconds.",
+              "title": "Ctime"
+            },
+            "desc": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Desc"
+            },
+            "duration": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Total video duration in seconds, across all parts.",
+              "title": "Duration"
+            },
+            "owner": {
+              "anyOf": [
+                {
+                  "properties": {
+                    "face": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Face"
+                    },
+                    "mid": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "description": "Uploader's Bilibili user ID (uid).",
+                      "title": "Mid"
+                    },
+                    "name": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Name"
+                    }
+                  },
+                  "title": "VideoOwnerItem",
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null
+            },
+            "pages": {
+              "items": {
+                "properties": {
+                  "cid": {
+                    "anyOf": [
+                      {
+                        "type": "integer"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "title": "Cid"
+                  },
+                  "duration": {
+                    "anyOf": [
+                      {
+                        "type": "integer"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "description": "Part duration in seconds.",
+                    "title": "Duration"
+                  },
+                  "page": {
+                    "anyOf": [
+                      {
+                        "type": "integer"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "title": "Page"
+                  },
+                  "part": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "title": "Part"
+                  }
+                },
+                "title": "VideoPageItem",
+                "type": "object"
+              },
+              "title": "Pages",
+              "type": "array"
+            },
+            "pic": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Cover image URL.",
+              "title": "Pic"
+            },
+            "publish_time": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Publish Time"
+            },
+            "stat": {
+              "properties": {
+                "coin": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Coin"
+                },
+                "danmaku": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Danmaku"
+                },
+                "favorite": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Favorite"
+                },
+                "like": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Like"
+                },
+                "reply": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Reply"
+                },
+                "share": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Share"
+                },
+                "view": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "View"
+                }
+              },
+              "title": "VideoStatResponse",
+              "type": "object"
+            },
+            "tags": {
+              "description": "Tags supplied by the detail source. Empty can mean unavailable, not no tags.",
+              "items": {
+                "type": "string"
+              },
+              "title": "Tags",
+              "type": "array"
+            },
+            "title": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Title"
+            },
+            "tname": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Upstream category name.",
+              "title": "Tname"
+            },
+            "videos": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Number of video parts.",
+              "title": "Videos"
+            }
+          },
+          "title": "VideoDetailItem",
+          "type": "object"
+        }
+      },
+      "title": "VideoDetailResponse",
+      "type": "object"
+    },
+    "title": "Get Video Detail"
+  },
+  "search_user_videos": {
+    "_meta": {
+      "fastmcp": {
+        "tags": []
+      }
+    },
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "readOnlyHint": true
+    },
+    "description": "Search a user's videos by keyword.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "keyword": {
+          "description": "Keyword used to search in target user's video list.",
+          "minLength": 1,
+          "type": "string"
+        },
+        "limit": {
+          "default": 10,
+          "description": "Items per page, 1-30.",
+          "maximum": 30,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "page": {
+          "default": 1,
+          "description": "Page number starting from 1.",
+          "maximum": 1000,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "user_id_or_username": {
+          "description": "Bilibili user id (numeric) or username.",
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "user_id_or_username",
+        "keyword"
+      ],
+      "type": "object"
+    },
+    "name": "search_user_videos",
+    "outputSchema": {
+      "properties": {
+        "total": {
+          "default": 0,
+          "title": "Total",
+          "type": "integer"
+        },
+        "videos": {
+          "items": {
+            "properties": {
+              "aid": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Aid"
+              },
+              "author": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Author"
+              },
+              "bvid": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Bvid"
+              },
+              "created_time": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Created Time"
+              },
+              "description": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Description"
+              },
+              "length": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Length"
+              },
+              "play": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Play"
+              },
+              "review": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Review"
+              },
+              "title": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Title"
+              }
+            },
+            "title": "VideoListItem",
+            "type": "object"
+          },
+          "title": "Videos",
+          "type": "array"
+        }
+      },
+      "title": "VideoListResponse",
+      "type": "object"
+    },
+    "title": "Search User Videos"
+  },
+  "search_users": {
+    "_meta": {
+      "fastmcp": {
+        "tags": []
+      }
+    },
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "readOnlyHint": true
+    },
+    "description": "Search Bilibili users and return lightweight candidates with numeric UIDs.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "keyword": {
+          "description": "Bilibili username keyword.",
+          "minLength": 1,
+          "type": "string"
+        },
+        "limit": {
+          "default": 10,
+          "description": "Maximum candidates to return, 1-20.",
+          "maximum": 20,
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "keyword"
+      ],
+      "type": "object"
+    },
+    "name": "search_users",
+    "outputSchema": {
+      "properties": {
+        "count": {
+          "default": 0,
+          "title": "Count",
+          "type": "integer"
+        },
+        "exact_match_uid": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Exact Match Uid"
+        },
+        "users": {
+          "items": {
+            "properties": {
+              "avatar": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Avatar"
+              },
+              "follower": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Follower"
+              },
+              "is_exact_match": {
+                "default": false,
+                "title": "Is Exact Match",
+                "type": "boolean"
+              },
+              "is_live": {
+                "anyOf": [
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Is Live"
+              },
+              "level": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Level"
+              },
+              "name": {
+                "title": "Name",
+                "type": "string"
+              },
+              "sign": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Sign"
+              },
+              "uid": {
+                "title": "Uid",
+                "type": "integer"
+              },
+              "videos": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Videos"
+              }
+            },
+            "required": [
+              "uid",
+              "name"
+            ],
+            "title": "UserSearchItem",
+            "type": "object"
+          },
+          "title": "Users",
+          "type": "array"
+        }
+      },
+      "title": "UserSearchResponse",
+      "type": "object"
+    },
+    "title": "Search Users"
+  }
+}

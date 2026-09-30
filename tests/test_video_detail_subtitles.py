@@ -3,8 +3,9 @@ from unittest.mock import AsyncMock
 import pytest
 from curl_cffi.const import CurlECode
 from curl_cffi.requests.exceptions import ConnectionError as CurlConnectionError
+from jsonschema import validate
 
-from bili_stalker_mcp.models import SubtitleTrack
+from bili_stalker_mcp.models import SubtitleTrack, VideoDetailResponse
 from bili_stalker_mcp.observability import begin_request, snapshot_metrics
 from bili_stalker_mcp.retry import RetryableBiliApiError
 from bili_stalker_mcp.services.subtitle_service import (
@@ -82,6 +83,16 @@ async def test_fetch_video_detail_falls_back_to_subtitle_api_for_multi_page_smar
                 "title": "demo video",
                 "desc": "demo desc",
                 "pubdate": 1700000000,
+                "owner": {
+                    "mid": 42,
+                    "name": "Uploader",
+                    "face": "https://example.com/avatar.jpg",
+                },
+                "duration": 100,
+                "pic": "https://example.com/cover.jpg",
+                "tname": "Technology",
+                "videos": 2,
+                "ctime": 1699999000,
                 "stat": {
                     "view": 100,
                     "danmaku": 2,
@@ -148,6 +159,16 @@ async def test_fetch_video_detail_falls_back_to_subtitle_api_for_multi_page_smar
 
     assert set(result.keys()) == {"video", "subtitles"}
     assert result["video"]["tags"] == ["tag-a", "tag-b"]
+    assert result["video"]["owner"] == {
+        "mid": 42,
+        "name": "Uploader",
+        "face": "https://example.com/avatar.jpg",
+    }
+    assert result["video"]["duration"] == 100  # Upstream total, not P1 or sum of pages.
+    assert result["video"]["pic"] == "https://example.com/cover.jpg"
+    assert result["video"]["tname"] == "Technology"
+    assert result["video"]["videos"] == 2
+    assert result["video"]["ctime"] == 1699999000
     assert result["video"]["pages"] == [
         {"cid": 101, "page": 1, "part": "P1", "duration": 30},
         {"cid": 202, "page": 2, "part": "P2", "duration": 45},
@@ -172,6 +193,18 @@ async def test_fetch_video_detail_falls_back_to_subtitle_api_for_multi_page_smar
     assert any(
         "cid 202: subtitle metadata failed" in err for err in subtitles["errors"]
     )
+    validate(result, VideoDetailResponse.model_json_schema())
+
+    limited = await fetch_video_detail(
+        bvid="BV1xx411c7mD",
+        fetch_subtitles=True,
+        subtitle_max_chars=5,
+        cred=None,
+    )
+    assert limited["subtitles"]["truncated"] is True
+    assert limited["subtitles"]["returned_chars"] <= 5
+    assert all(track["text"] == "" for track in limited["subtitles"]["tracks"])
+    validate(limited, VideoDetailResponse.model_json_schema())
 
 
 @pytest.mark.asyncio
@@ -487,6 +520,7 @@ async def test_fetch_video_detail_full_mode_keeps_all_tracks(monkeypatch):
         "https://example.com/zh.json",
     ]
     assert subtitles["mode"] == "full"
+    assert subtitles["selected_language"] is None
     assert subtitles["track_count"] == 2
     assert len(subtitles["tracks"]) == 2
     assert all(track["text"] == "" for track in subtitles["tracks"])
@@ -494,6 +528,7 @@ async def test_fetch_video_detail_full_mode_keeps_all_tracks(monkeypatch):
         "[Chinese · P1]\nzh body\n[English · P1]\nen body"
     )
     assert subtitles["dropped_tracks"] == 0
+    validate(result, VideoDetailResponse.model_json_schema())
 
 
 def test_append_track_with_budget_counts_label_overhead():
@@ -563,6 +598,13 @@ async def test_fetch_video_detail_defaults_to_disabled_subtitles(monkeypatch):
         params={"bvid": "BV1disabled11"},
         cred=None,
     )
+    assert result["video"]["owner"] is None
+    assert result["video"]["duration"] is None
+    assert result["video"]["pic"] is None
+    assert result["video"]["tname"] is None
+    assert result["video"]["videos"] is None
+    assert result["video"]["ctime"] is None
+    validate(result, VideoDetailResponse.model_json_schema())
     assert result["subtitles"] == {
         "enabled": False,
         "mode": "disabled",

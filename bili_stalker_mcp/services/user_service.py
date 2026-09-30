@@ -23,6 +23,8 @@ from ..models import (
     VideoDetailResponse,
     VideoListItem,
     VideoListResponse,
+    VideoOwnerItem,
+    VideoPageItem,
     VideoStatResponse,
 )
 from ..observability import record_cache_hit
@@ -476,12 +478,28 @@ async def _fetch_video_detail_cached(
     if not isinstance(stat, dict):
         stat = {}
 
+    owner = video_data.get("owner")
+
     video_item = VideoDetailItem(
         bvid=video_data.get("bvid") or bvid,
         aid=coerce_int(video_data.get("aid")),
         title=video_data.get("title"),
         desc=video_data.get("desc"),
         publish_time=format_timestamp(coerce_int(video_data.get("pubdate"))),
+        owner=(
+            VideoOwnerItem(
+                mid=coerce_int(owner.get("mid")),
+                name=owner.get("name"),
+                face=owner.get("face"),
+            )
+            if isinstance(owner, dict)
+            else None
+        ),
+        duration=coerce_int(video_data.get("duration")),
+        pic=video_data.get("pic"),
+        tname=video_data.get("tname"),
+        videos=coerce_int(video_data.get("videos")),
+        ctime=coerce_int(video_data.get("ctime")),
         stat=VideoStatResponse(
             view=coerce_int(stat.get("view")),
             danmaku=coerce_int(stat.get("danmaku")),
@@ -492,7 +510,7 @@ async def _fetch_video_detail_cached(
             like=coerce_int(stat.get("like")),
         ),
         tags=_extract_tags(video_data),
-        pages=normalized_pages,
+        pages=[VideoPageItem(**page) for page in normalized_pages],
     )
 
     if fetch_subtitles:

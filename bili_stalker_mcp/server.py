@@ -42,6 +42,19 @@ from .core import (
 from .core import search_users as search_users_service
 from .credentials import cookie_refresh_enabled
 from .errors import RiskControlError, public_error_json
+from .models import (
+    ArticleContentResponse,
+    ArticlesResponse,
+    CommentRepliesResponse,
+    CommentsResponse,
+    DynamicListResponse,
+    FollowingsResponse,
+    UserInfoResponse,
+    UserSearchResponse,
+    UserSnapshotResponse,
+    VideoDetailResponse,
+    VideoListResponse,
+)
 from .observability import begin_request, snapshot_metrics
 from .utils import extract_bvid
 
@@ -223,11 +236,12 @@ def create_server() -> FastMCP:
         )
 
     @mcp.tool(
+        output_schema=UserSearchResponse.model_json_schema(),
         annotations={
             "readOnlyHint": True,
             "destructiveHint": False,
             "idempotentHint": True,
-        }
+        },
     )
     async def search_users(
         keyword: Annotated[
@@ -260,11 +274,12 @@ def create_server() -> FastMCP:
         return await _run_tool("search_users", _runner)
 
     @mcp.tool(
+        output_schema=UserSnapshotResponse.model_json_schema(),
         annotations={
             "readOnlyHint": True,
             "destructiveHint": False,
             "idempotentHint": True,
-        }
+        },
     )
     async def get_user_snapshot(
         ctx: Context,
@@ -366,11 +381,12 @@ def create_server() -> FastMCP:
         return await _run_tool("get_user_snapshot", _runner)
 
     @mcp.tool(
+        output_schema=UserInfoResponse.model_json_schema(),
         annotations={
             "readOnlyHint": True,
             "destructiveHint": False,
             "idempotentHint": True,
-        }
+        },
     )
     async def get_user_info(
         ctx: Context,
@@ -399,11 +415,12 @@ def create_server() -> FastMCP:
             raise ToolError(f"Failed to fetch user info: {exc}")
 
     @mcp.tool(
+        output_schema=VideoListResponse.model_json_schema(),
         annotations={
             "readOnlyHint": True,
             "destructiveHint": False,
             "idempotentHint": True,
-        }
+        },
     )
     async def get_user_videos(
         ctx: Context,
@@ -448,11 +465,12 @@ def create_server() -> FastMCP:
             raise ToolError(f"Failed to fetch user videos: {exc}")
 
     @mcp.tool(
+        output_schema=VideoListResponse.model_json_schema(),
         annotations={
             "readOnlyHint": True,
             "destructiveHint": False,
             "idempotentHint": True,
-        }
+        },
     )
     async def search_user_videos(
         ctx: Context,
@@ -510,11 +528,12 @@ def create_server() -> FastMCP:
             raise ToolError(f"Failed to search user videos: {exc}")
 
     @mcp.tool(
+        output_schema=VideoDetailResponse.model_json_schema(),
         annotations={
             "readOnlyHint": True,
             "destructiveHint": False,
             "idempotentHint": True,
-        }
+        },
     )
     async def get_video_detail(
         ctx: Context,
@@ -543,7 +562,7 @@ def create_server() -> FastMCP:
             str,
             Field(
                 description=(
-                    "Requested subtitle language code (e.g. zh-CN, en-US). "
+                    "Requested subtitle language code in smart mode (e.g. zh-CN, en-US). "
                     "Use auto for built-in priority fallback."
                 )
             ),
@@ -557,7 +576,14 @@ def create_server() -> FastMCP:
             ),
         ] = 12000,
     ) -> Dict[str, Any]:
-        """Get full video detail and optional subtitles."""
+        """Get video detail including owner.mid (uploader UID) and total duration in seconds.
+
+        Subtitle text is returned only in subtitles.full_text; tracks contain
+        metadata and their text field is always empty. selected_language applies
+        only to smart mode; full mode returns null and identifies languages in
+        tracks[].lan. Check errors and truncated for incomplete text. Subtitles
+        have no timecodes. Empty video.tags can mean the source omitted tags.
+        """
 
         async def _runner() -> Dict[str, Any]:
             cred = await _get_credential_from_context(ctx)
@@ -580,11 +606,12 @@ def create_server() -> FastMCP:
             raise ToolError(f"Failed to fetch video detail: {exc}")
 
     @mcp.tool(
+        output_schema=DynamicListResponse.model_json_schema(),
         annotations={
             "readOnlyHint": True,
             "destructiveHint": False,
             "idempotentHint": True,
-        }
+        },
     )
     async def get_user_dynamics(
         ctx: Context,
@@ -645,11 +672,12 @@ def create_server() -> FastMCP:
             raise ToolError(f"Failed to fetch user dynamics: {exc}")
 
     @mcp.tool(
+        output_schema=ArticlesResponse.model_json_schema(),
         annotations={
             "readOnlyHint": True,
             "destructiveHint": False,
             "idempotentHint": True,
-        }
+        },
     )
     async def get_user_articles(
         ctx: Context,
@@ -694,11 +722,12 @@ def create_server() -> FastMCP:
             raise ToolError(f"Failed to fetch user articles: {exc}")
 
     @mcp.tool(
+        output_schema=ArticleContentResponse.model_json_schema(),
         annotations={
             "readOnlyHint": True,
             "destructiveHint": False,
             "idempotentHint": True,
-        }
+        },
     )
     async def get_article_content(
         ctx: Context,
@@ -735,11 +764,12 @@ def create_server() -> FastMCP:
             raise ToolError(f"Failed to fetch article content: {exc}")
 
     @mcp.tool(
+        output_schema=FollowingsResponse.model_json_schema(),
         annotations={
             "readOnlyHint": True,
             "destructiveHint": False,
             "idempotentHint": True,
-        }
+        },
     )
     async def get_user_followings(
         ctx: Context,
@@ -787,11 +817,12 @@ def create_server() -> FastMCP:
     CommentSortLiteral = Literal["hot", "time"]
 
     @mcp.tool(
+        output_schema=CommentsResponse.model_json_schema(),
         annotations={
             "readOnlyHint": True,
             "destructiveHint": False,
             "idempotentHint": True,
-        }
+        },
     )
     async def get_content_comments(
         ctx: Context,
@@ -870,11 +901,12 @@ def create_server() -> FastMCP:
             raise ToolError(f"Failed to fetch content comments: {exc}")
 
     @mcp.tool(
+        output_schema=CommentRepliesResponse.model_json_schema(),
         annotations={
             "readOnlyHint": True,
             "destructiveHint": False,
             "idempotentHint": True,
-        }
+        },
     )
     async def get_content_comment_replies(
         ctx: Context,

@@ -1,8 +1,10 @@
-import hashlib
 import json
+from pathlib import Path
 
 import pytest
+from jsonschema import validate
 
+from bili_stalker_mcp.models import CommentsResponse, UserSnapshotResponse
 from bili_stalker_mcp.server import create_server
 
 
@@ -14,7 +16,9 @@ async def _tool_schemas():
 async def test_complete_public_tool_contract_is_stable():
     tools = await create_server().list_tools()
     contracts = {
-        tool.name: tool.to_mcp_tool().model_dump(mode="json", exclude_none=True)
+        tool.name: tool.to_mcp_tool().model_dump(
+            mode="json", by_alias=True, exclude_none=True
+        )
         for tool in tools
     }
 
@@ -32,14 +36,33 @@ async def test_complete_public_tool_contract_is_stable():
         "get_content_comments",
         "get_content_comment_replies",
     }
-    canonical_contract = json.dumps(
-        contracts,
-        ensure_ascii=False,
-        sort_keys=True,
-        separators=(",", ":"),
-    ).encode("utf-8")
-    assert hashlib.sha256(canonical_contract).hexdigest() == (
-        "5aca5652a7ec5843ce26aa808a938b2e46ed48dffc46b18ab47adbbd04082d1b"
+    snapshot = Path(__file__).parent / "snapshots" / "tool_contract.json"
+    assert contracts == json.loads(snapshot.read_text(encoding="utf-8"))
+    assert all(tool["outputSchema"]["type"] == "object" for tool in contracts.values())
+    video = contracts["get_video_detail"]["outputSchema"]
+    assert {"owner", "duration", "pic", "tname", "videos", "ctime"} <= set(
+        video["properties"]["video"]["properties"]
+    )
+    assert {"cid", "page", "part", "duration"} <= set(
+        video["properties"]["video"]["properties"]["pages"]["items"]["properties"]
+    )
+
+
+def test_partial_snapshot_and_recursive_comments_match_output_schemas():
+    validate(
+        {
+            "uid": 123,
+            "user": {"mid": 123, "name": "用户"},
+            "videos": None,
+            "dynamics": None,
+            "articles": None,
+            "errors": {"videos": '{"reason":"upstream_error"}'},
+        },
+        UserSnapshotResponse.model_json_schema(),
+    )
+    validate(
+        {"comments": [{"rpid": 1, "replies": [{"rpid": 2, "replies": [{"rpid": 3}]}]}]},
+        CommentsResponse.model_json_schema(),
     )
 
 

@@ -29,11 +29,11 @@ classifiers = [
 dependencies = [
     "bilibili-api-python==17.4.2",
     "filelock==3.29.7",
-    "fastmcp>=3.0.0",
-    "mcp>=1.26.0",
+    "fastmcp>=4.0.10,<5",
+    "mcp>=2.2.0,<3",
     "httpx>=0.25.0",
     "async-lru>=2.0.4",
-    "pydantic>=2.7.0",
+    "pydantic>=2.12,<3",
     "curl_cffi>=0.7.0",
 ]
 

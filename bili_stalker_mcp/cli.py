@@ -196,7 +196,9 @@ async def _execute(args: argparse.Namespace, arguments: dict[str, Any]) -> objec
                 f"Unknown tool: {args.tool!r}. Use 'tools' to list names."
             )
         if args.command == "tools":
-            return tool.to_mcp_tool().model_dump(mode="json", exclude_none=True)
+            return tool.to_mcp_tool().model_dump(
+                mode="json", by_alias=True, exclude_none=True
+            )
 
         result = await mcp.call_tool(args.tool, arguments)
         if result.structured_content is None:
