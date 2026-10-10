@@ -92,6 +92,8 @@ uv run bili-stalker-mcp tools get_user_snapshot --pretty
 uv run bili-stalker-mcp call search_users --args '{"keyword":"username","limit":5}'
 uv run bili-stalker-mcp call get_user_snapshot --args '{"user_id_or_username":"12345","video_limit":5,"dynamic_limit":5,"article_limit":0}' --pretty
 uv run bili-stalker-mcp call get_video_detail --args '{"bvid":"BV1xx411c7mD","fetch_subtitles":true,"subtitle_max_chars":12000}'
+uv run bili-stalker-mcp call get_video_detail --args '{"bvid":"https://www.bilibili.com/video/BV16cj96FEmw?p=2","fetch_subtitles":true}'
+uv run bili-stalker-mcp call get_video_detail --args '{"bvid":"BV1xx411c7mD","fetch_subtitles":true,"subtitle_scope":"all","subtitle_mode":"full"}'
 ```
 
 `tools` lists names and descriptions; `tools TOOL` returns the full MCP schema,
@@ -218,7 +220,7 @@ uv run mypy bili_stalker_mcp
 | `get_user_info` | Rich profile: level, official title, VIP, live room, ban status, following/follower, total video views/article views/likes (needs `bili_jct`) | `user_id_or_username` |
 | `get_user_videos` | Lightweight video list | `user_id_or_username`, `page`, `limit` |
 | `search_user_videos` | Keyword search in one user's video list | `user_id_or_username`, `keyword`, `page`, `limit` |
-| `get_video_detail` | Full video detail + optional subtitles | `bvid`, `fetch_subtitles` (default: `false`), `subtitle_mode` (`smart`/`full`/`minimal`), `subtitle_lang` (default: `auto`), `subtitle_max_chars` |
+| `get_video_detail` | Full video detail + optional subtitles | `bvid`, `fetch_subtitles` (default: `false`), `subtitle_scope` (`single`/`all`, default: `single`), `subtitle_page`, `subtitle_cid`, `subtitle_mode` (`smart`/`full`/`minimal`), `subtitle_lang` (default: `auto`), `subtitle_max_chars` |
 | `get_user_dynamics` | Structured dynamics with image metadata and cursor pagination | `user_id_or_username`, `cursor`, `limit`, `dynamic_type` |
 | `get_user_articles` | Lightweight article list | `user_id_or_username`, `page`, `limit` |
 | `get_article_content` | Full article markdown content | `article_id` |
@@ -257,8 +259,20 @@ an empty `images` list.
 
 ### Subtitle Modes (`get_video_detail`)
 
-- `smart` (default when `fetch_subtitles=true`): fetch metadata for all pages, download only one best-matched subtitle track text.
-- `full`: download text for all subtitle tracks (higher cost).
+Page scope is independent of language/track mode. The default `subtitle_scope="single"`
+queries only P1 in both `smart` and `full`. A full URL with `p=2` selects P2;
+alternatively pass `subtitle_page=2` or a `subtitle_cid` belonging to this video.
+Page/CID must be positive integers, and the two explicit selectors are mutually
+exclusive. Conflicting URL/explicit selections, missing pages, and foreign CIDs
+return `invalid_subtitle_selection` without falling back to another page.
+
+For all pages, explicitly set `subtitle_scope="all"` with a BVID or URL without `p`.
+It cannot be combined with page/CID selectors or URL `p`. All scope still scans
+every page's subtitle metadata; single scope queries only the selected page.
+**Default behavior change: callers relying on the previous all-page scan must add `subtitle_scope="all"`.**
+
+- `smart` (default when `fetch_subtitles=true`): download one best-matched track within the selected scope.
+- `full`: download every language track within the selected scope (higher cost).
 - `minimal`: skip subtitle metadata and subtitle text fetching.
 
 In `smart` mode, `subtitle_lang` can request a language (for example `en-US`);
@@ -279,6 +293,15 @@ user. An empty `tags` array can also mean the detail source omitted tags.
 and lists languages in `tracks[].lan`. `truncated=true` means the character
 budget cut or dropped subtitle text. A track can remain in `tracks` when its
 download fails; check `errors` and `full_text`. Subtitle text has no timecodes.
+
+`subtitles.scope` contains `mode`, `target_page`, `total_pages`, `returned_pages`,
+and `summary`, distinguishing the selected scope from pages actually represented
+in the returned text and stating how many pages have no returned text.
+`returned_pages` means at least one text character was returned for that page;
+it does not guarantee completeness, so check `errors` and `truncated`.
+Video `pages[]` always keeps the complete list. With subtitles disabled, scope is
+`null` and selectors do not apply. `minimal` validates the selected range but
+returns no text pages and makes no subtitle API calls.
 
 ## Bundled Skill
 

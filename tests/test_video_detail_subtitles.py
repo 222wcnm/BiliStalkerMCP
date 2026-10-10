@@ -150,6 +150,7 @@ async def test_fetch_video_detail_falls_back_to_subtitle_api_for_multi_page_smar
     result = await fetch_video_detail(
         bvid="BV1xx411c7mD",
         fetch_subtitles=True,
+        subtitle_scope="all",
         cred=None,
     )
 
@@ -198,6 +199,7 @@ async def test_fetch_video_detail_falls_back_to_subtitle_api_for_multi_page_smar
     limited = await fetch_video_detail(
         bvid="BV1xx411c7mD",
         fetch_subtitles=True,
+        subtitle_scope="all",
         subtitle_max_chars=5,
         cred=None,
     )
@@ -608,6 +610,7 @@ async def test_fetch_video_detail_defaults_to_disabled_subtitles(monkeypatch):
     assert result["subtitles"] == {
         "enabled": False,
         "mode": "disabled",
+        "scope": None,
         "requested_language": "auto",
         "available_languages": [],
         "selected_language": None,

@@ -56,12 +56,13 @@ from .models import (
     VideoListResponse,
 )
 from .observability import begin_request, snapshot_metrics
-from .utils import extract_bvid
+from .utils import extract_bvid, extract_video_reference
 
 DynamicTypeLiteral = Literal[
     "ALL", "ALL_RAW", "VIDEO", "ARTICLE", "DRAW", "TEXT", "REVIEW"
 ]
 SubtitleModeLiteral = Literal["minimal", "smart", "full"]
+SubtitleScopeLiteral = Literal["single", "all"]
 CommentContentTypeLiteral = Literal["video", "article", "dynamic"]
 
 MAX_PAGE = 1000
@@ -554,7 +555,7 @@ def create_server() -> FastMCP:
                 description=(
                     "Subtitle fetch mode when fetch_subtitles=true: "
                     "minimal (no subtitle API), smart (single best track text), "
-                    "full (all track texts)."
+                    "full (all track texts within the selected page scope)."
                 )
             ),
         ] = "smart",
@@ -575,6 +576,36 @@ def create_server() -> FastMCP:
                 description="Maximum subtitle text characters returned in this response.",
             ),
         ] = 12000,
+        subtitle_scope: Annotated[
+            SubtitleScopeLiteral,
+            Field(
+                description=(
+                    "Subtitle page range, independent of language/track mode: "
+                    "single (default; URL p, explicit page/CID, or P1), "
+                    "all (scan every page; cannot combine with page/CID or URL p)."
+                )
+            ),
+        ] = "single",
+        subtitle_page: Annotated[
+            int | None,
+            Field(
+                ge=1,
+                description=(
+                    "Subtitle part number starting at 1. Mutually exclusive with "
+                    "subtitle_cid; must agree with URL p if present."
+                ),
+            ),
+        ] = None,
+        subtitle_cid: Annotated[
+            int | None,
+            Field(
+                ge=1,
+                description=(
+                    "Subtitle CID belonging to this video. Mutually exclusive "
+                    "with subtitle_page; must agree with URL p if present."
+                ),
+            ),
+        ] = None,
     ) -> Dict[str, Any]:
         """Get video detail including owner.mid (uploader UID) and total duration in seconds.
 
@@ -583,17 +614,32 @@ def create_server() -> FastMCP:
         only to smart mode; full mode returns null and identifies languages in
         tracks[].lan. Check errors and truncated for incomplete text. Subtitles
         have no timecodes. Empty video.tags can mean the source omitted tags.
+        Both smart and full default to P1 unless a page/CID or URL p is supplied.
+        Set subtitle_scope=all with a BVID or URL without p for all pages.
+        Read subtitles.scope for the selected range and actual returned pages;
+        returned_pages can contain partial text, so still check errors/truncated.
+        Page selection only applies when fetch_subtitles=true.
         """
 
         async def _runner() -> Dict[str, Any]:
             cred = await _get_credential_from_context(ctx)
-            resolved_bvid = await extract_bvid(bvid)
+            subtitle_url_page = None
+            if fetch_subtitles:
+                reference = await extract_video_reference(bvid)
+                resolved_bvid = reference.bvid
+                subtitle_url_page = reference.page
+            else:
+                resolved_bvid = await extract_bvid(bvid)
             return await fetch_video_detail(
                 bvid=resolved_bvid,
                 fetch_subtitles=fetch_subtitles,
                 subtitle_mode=subtitle_mode,
                 subtitle_lang=subtitle_lang,
                 subtitle_max_chars=subtitle_max_chars,
+                subtitle_scope=subtitle_scope,
+                subtitle_page=subtitle_page,
+                subtitle_cid=subtitle_cid,
+                subtitle_url_page=subtitle_url_page,
                 cred=cred,
             )
 

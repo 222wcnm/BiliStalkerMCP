@@ -6,7 +6,11 @@ from async_lru import alru_cache
 from bilibili_api import Credential, article, search, user, video
 from bilibili_api.exceptions import ApiException
 
-from ..errors import RISK_CONTROL_CODES, extract_error_code
+from ..errors import (
+    RISK_CONTROL_CODES,
+    InvalidSubtitleSelectionError,
+    extract_error_code,
+)
 from ..infra.http_client import get_json
 from ..infra.upstream import timed_upstream_call
 from ..models import (
@@ -16,6 +20,7 @@ from ..models import (
     ArticleStatsResponse,
     FollowingItemResponse,
     FollowingsResponse,
+    SubtitleScopeSummary,
     UserInfoResponse,
     UserSearchItem,
     UserSearchResponse,
@@ -44,6 +49,7 @@ from .subtitle_service import (
     DEFAULT_SUBTITLE_LANG,
     DEFAULT_SUBTITLE_MAX_CHARS,
     DEFAULT_SUBTITLE_MODE,
+    SubtitleScope,
     build_disabled_subtitles,
     collect_subtitles,
 )
@@ -117,6 +123,68 @@ def _normalize_video_pages(pages_raw: Any) -> list[dict[str, Any]]:
         )
 
     return normalized_pages
+
+
+def _validate_subtitle_selection(
+    scope: SubtitleScope,
+    page: int | None,
+    cid: int | None,
+    url_page: int | None,
+) -> None:
+    if scope not in {"single", "all"}:
+        raise InvalidSubtitleSelectionError("subtitle_scope must be single or all.")
+    for name, value in (
+        ("subtitle_page", page),
+        ("subtitle_cid", cid),
+        ("Video URL p", url_page),
+    ):
+        if value is not None and (
+            not isinstance(value, int) or isinstance(value, bool) or value < 1
+        ):
+            raise InvalidSubtitleSelectionError(f"{name} must be a positive integer.")
+    if page is not None and cid is not None:
+        raise InvalidSubtitleSelectionError(
+            "subtitle_page and subtitle_cid are mutually exclusive."
+        )
+    if scope == "all" and any(value is not None for value in (page, cid, url_page)):
+        raise InvalidSubtitleSelectionError(
+            "subtitle_scope=all cannot be combined with subtitle_page, subtitle_cid, "
+            "or video URL p. Use a BVID or video URL without p for all pages."
+        )
+    if page is not None and url_page is not None and page != url_page:
+        raise InvalidSubtitleSelectionError(
+            "subtitle_page conflicts with the video URL p."
+        )
+
+
+def _select_subtitle_pages(
+    pages: list[dict[str, Any]],
+    scope: SubtitleScope,
+    page: int | None,
+    cid: int | None,
+    url_page: int | None,
+) -> list[dict[str, Any]]:
+    if scope == "all":
+        return pages
+    if cid is not None:
+        target = next((item for item in pages if item["cid"] == cid), None)
+    else:
+        target_page = page or url_page or 1
+        target = next((item for item in pages if item["page"] == target_page), None)
+    if target is None:
+        raise InvalidSubtitleSelectionError(
+            "Requested subtitle page or CID was not found in this video."
+        )
+    page_number = coerce_int(target.get("page"))
+    if page_number is None or page_number < 1:
+        raise InvalidSubtitleSelectionError(
+            "The selected subtitle CID has no valid page number in video metadata."
+        )
+    if url_page is not None and page_number != url_page:
+        raise InvalidSubtitleSelectionError(
+            "subtitle_cid conflicts with the video URL p."
+        )
+    return [target]
 
 
 def _filter_article_stats(raw_stats: Any) -> ArticleStatsResponse:
@@ -453,6 +521,10 @@ async def _fetch_video_detail_cached(
     subtitle_mode: Literal["minimal", "smart", "full"] = DEFAULT_SUBTITLE_MODE,
     subtitle_lang: str = DEFAULT_SUBTITLE_LANG,
     subtitle_max_chars: int = DEFAULT_SUBTITLE_MAX_CHARS,
+    subtitle_scope: SubtitleScope = "single",
+    subtitle_page: int | None = None,
+    subtitle_cid: int | None = None,
+    subtitle_url_page: int | None = None,
 ) -> dict[str, Any]:
     v = video.Video(bvid=bvid, credential=cred) if fetch_subtitles else None
     video_data: Any
@@ -515,14 +587,30 @@ async def _fetch_video_detail_cached(
 
     if fetch_subtitles:
         assert v is not None
+        subtitle_pages = _select_subtitle_pages(
+            normalized_pages,
+            subtitle_scope,
+            subtitle_page,
+            subtitle_cid,
+            subtitle_url_page,
+        )
         subtitles = await collect_subtitles(
             v,
-            normalized_pages,
+            subtitle_pages,
             cred,
             subtitle_mode=subtitle_mode,
             subtitle_lang=subtitle_lang,
             subtitle_max_chars=subtitle_max_chars,
-            video_info=video_data,
+            # Inline subtitles can only be trusted for originally single-page
+            # videos, never merely because the selected range is one page.
+            video_info=video_data if len(normalized_pages) == 1 else None,
+            scope=SubtitleScopeSummary(
+                mode=subtitle_scope,
+                target_page=(
+                    subtitle_pages[0]["page"] if subtitle_scope == "single" else None
+                ),
+                total_pages=len(normalized_pages),
+            ),
         )
     else:
         subtitles = build_disabled_subtitles(subtitle_lang)
@@ -539,7 +627,15 @@ async def fetch_video_detail(
     subtitle_mode: Literal["minimal", "smart", "full"] = DEFAULT_SUBTITLE_MODE,
     subtitle_lang: str = DEFAULT_SUBTITLE_LANG,
     subtitle_max_chars: int = DEFAULT_SUBTITLE_MAX_CHARS,
+    subtitle_scope: SubtitleScope = "single",
+    subtitle_page: int | None = None,
+    subtitle_cid: int | None = None,
+    subtitle_url_page: int | None = None,
 ) -> dict[str, Any]:
+    if fetch_subtitles:
+        _validate_subtitle_selection(
+            subtitle_scope, subtitle_page, subtitle_cid, subtitle_url_page
+        )
     before = _fetch_video_detail_cached.cache_info()
     payload = await _fetch_video_detail_cached(
         bvid=bvid,
@@ -548,6 +644,10 @@ async def fetch_video_detail(
         subtitle_mode=subtitle_mode,
         subtitle_lang=subtitle_lang,
         subtitle_max_chars=subtitle_max_chars,
+        subtitle_scope=subtitle_scope,
+        subtitle_page=subtitle_page,
+        subtitle_cid=subtitle_cid,
+        subtitle_url_page=subtitle_url_page,
     )
     after = _fetch_video_detail_cached.cache_info()
     record_cache_hit("video_detail", _cache_hit(before, after))

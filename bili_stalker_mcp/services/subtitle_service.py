@@ -9,13 +9,14 @@ from bilibili_api import Credential, video
 from ..errors import RiskControlError, public_error_json
 from ..infra.http_client import get_json
 from ..infra.upstream import timed_upstream_call
-from ..models import SubtitleResponse, SubtitleTrack
+from ..models import SubtitleResponse, SubtitleScopeSummary, SubtitleTrack
 from ..retry import RetryableBiliApiError, with_retry
 from ..utils.converters import coerce_int
 
 logger = logging.getLogger(__name__)
 
 SubtitleMode = Literal["minimal", "smart", "full"]
+SubtitleScope = Literal["single", "all"]
 SUBTITLE_FETCH_CONCURRENCY = 4
 DEFAULT_SUBTITLE_MODE: SubtitleMode = "smart"
 DEFAULT_SUBTITLE_LANG = "auto"
@@ -290,6 +291,38 @@ def _select_smart_subtitle_candidate(
     )
 
 
+def _summarize_scope(
+    scope: SubtitleScopeSummary | None,
+    returned_pages: set[int],
+    *,
+    skipped: bool = False,
+) -> SubtitleScopeSummary | None:
+    if scope is None:
+        return None
+    selected = (
+        f"P{scope.target_page} of {scope.total_pages} pages"
+        if scope.mode == "single"
+        else f"all {scope.total_pages} pages"
+    )
+    if skipped:
+        text_summary = "Subtitle metadata and text skipped by mode=minimal."
+    elif len(returned_pages) == 1:
+        text_summary = f"Text returned for P{next(iter(returned_pages))}."
+    else:
+        text_summary = f"Text returned for {len(returned_pages)} pages."
+    uncovered = scope.total_pages - len(returned_pages)
+    return scope.model_copy(
+        update={
+            "returned_pages": sorted(returned_pages),
+            "summary": (
+                f"Selected scope: {selected}. {text_summary} "
+                f"{uncovered} of {scope.total_pages} pages have no returned text. "
+                "Check errors and truncated for completeness."
+            ),
+        }
+    )
+
+
 def build_disabled_subtitles(subtitle_lang: str) -> SubtitleResponse:
     return SubtitleResponse(
         enabled=False,
@@ -319,6 +352,7 @@ async def collect_subtitles(
     subtitle_max_chars: int = DEFAULT_SUBTITLE_MAX_CHARS,
     *,
     video_info: dict[str, Any] | None = None,
+    scope: SubtitleScopeSummary | None = None,
 ) -> SubtitleResponse:
     mode = subtitle_mode.strip().lower() if isinstance(subtitle_mode, str) else ""
     if mode == "minimal":
@@ -332,6 +366,7 @@ async def collect_subtitles(
         return SubtitleResponse(
             enabled=True,
             mode=normalized_mode,
+            scope=_summarize_scope(scope, set(), skipped=True),
             requested_language=(
                 subtitle_lang
                 if isinstance(subtitle_lang, str)
@@ -359,6 +394,13 @@ async def collect_subtitles(
 
     candidates: list[dict[str, Any]] = []
     errors: list[str] = []
+    page_numbers: dict[int, int] = {}
+    for page in pages:
+        cid = coerce_int(page.get("cid"))
+        page_number = coerce_int(page.get("page"))
+        if cid is not None and page_number is not None:
+            page_numbers[cid] = page_number
+    returned_pages: set[int] = set()
     semaphore = asyncio.Semaphore(SUBTITLE_FETCH_CONCURRENCY)
 
     async def _timed_get_player_info(cid: int) -> dict[str, Any]:
@@ -445,6 +487,7 @@ async def collect_subtitles(
         return SubtitleResponse(
             enabled=True,
             mode=normalized_mode,
+            scope=_summarize_scope(scope, returned_pages),
             requested_language=(
                 subtitle_lang
                 if isinstance(subtitle_lang, str)
@@ -482,6 +525,7 @@ async def collect_subtitles(
             return SubtitleResponse(
                 enabled=True,
                 mode=normalized_mode,
+                scope=_summarize_scope(scope, returned_pages),
                 requested_language=(
                     subtitle_lang
                     if isinstance(subtitle_lang, str)
@@ -515,6 +559,9 @@ async def collect_subtitles(
             remaining_budget=remaining_budget,
         )
         _ = remaining_budget
+        page_number = page_numbers.get(selected_candidate["track"].cid)
+        if full_text_lines and page_number is not None:
+            returned_pages.add(page_number)
         truncated = truncated or was_truncated
         dropped_tracks = max(0, len(candidates) - len(selected_tracks))
         selected_language = selected_candidate["track"].lan
@@ -532,6 +579,7 @@ async def collect_subtitles(
                 errors.append(
                     f"cid {track.cid} {track.lan_doc or track.lan or 'unknown'}: {error}"
                 )
+            previous_line_count = len(full_text_lines)
             remaining_budget, was_truncated = _append_track_with_budget(
                 track=track,
                 raw_text=text,
@@ -540,6 +588,9 @@ async def collect_subtitles(
                 remaining_budget=remaining_budget,
                 label=_track_label(track) if use_labels else None,
             )
+            page_number = page_numbers.get(track.cid) if track.cid is not None else None
+            if len(full_text_lines) > previous_line_count and page_number is not None:
+                returned_pages.add(page_number)
             truncated = truncated or was_truncated
         dropped_tracks = max(0, len(candidates) - len(selected_tracks))
 
@@ -548,6 +599,7 @@ async def collect_subtitles(
     return SubtitleResponse(
         enabled=True,
         mode=normalized_mode,
+        scope=_summarize_scope(scope, returned_pages),
         requested_language=(
             subtitle_lang if isinstance(subtitle_lang, str) else DEFAULT_SUBTITLE_LANG
         ),

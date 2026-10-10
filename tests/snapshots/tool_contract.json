@@ -3377,7 +3377,7 @@
       "idempotentHint": true,
       "readOnlyHint": true
     },
-    "description": "Get video detail including owner.mid (uploader UID) and total duration in seconds.\n\nSubtitle text is returned only in subtitles.full_text; tracks contain\nmetadata and their text field is always empty. selected_language applies\nonly to smart mode; full mode returns null and identifies languages in\ntracks[].lan. Check errors and truncated for incomplete text. Subtitles\nhave no timecodes. Empty video.tags can mean the source omitted tags.",
+    "description": "Get video detail including owner.mid (uploader UID) and total duration in seconds.\n\nSubtitle text is returned only in subtitles.full_text; tracks contain\nmetadata and their text field is always empty. selected_language applies\nonly to smart mode; full mode returns null and identifies languages in\ntracks[].lan. Check errors and truncated for incomplete text. Subtitles\nhave no timecodes. Empty video.tags can mean the source omitted tags.\nBoth smart and full default to P1 unless a page/CID or URL p is supplied.\nSet subtitle_scope=all with a BVID or URL without p for all pages.\nRead subtitles.scope for the selected range and actual returned pages;\nreturned_pages can contain partial text, so still check errors/truncated.\nPage selection only applies when fetch_subtitles=true.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
@@ -3390,6 +3390,19 @@
           "default": false,
           "description": "Whether to fetch and aggregate subtitle tracks.",
           "type": "boolean"
+        },
+        "subtitle_cid": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Subtitle CID belonging to this video. Mutually exclusive with subtitle_page; must agree with URL p if present."
         },
         "subtitle_lang": {
           "default": "auto",
@@ -3405,11 +3418,33 @@
         },
         "subtitle_mode": {
           "default": "smart",
-          "description": "Subtitle fetch mode when fetch_subtitles=true: minimal (no subtitle API), smart (single best track text), full (all track texts).",
+          "description": "Subtitle fetch mode when fetch_subtitles=true: minimal (no subtitle API), smart (single best track text), full (all track texts within the selected page scope).",
           "enum": [
             "minimal",
             "smart",
             "full"
+          ],
+          "type": "string"
+        },
+        "subtitle_page": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Subtitle part number starting at 1. Mutually exclusive with subtitle_cid; must agree with URL p if present."
+        },
+        "subtitle_scope": {
+          "default": "single",
+          "description": "Subtitle page range, independent of language/track mode: single (default; URL p, explicit page/CID, or P1), all (scan every page; cannot combine with page/CID or URL p).",
+          "enum": [
+            "single",
+            "all"
           ],
           "type": "string"
         }
@@ -3480,6 +3515,62 @@
               "default": 0,
               "title": "Returned Chars",
               "type": "integer"
+            },
+            "scope": {
+              "anyOf": [
+                {
+                  "properties": {
+                    "mode": {
+                      "enum": [
+                        "single",
+                        "all"
+                      ],
+                      "title": "Mode",
+                      "type": "string"
+                    },
+                    "returned_pages": {
+                      "description": "Pages with at least one subtitle text character returned. This does not guarantee complete text; inspect errors and truncated.",
+                      "items": {
+                        "type": "integer"
+                      },
+                      "title": "Returned Pages",
+                      "type": "array"
+                    },
+                    "summary": {
+                      "default": "",
+                      "title": "Summary",
+                      "type": "string"
+                    },
+                    "target_page": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "description": "Selected page number in single scope; null in all scope.",
+                      "title": "Target Page"
+                    },
+                    "total_pages": {
+                      "default": 0,
+                      "title": "Total Pages",
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "mode"
+                  ],
+                  "title": "SubtitleScopeSummary",
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null
             },
             "selected_language": {
               "anyOf": [

@@ -69,6 +69,16 @@ class ShortLinkResolutionError(InvalidVideoIdentifierError):
     )
 
 
+class InvalidSubtitleSelectionError(ValueError):
+    """A subtitle scope or page selection is invalid or conflicting."""
+
+    reason = "invalid_subtitle_selection"
+
+    def __init__(self, message: str) -> None:
+        self.message = message
+        super().__init__(message)
+
+
 def normalize_retry_after(seconds: float | int | None) -> int | None:
     if seconds is None:
         return None
@@ -116,7 +126,7 @@ def public_error_from_exception(
     *,
     request_id: str | None = None,
 ) -> PublicError:
-    if isinstance(exc, InvalidVideoIdentifierError):
+    if isinstance(exc, (InvalidVideoIdentifierError, InvalidSubtitleSelectionError)):
         return PublicError(
             code=None,
             reason=exc.reason,

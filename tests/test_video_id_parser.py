@@ -3,10 +3,11 @@ import pytest
 from bilibili_api import aid2bvid
 
 from bili_stalker_mcp.errors import (
+    InvalidSubtitleSelectionError,
     InvalidVideoIdentifierError,
     ShortLinkResolutionError,
 )
-from bili_stalker_mcp.utils.video_id_parser import extract_bvid
+from bili_stalker_mcp.utils.video_id_parser import extract_bvid, extract_video_reference
 
 
 @pytest.mark.asyncio
@@ -148,3 +149,57 @@ async def test_short_link_requires_successful_video_destination(
     )
     with pytest.raises(ShortLinkResolutionError):
         await extract_bvid("https://b23.tv/BV1xx411c7mD")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "raw,page",
+    [
+        ("BV1xx411c7mD", None),
+        ("https://www.bilibili.com/video/BV1xx411c7mD/?p=2&vd_source=abc", 2),
+        ("https://m.bilibili.com/video/BV1xx411c7mD?p=3", 3),
+        ("https://www.bilibili.com/video/av170001?p=2", 2),
+    ],
+)
+async def test_video_reference_preserves_url_page(raw, page):
+    reference = await extract_video_reference(raw)
+    assert reference.bvid == (aid2bvid(170001) if "av170001" in raw else "BV1xx411c7mD")
+    assert reference.page == page
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("query", ["p=0", "p=-1", "p=oops", "p=", "p=1.5", "p=2&p=3"])
+async def test_invalid_url_page_is_rejected_without_changing_identifier_only_parser(
+    query,
+):
+    raw = f"https://www.bilibili.com/video/BV1xx411c7mD?{query}&vd_source=private-token"
+    with pytest.raises(InvalidSubtitleSelectionError) as caught:
+        await extract_video_reference(raw)
+    assert "private-token" not in str(caught.value)
+    assert "https://" not in str(caught.value)
+    assert await extract_bvid(raw) == "BV1xx411c7mD"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("identifier", ["BV1xx411c7mD", "av170001"])
+async def test_video_reference_resolves_short_link_once_and_keeps_destination_page(
+    monkeypatch, identifier
+):
+    calls = []
+    redirected_url = f"https://www.bilibili.com/video/{identifier}/?p=2"
+
+    class FakeClient:
+        async def head(self, url, *, follow_redirects=False):
+            calls.append((url, follow_redirects))
+            return httpx.Response(200, request=httpx.Request("HEAD", redirected_url))
+
+    monkeypatch.setattr(
+        "bili_stalker_mcp.utils.video_id_parser.get_shared_http_client",
+        lambda: FakeClient(),
+    )
+    reference = await extract_video_reference("https://b23.tv/AbCdEfG")
+    assert reference.bvid == (
+        aid2bvid(170001) if identifier.startswith("av") else identifier
+    )
+    assert reference.page == 2
+    assert calls == [("https://b23.tv/AbCdEfG", True)]

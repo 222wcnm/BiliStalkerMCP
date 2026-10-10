@@ -91,6 +91,8 @@ uv run bili-stalker-mcp tools get_user_snapshot --pretty
 uv run bili-stalker-mcp call search_users --args '{"keyword":"用户名","limit":5}'
 uv run bili-stalker-mcp call get_user_snapshot --args '{"user_id_or_username":"12345","video_limit":5,"dynamic_limit":5,"article_limit":0}' --pretty
 uv run bili-stalker-mcp call get_video_detail --args '{"bvid":"BV1xx411c7mD","fetch_subtitles":true,"subtitle_max_chars":12000}'
+uv run bili-stalker-mcp call get_video_detail --args '{"bvid":"https://www.bilibili.com/video/BV16cj96FEmw?p=2","fetch_subtitles":true}'
+uv run bili-stalker-mcp call get_video_detail --args '{"bvid":"BV1xx411c7mD","fetch_subtitles":true,"subtitle_scope":"all","subtitle_mode":"full"}'
 ```
 
 `tools` 列出工具名称与简介；`tools 工具名` 返回完整 MCP schema，包含必填参数、默认值
@@ -205,7 +207,7 @@ uv run mypy bili_stalker_mcp
 | `get_user_info` | 丰富档案：等级、认证头衔、大会员、直播间、封禁状态、关注/粉丝数、视频总播放/专栏总阅读/总获赞（需 `bili_jct`） | `user_id_or_username` |
 | `get_user_videos` | 轻量视频列表 | `user_id_or_username`, `page`, `limit` |
 | `search_user_videos` | 指定用户视频关键词检索 | `user_id_or_username`, `keyword`, `page`, `limit` |
-| `get_video_detail` | 视频详情与可选字幕聚合 | `bvid`, `fetch_subtitles`（默认：`false`）, `subtitle_mode`（`smart`/`full`/`minimal`）, `subtitle_lang`（默认：`auto`）, `subtitle_max_chars` |
+| `get_video_detail` | 视频详情与可选字幕聚合 | `bvid`, `fetch_subtitles`（默认：`false`）, `subtitle_scope`（`single`/`all`，默认：`single`）, `subtitle_page`, `subtitle_cid`, `subtitle_mode`（`smart`/`full`/`minimal`）, `subtitle_lang`（默认：`auto`）, `subtitle_max_chars` |
 | `get_user_dynamics` | 含图片元数据的结构化动态流（Cursor 分页） | `user_id_or_username`, `cursor`, `limit`, `dynamic_type` |
 | `get_user_articles` | 轻量专栏列表 | `user_id_or_username`, `page`, `limit` |
 | `get_article_content` | 专栏 Markdown 全文 | `article_id` |
@@ -239,8 +241,18 @@ uv run mypy bili_stalker_mcp
 
 ### 字幕模式 (`get_video_detail`)
 
-- `smart`（`fetch_subtitles=true` 时默认）: 拉取全部分P字幕元数据，但仅下载 1 条最优匹配字幕正文。
-- `full`: 下载所有字幕轨正文（开销较高）。
+字幕范围与语言轨道模式独立。`subtitle_scope="single"` 为默认范围，`smart` 和 `full`
+均默认只查 P1；完整链接中的 `p=2` 会自动选择 P2，也可传 `subtitle_page=2`
+或该视频内的 `subtitle_cid`。page/CID 必须为正整数且两个显式参数互斥；
+链接章节与显式选择不一致、章节不存在或 CID 不属于该视频时，返回
+`invalid_subtitle_selection`，不会换到其他分 P。
+
+全视频查询需显式设置 `subtitle_scope="all"`，并使用 BVID 或不带 `p` 的链接；
+`all` 与 page/CID 或链接中的 `p` 互斥。该范围仍会查询全部分 P 的字幕元数据，
+单分 P 范围只查询所选章节。**默认行为变更：依赖旧版全视频扫描的调用需增加 `subtitle_scope="all"`。**
+
+- `smart`（`fetch_subtitles=true` 时默认）: 在所选范围内下载 1 条最优匹配字幕正文。
+- `full`: 下载所选范围内所有语言轨道正文（开销较高）。
 - `minimal`: 跳过字幕元数据与正文拉取。
 
 在 `smart` 模式下，`subtitle_lang` 可请求指定语言（如 `en-US`）；
@@ -260,6 +272,12 @@ uv run mypy bili_stalker_mcp
 各轨语言见 `tracks[].lan`。`truncated=true` 表示字符上限截断或舍弃了字幕正文。
 字幕下载失败时，轨道仍可能留在 `tracks` 中；需同时检查 `errors` 与 `full_text`。
 字幕正文不含时间码。
+
+`subtitles.scope` 包含 `mode`、`target_page`、`total_pages`、`returned_pages` 和 `summary`，
+区分选择范围与正文实际包含的分 P，并提示未覆盖数量。`returned_pages` 只表示该分 P
+至少返回了一个正文字符，不保证完整；仍须检查 `errors` 和 `truncated`。
+视频详情的 `pages[]` 始终保留完整列表。关闭字幕时 `scope=null`，范围参数不生效；
+`minimal` 会核对选择范围，但 `returned_pages=[]`，不调用字幕接口。
 
 ## 📎 附带 Skill
 

@@ -96,12 +96,19 @@ async def test_video_detail_exposes_expected_subtitle_mode_contract():
 
     subtitle_mode = schemas["get_video_detail"]["properties"]["subtitle_mode"]
     subtitle_max_chars = schemas["get_video_detail"]["properties"]["subtitle_max_chars"]
+    subtitle_scope = schemas["get_video_detail"]["properties"]["subtitle_scope"]
 
     assert subtitle_mode["type"] == "string"
     assert subtitle_mode["default"] == "smart"
     assert subtitle_mode["enum"] == ["minimal", "smart", "full"]
     assert subtitle_max_chars["minimum"] == 1
     assert subtitle_max_chars["maximum"] == 200000
+    assert subtitle_scope["default"] == "single"
+    assert subtitle_scope["enum"] == ["single", "all"]
+    for name in ("subtitle_page", "subtitle_cid"):
+        selector = schemas["get_video_detail"]["properties"][name]
+        assert selector["default"] is None
+        assert {"minimum": 1, "type": "integer"} in selector["anyOf"]
 
 
 @pytest.mark.asyncio

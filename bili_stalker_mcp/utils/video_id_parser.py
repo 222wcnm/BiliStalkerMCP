@@ -1,14 +1,25 @@
 import re
+from dataclasses import dataclass
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 from bilibili_api import aid2bvid
 
-from ..errors import InvalidVideoIdentifierError, ShortLinkResolutionError
+from ..errors import (
+    InvalidSubtitleSelectionError,
+    InvalidVideoIdentifierError,
+    ShortLinkResolutionError,
+)
 from ..infra.http_client import get_shared_http_client
 
 _BV_PATTERN = re.compile(r"(?<![a-zA-Z0-9_])BV[a-zA-Z0-9]{10}(?![a-zA-Z0-9_])")
 _AV_PATTERN = re.compile(r"(?:^|/)av(\d+)(?![a-zA-Z0-9_])", re.IGNORECASE)
+
+
+@dataclass(frozen=True)
+class VideoReference:
+    bvid: str
+    page: int | None = None
 
 
 def _is_b23_short_url(value: str) -> bool:
@@ -41,18 +52,7 @@ def _extract_local_bvid(text: str) -> str | None:
     return None
 
 
-async def extract_bvid(raw: str) -> str:
-    """Extract a BVID from various input formats.
-
-    Supported inputs (in priority order):
-    - Pure BVID: ``BV1xx411c7mD``
-    - URL containing BVID: ``https://www.bilibili.com/video/BV1xx411c7mD/``
-    - AV number: ``av170001``
-    - URL containing AV number: ``https://www.bilibili.com/video/av170001/``
-    - b23.tv short link: ``https://b23.tv/AbCdEfG`` (resolved via HTTP redirect)
-
-    Raises InvalidVideoIdentifierError or ShortLinkResolutionError on failure.
-    """
+async def _resolve_video_input(raw: str) -> tuple[str, str]:
     text = raw.strip()
     if _is_b23_short_url(text):
         try:
@@ -68,10 +68,39 @@ async def extract_bvid(raw: str) -> str:
         if not _is_b23_short_url(final_url):
             resolved = _extract_local_bvid(final_url)
             if resolved:
-                return resolved
+                return resolved, final_url
         raise ShortLinkResolutionError()
 
     resolved = _extract_local_bvid(text)
     if resolved:
-        return resolved
+        return resolved, text
     raise InvalidVideoIdentifierError()
+
+
+async def extract_bvid(raw: str) -> str:
+    """Extract a BVID from a BVID, AV number, video URL, or b23.tv link.
+
+    URL query parameters remain ignored for compatibility with identifier-only
+    callers. Raises InvalidVideoIdentifierError or ShortLinkResolutionError.
+    """
+    bvid, _ = await _resolve_video_input(raw)
+    return bvid
+
+
+async def extract_video_reference(raw: str) -> VideoReference:
+    """Resolve a video identifier and preserve the destination URL's page."""
+    bvid, text = await _resolve_video_input(raw)
+    values = parse_qs(urlparse(text).query, keep_blank_values=True).get("p")
+    if values is None:
+        return VideoReference(bvid)
+
+    message = "Video URL p must be a single positive integer."
+    if len(values) != 1 or re.fullmatch(r"[0-9]+", values[0]) is None:
+        raise InvalidSubtitleSelectionError(message)
+    try:
+        page = int(values[0])
+    except ValueError:
+        raise InvalidSubtitleSelectionError(message) from None
+    if page < 1:
+        raise InvalidSubtitleSelectionError(message)
+    return VideoReference(bvid, page)

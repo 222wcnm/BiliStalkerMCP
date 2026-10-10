@@ -1,3 +1,5 @@
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -137,9 +139,24 @@ class SubtitleTrack(BaseModel):
     )
 
 
+class SubtitleScopeSummary(BaseModel):
+    mode: Literal["single", "all"]
+    target_page: int | None = Field(
+        default=None,
+        description="Selected page number in single scope; null in all scope.",
+    )
+    total_pages: int = 0
+    returned_pages: list[int] = Field(
+        default_factory=list,
+        description="Pages with at least one subtitle text character returned. This does not guarantee complete text; inspect errors and truncated.",
+    )
+    summary: str = ""
+
+
 class SubtitleResponse(BaseModel):
     enabled: bool = True
     mode: str = "full"
+    scope: SubtitleScopeSummary | None = None
     requested_language: str = "auto"
     available_languages: list[str] = Field(default_factory=list)
     selected_language: str | None = Field(

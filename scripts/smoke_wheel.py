@@ -102,6 +102,15 @@ def main() -> None:
                 raise RuntimeError(
                     "Installed package did not expose the expected tools"
                 )
+            video_tool = json.loads(run(*command, "get_video_detail"))
+            properties = video_tool["inputSchema"]["properties"]
+            if (
+                properties.get("subtitle_scope", {}).get("default") != "single"
+                or not {"subtitle_page", "subtitle_cid"} <= properties.keys()
+            ):
+                raise RuntimeError(
+                    "Installed package did not expose subtitle page selection"
+                )
 
     print("Installed wheel CLI smoke test passed")
 

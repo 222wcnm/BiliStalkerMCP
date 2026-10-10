@@ -32,6 +32,8 @@ uv run bili-stalker-mcp tools get_user_snapshot --pretty
 uv run bili-stalker-mcp call search_users --args '{"keyword":"用户名","limit":5}'
 uv run bili-stalker-mcp call get_user_snapshot --args '{"user_id_or_username":"12345","video_limit":5,"dynamic_limit":5,"article_limit":0}'
 uv run bili-stalker-mcp call get_video_detail --args '{"bvid":"BV1xx411c7mD","fetch_subtitles":true,"subtitle_mode":"smart","subtitle_max_chars":12000}'
+uv run bili-stalker-mcp call get_video_detail --args '{"bvid":"https://www.bilibili.com/video/BV16cj96FEmw?p=2","fetch_subtitles":true}'
+uv run bili-stalker-mcp call get_video_detail --args '{"bvid":"BV1xx411c7mD","fetch_subtitles":true,"subtitle_scope":"all","subtitle_mode":"full"}'
 ```
 
 `tools` returns names and descriptions. `tools TOOL` returns the complete schema;
@@ -39,6 +41,15 @@ use `inputSchema` for required fields, defaults, types, bounds, and enum values.
 Use the same underscore-separated names and JSON keys as MCP, including tools for
 articles, followings, comments, and replies. `call TOOL` defaults to an empty
 argument object when no argument source is supplied.
+
+Subtitle scope defaults to a single chapter: P1 unless URL `p`, `subtitle_page`,
+or `subtitle_cid` selects another chapter. Preserve the user's URL chapter.
+`smart` downloads one best language track; `full` downloads all tracks within
+that scope. For the whole video, set `subtitle_scope="all"` with a BVID or URL
+without `p`. Explicit page/CID selectors are mutually exclusive and must agree
+with URL `p`; `all` cannot be combined with any chapter selector. Correct an
+`invalid_subtitle_selection` error before retrying. Read `subtitles.scope` for
+coverage and check `errors`/`truncated` even when a page has returned text.
 
 Keep string IDs quoted, especially article and dynamic IDs that exceed JavaScript's
 safe integer range. JSON booleans are `true`/`false`; optional cursors can be omitted
