@@ -88,6 +88,7 @@ uv run bili-stalker-mcp --help
 uv run bili-stalker-mcp doctor
 uv run bili-stalker-mcp doctor --network
 uv run bili-stalker-mcp tools
+uv run bili-stalker-mcp tools --schema
 uv run bili-stalker-mcp tools get_user_snapshot --pretty
 uv run bili-stalker-mcp call search_users --args '{"keyword":"username","limit":5}'
 uv run bili-stalker-mcp call get_user_snapshot --args '{"user_id_or_username":"12345","video_limit":5,"dynamic_limit":5,"article_limit":0}' --pretty
@@ -96,14 +97,18 @@ uv run bili-stalker-mcp call get_video_detail --args '{"bvid":"https://www.bilib
 uv run bili-stalker-mcp call get_video_detail --args '{"bvid":"BV1xx411c7mD","fetch_subtitles":true,"subtitle_scope":"all","subtitle_mode":"full"}'
 ```
 
-`tools` lists names and descriptions; `tools TOOL` returns the full MCP schema,
-including required arguments, defaults, and limits. `call TOOL` accepts the same
+`tools` lists names and descriptions; `tools --schema` returns every tool's input
+schema, including required arguments, defaults, and limits, in one reusable catalog.
+`tools TOOL` keeps the full MCP schema; add `--schema` to omit output schemas.
+`call TOOL` accepts the same
 names and JSON arguments as the MCP tools. IDs declared as strings in the schema
 must remain quoted, including numeric UIDs and long article/dynamic IDs.
 `doctor` prints JSON diagnostics for credential sources, refresh configuration,
 proxy settings, and dependency versions. By default it does not use the network,
 change credential files, or print credential values. `doctor --network` adds a TCP
-connectivity check; it does not verify login or an API response.
+connectivity check; it does not verify login or an API response. Proxy fields
+`tcp_reachable` and `expected_route` report the probe and expected proxy/direct
+fallback route. Server startup probes the configured proxy again.
 
 For larger arguments or to avoid shell quoting issues, read a UTF-8 JSON file or
 pipe a JSON object through stdin:
@@ -134,6 +139,19 @@ failures end with a JSON `error` object on stderr; risk-control errors
 retain `code` and `retry_after`. A snapshot can succeed with incomplete
 sections: inspect its `errors` field before interpreting it.
 
+Unknown fields are rejected. Argument errors include `valid_fields`,
+`required_fields`, and `did_you_mean` when a correction is available; common names
+such as `uid` are hints, not accepted aliases. Calls default to a 25-second total
+budget. CLI timing starts after command parsing and includes dependency loading
+and argument reading; native MCP timing starts in the tool body. Exhaustion returns
+`reason="tool_timeout"`. If video metadata is already available, it can be returned
+with a subtitle error instead; these timeout results are not cached. Adjust
+`BILI_TOOL_TIMEOUT_SECONDS` and leave headroom in the caller's timeout. The budget
+uses cooperative async cancellation and cannot interrupt synchronous initialization.
+Connections and result caches are process-local; use persistent MCP for repeated queries.
+Concurrent callers share fetches but keep independent time budgets. Unfinished
+cache work is cancelled when its last waiter leaves.
+
 `uv run python -m bili_stalker_mcp ...` accepts the same arguments. With an
 installed package, use `bili-stalker-mcp ...` directly. Running without a subcommand
 still starts the MCP stdio server; `bili-stalker-mcp serve` makes that explicit.
@@ -150,6 +168,8 @@ still starts the MCP stdio server; `bili-stalker-mcp serve` makes that explicit.
 | `BILI_ENABLE_COOKIE_REFRESH` | No | `true` enables safe automatic refresh; default: `false`. |
 | `BILI_COOKIE_REFRESH_CHECK_INTERVAL_SECONDS` | No | Refresh-check interval; default: `21600`, minimum: `60`. |
 | `BILI_PROXY` | No | Route all upstream requests (bilibili_api and the built-in HTTP clients) through this proxy. Recommended when the system proxy is not picked up automatically or DNS resolution for Bilibili hosts is unstable. If the proxy is unreachable at startup, the server falls back to direct connections and logs a warning. |
+| `BILI_TOOL_TIMEOUT_SECONDS` | No | Total seconds per tool call, including retries and waits; default: `25`. Must be finite and positive. |
+| `BILI_SHORT_LINK_TIMEOUT_SECONDS` | No | Total seconds for short-link resolution; default: `5`, also bounded by the remaining tool budget. Must be finite and positive. Successful resolutions are cached for 300 seconds; at most 5 requests are made, stopping as soon as a video destination is known. |
 | `BILI_REQUEST_JITTER_MODE` | No | Upstream jitter behavior: `adaptive` (default; sleeps only without a configured login or after recent 412/429/403), `always`, `never`. |
 | `BILI_REQUEST_JITTER_MIN_MS` / `BILI_REQUEST_JITTER_MAX_MS` | No | Jitter sleep range; default: `200`–`1200`. |
 | `BILI_REQUEST_JITTER_BUDGET_MS` | No | Total jitter sleep allowed per tool call; default: `500`. |

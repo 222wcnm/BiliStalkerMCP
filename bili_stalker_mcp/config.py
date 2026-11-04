@@ -1,6 +1,7 @@
 """Project-wide runtime and API constants."""
 
 import logging
+import math
 import os
 import socket
 from typing import Literal
@@ -75,6 +76,18 @@ REQUEST_DELAY = 3.0
 REQUEST_TIMEOUT = _get_env_float("BILI_REQUEST_TIMEOUT_SECONDS", 20.0)
 CONNECT_TIMEOUT = _get_env_float("BILI_CONNECT_TIMEOUT_SECONDS", 10.0)
 READ_TIMEOUT = _get_env_float("BILI_READ_TIMEOUT_SECONDS", 15.0)
+
+
+def _positive_timeout(name: str, default: float) -> float:
+    value = _get_env_float(name, default)
+    if not math.isfinite(value) or value <= 0:
+        logger.warning("Invalid timeout for %s; using %ss", name, default)
+        return default
+    return value
+
+
+TOOL_TIMEOUT_SECONDS = _positive_timeout("BILI_TOOL_TIMEOUT_SECONDS", 25.0)
+SHORT_LINK_TIMEOUT_SECONDS = _positive_timeout("BILI_SHORT_LINK_TIMEOUT_SECONDS", 5.0)
 DEFAULT_TIMEZONE = os.environ.get("BILI_TIMEZONE", "Asia/Shanghai")
 DEFAULT_IMPERSONATE: Literal["chrome131"] = "chrome131"
 

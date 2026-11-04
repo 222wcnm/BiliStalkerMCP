@@ -147,6 +147,8 @@ def run_doctor(*, network: bool = False) -> dict[str, Any]:
         "status": "error" if proxy_error else "ok",
         "configured": bool(proxy_raw),
         "scheme": proxy_scheme,
+        "tcp_reachable": None,
+        "expected_route": "not_checked" if proxy_raw else "no_explicit_proxy",
     }
 
     if network:
@@ -161,6 +163,13 @@ def run_doctor(*, network: bool = False) -> dict[str, Any]:
         except OSError:
             status = "error"
         checks["network"] = {"status": status, "target": target, "kind": "tcp"}
+        if target == "proxy":
+            checks["proxy"].update(
+                tcp_reachable=status == "ok",
+                expected_route=(
+                    "configured_proxy" if status == "ok" else "direct_fallback"
+                ),
+            )
 
     return {
         "ok": all(check["status"] == "ok" for check in checks.values()),

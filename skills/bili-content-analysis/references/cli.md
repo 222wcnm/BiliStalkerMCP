@@ -28,6 +28,7 @@ retrieved results.
 
 ```powershell
 uv run bili-stalker-mcp tools
+uv run bili-stalker-mcp tools --schema
 uv run bili-stalker-mcp tools get_user_snapshot --pretty
 uv run bili-stalker-mcp call search_users --args '{"keyword":"用户名","limit":5}'
 uv run bili-stalker-mcp call get_user_snapshot --args '{"user_id_or_username":"12345","video_limit":5,"dynamic_limit":5,"article_limit":0}'
@@ -36,11 +37,17 @@ uv run bili-stalker-mcp call get_video_detail --args '{"bvid":"https://www.bilib
 uv run bili-stalker-mcp call get_video_detail --args '{"bvid":"BV1xx411c7mD","fetch_subtitles":true,"subtitle_scope":"all","subtitle_mode":"full"}'
 ```
 
-`tools` returns names and descriptions. `tools TOOL` returns the complete schema;
-use `inputSchema` for required fields, defaults, types, bounds, and enum values.
+Discover arguments once with `tools --schema` and reuse the returned input schemas
+for subsequent calls. `tools` keeps the compact name/description list.
+`tools TOOL` returns the complete schema; `tools TOOL --schema` omits output schemas.
+Use `inputSchema` for required fields, defaults, types, bounds, and enum values.
 Use the same underscore-separated names and JSON keys as MCP, including tools for
 articles, followings, comments, and replies. `call TOOL` defaults to an empty
 argument object when no argument source is supplied.
+
+Correct invalid arguments using `valid_fields`, `required_fields`, and any
+`errors[].did_you_mean` suggestions. These are repair hints, not accepted aliases;
+use the declared name and preserve the intended limits instead of dropping the field.
 
 Subtitle scope defaults to a single chapter: P1 unless URL `p`, `subtitle_page`,
 or `subtitle_cid` selects another chapter. Preserve the user's URL chapter.
@@ -112,3 +119,11 @@ Argument-parser errors use the same JSON format. Error objects preserve availabl
 server fields such as `reason`, `code`, `retry_after`, and `request_id`. Respect
 `retry_after` for risk-control failures and report unavailable evidence instead of
 issuing rapid repeat queries.
+
+Calls have a configurable total budget (`BILI_TOOL_TIMEOUT_SECONDS`, default 25
+seconds); short-link resolution also has a 5-second default budget. A
+`tool_timeout` error calls for a smaller scope, an available BVID/full video URL,
+or a deliberately larger budget when the caller permits it. Video metadata may
+still return with subtitle timeout errors: treat that as missing transcript evidence.
+Connections and caches are process-local, so reuse saved results for repeated CLI
+analysis rather than refetching identical material.

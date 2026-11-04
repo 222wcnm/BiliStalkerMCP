@@ -1,3 +1,5 @@
+import asyncio
+
 import httpx
 import pytest
 from bilibili_api import aid2bvid
@@ -7,7 +9,17 @@ from bili_stalker_mcp.errors import (
     InvalidVideoIdentifierError,
     ShortLinkResolutionError,
 )
+from bili_stalker_mcp.observability import begin_request, snapshot_metrics
+from bili_stalker_mcp.utils import video_id_parser
 from bili_stalker_mcp.utils.video_id_parser import extract_bvid, extract_video_reference
+
+
+@pytest.fixture(autouse=True)
+def isolate_short_link_cache(monkeypatch):
+    video_id_parser._resolve_short_link_cached.cache_clear()
+    monkeypatch.setattr("bili_stalker_mcp.infra.upstream.REQUEST_JITTER_MODE", "never")
+    yield
+    video_id_parser._resolve_short_link_cached.cache_clear()
 
 
 @pytest.mark.asyncio
@@ -202,4 +214,117 @@ async def test_video_reference_resolves_short_link_once_and_keeps_destination_pa
         aid2bvid(170001) if identifier.startswith("av") else identifier
     )
     assert reference.page == 2
-    assert calls == [("https://b23.tv/AbCdEfG", True)]
+    assert calls == [("https://b23.tv/AbCdEfG", False)]
+
+
+@pytest.mark.asyncio
+async def test_short_link_stops_at_video_location_and_caches_page(monkeypatch):
+    calls = []
+
+    class FakeClient:
+        async def head(self, url, **kwargs):
+            calls.append((url, kwargs))
+            return httpx.Response(
+                302,
+                headers={"Location": "https://www.bilibili.com/video/BV1xx411c7mD?p=2"},
+                request=httpx.Request("HEAD", url),
+            )
+
+    monkeypatch.setattr(video_id_parser, "get_shared_http_client", lambda: FakeClient())
+    begin_request("short-link-first")
+    first = await extract_video_reference("https://b23.tv/AbCdEfG")
+    assert first.bvid == "BV1xx411c7mD" and first.page == 2
+    assert snapshot_metrics()["upstream_call_count"] == 1
+    begin_request("short-link-cached")
+    assert await extract_video_reference("https://b23.tv/AbCdEfG") == first
+    assert len(calls) == 1
+    assert calls[0][1]["follow_redirects"] is False
+    assert snapshot_metrics()["upstream_call_count"] == 0
+    assert snapshot_metrics()["cache"]["short_link"]["hit"] == 1
+
+
+@pytest.mark.asyncio
+async def test_short_link_follows_only_needed_relative_hop(monkeypatch):
+    calls = []
+
+    class FakeClient:
+        async def head(self, url, **_kwargs):
+            calls.append(url)
+            location = (
+                "/next"
+                if len(calls) == 1
+                else "https://m.bilibili.com/video/av170001?p=3"
+            )
+            return httpx.Response(302, headers={"Location": location})
+
+    monkeypatch.setattr(video_id_parser, "get_shared_http_client", lambda: FakeClient())
+    result = await extract_video_reference("https://b23.tv/AbCdEfG")
+    assert result.bvid == aid2bvid(170001) and result.page == 3
+    assert calls == ["https://b23.tv/AbCdEfG", "https://b23.tv/next"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "location",
+    [
+        "https://evilbilibili.com/video/BV1xx411c7mD",
+        "https://bilibili.com.evil.test/video/BV1xx411c7mD",
+        "http://127.0.0.1/video/BV1xx411c7mD",
+        "file:///video/BV1xx411c7mD",
+        "https://private@www.bilibili.com/video/BV1xx411c7mD",
+        "https://b23.tv/AbCdEfG",
+    ],
+)
+async def test_short_link_rejects_unsafe_redirect_or_loop(monkeypatch, location):
+    calls = []
+
+    class FakeClient:
+        async def head(self, url, **_kwargs):
+            calls.append(url)
+            return httpx.Response(302, headers={"Location": location})
+
+    monkeypatch.setattr(video_id_parser, "get_shared_http_client", lambda: FakeClient())
+    with pytest.raises(ShortLinkResolutionError):
+        await extract_bvid("https://b23.tv/AbCdEfG")
+    assert len(calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_short_link_limits_redirect_count(monkeypatch):
+    calls = []
+
+    class FakeClient:
+        async def head(self, url, **_kwargs):
+            calls.append(url)
+            return httpx.Response(302, headers={"Location": f"/next{len(calls)}"})
+
+    monkeypatch.setattr(video_id_parser, "get_shared_http_client", lambda: FakeClient())
+    with pytest.raises(ShortLinkResolutionError):
+        await extract_bvid("https://b23.tv/AbCdEfG")
+    assert len(calls) == 5
+
+
+@pytest.mark.asyncio
+async def test_short_link_timeout_cancels_request_without_caching_failure(monkeypatch):
+    cancelled = asyncio.Event()
+    calls = []
+
+    class FakeClient:
+        async def head(self, url, **_kwargs):
+            calls.append(url)
+            if len(calls) == 1:
+                try:
+                    await asyncio.sleep(10)
+                finally:
+                    cancelled.set()
+            return httpx.Response(
+                302, headers={"Location": "https://www.bilibili.com/video/BV1xx411c7mD"}
+            )
+
+    monkeypatch.setattr(video_id_parser, "SHORT_LINK_TIMEOUT_SECONDS", 0.02)
+    monkeypatch.setattr(video_id_parser, "get_shared_http_client", lambda: FakeClient())
+    with pytest.raises(ShortLinkResolutionError):
+        await extract_bvid("https://b23.tv/AbCdEfG")
+    assert cancelled.is_set()
+    assert await extract_bvid("https://b23.tv/AbCdEfG") == "BV1xx411c7mD"
+    assert len(calls) == 2

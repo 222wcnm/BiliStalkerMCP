@@ -37,6 +37,7 @@ else:
         CurlSSLError,
     )
 
+from .deadline import deadline_scope, get_deadline
 from .errors import RISK_CONTROL_CODES, RiskControlError, extract_error_code
 from .infra.circuit_breaker import (
     ensure_risk_control_request_allowed,
@@ -116,7 +117,8 @@ def with_retry(
                             func.__name__,
                             delay,
                         )
-                        await asyncio.sleep(delay)
+                        async with deadline_scope(get_deadline()):
+                            await asyncio.sleep(delay)
 
                     return await func(*args, **kwargs)
 

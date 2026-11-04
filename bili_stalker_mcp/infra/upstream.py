@@ -1,4 +1,5 @@
 import asyncio
+import inspect
 import logging
 import random
 import time
@@ -12,6 +13,7 @@ from ..config import (
     RISK_PRESSURE_WINDOW_SECONDS,
 )
 from ..credentials import has_configured_credential
+from ..deadline import deadline_scope, get_deadline
 from ..observability import (
     add_throttle_sleep_ms,
     add_upstream_duration_ms,
@@ -49,25 +51,36 @@ def jitter_enabled_for_call() -> bool:
 async def timed_upstream_call(awaitable: Awaitable[T]) -> T:
     """Measure one upstream call and apply jitter after the first call."""
     call_count = register_upstream_call()
-
-    if get_request_id() is not None and call_count > 1 and jitter_enabled_for_call():
-        budget_remaining_ms = REQUEST_JITTER_BUDGET_MS - get_throttle_sleep_ms()
-        if budget_remaining_ms > 0:
-            sleep_ms = min(
-                random.uniform(REQUEST_JITTER_MIN_MS, REQUEST_JITTER_MAX_MS),
-                budget_remaining_ms,
-            )
-            logger.debug(
-                "Applying upstream jitter before call %s: %.0fms", call_count, sleep_ms
-            )
-            add_throttle_sleep_ms(sleep_ms)
-            await asyncio.sleep(sleep_ms / 1000.0)
-
-    started = time.perf_counter()
+    started: float | None = None
     try:
-        result = await awaitable
-        if not hasattr(result, "status_code"):
-            record_risk_control_success()
-        return result
+        async with deadline_scope(get_deadline()):
+            if (
+                get_request_id() is not None
+                and call_count > 1
+                and jitter_enabled_for_call()
+            ):
+                budget_remaining_ms = REQUEST_JITTER_BUDGET_MS - get_throttle_sleep_ms()
+                if budget_remaining_ms > 0:
+                    sleep_ms = min(
+                        random.uniform(REQUEST_JITTER_MIN_MS, REQUEST_JITTER_MAX_MS),
+                        budget_remaining_ms,
+                    )
+                    logger.debug(
+                        "Applying upstream jitter before call %s: %.0fms",
+                        call_count,
+                        sleep_ms,
+                    )
+                    add_throttle_sleep_ms(sleep_ms)
+                    await asyncio.sleep(sleep_ms / 1000.0)
+
+            started = time.perf_counter()
+            result = await awaitable
+            if not hasattr(result, "status_code"):
+                record_risk_control_success()
+            return result
     finally:
-        add_upstream_duration_ms((time.perf_counter() - started) * 1000.0)
+        if started is not None:
+            add_upstream_duration_ms((time.perf_counter() - started) * 1000.0)
+        elif inspect.iscoroutine(awaitable):
+            # A deadline during jitter can cancel us before this coroutine starts.
+            awaitable.close()

@@ -17,6 +17,7 @@ P2_URL = f"https://www.bilibili.com/video/{BVID}?p=2"
 @pytest.fixture(autouse=True)
 def isolated_subtitle_scope(monkeypatch):
     user_service._fetch_video_detail_cached.cache_clear()
+    user_service._fetch_video_metadata_cached.cache_clear()
     monkeypatch.setattr("bili_stalker_mcp.infra.upstream.REQUEST_JITTER_MODE", "never")
     monkeypatch.setattr(cli, "_configure_logging", lambda: None)
     monkeypatch.setattr(
@@ -24,6 +25,7 @@ def isolated_subtitle_scope(monkeypatch):
     )
     yield
     user_service._fetch_video_detail_cached.cache_clear()
+    user_service._fetch_video_metadata_cached.cache_clear()
 
 
 @pytest.fixture
@@ -289,7 +291,7 @@ async def test_cache_separates_default_page_cid_url_and_all_and_returns_fresh_sc
         second = await user_service.fetch_video_detail(BVID, True, **selection)
         assert second["subtitles"]["scope"]["returned_pages"] == [expected_page]
         assert second["subtitles"]["scope"]["summary"] != "mutated"
-    assert course["calls"]["info"] == 5
+    assert course["calls"]["info"] == 1
 
 
 @pytest.mark.asyncio

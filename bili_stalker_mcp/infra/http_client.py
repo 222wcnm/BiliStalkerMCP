@@ -155,6 +155,7 @@ class SharedRawHttpClient:
         # Build the curl session first: if both proxy spellings fail there is
         # nothing else to clean up yet.
         self._curl_session: Any | None = None
+        self._httpx_client: httpx.AsyncClient | None = None
         self._closed = False
 
         if curl_requests is not None:
@@ -173,8 +174,6 @@ class SharedRawHttpClient:
             logger.debug(
                 "curl_cffi is unavailable, raw requests will use httpx fallback only"
             )
-
-        self._httpx_client = _build_httpx_client(ACTIVE_PROXY_URL)
 
     @property
     def is_closed(self) -> bool:
@@ -199,6 +198,8 @@ class SharedRawHttpClient:
 
         if follow_redirects is not None:
             request_kwargs["follow_redirects"] = follow_redirects
+        if self._httpx_client is None:
+            self._httpx_client = _build_httpx_client(ACTIVE_PROXY_URL)
         return await self._httpx_client.request(method.upper(), url, **request_kwargs)
 
     async def get(self, url: str, **kwargs: Any) -> Any:
@@ -212,10 +213,12 @@ class SharedRawHttpClient:
             return
 
         self._closed = True
-        await self._httpx_client.aclose()
-
-        if self._curl_session is not None:
-            await self._curl_session.close()
+        try:
+            if self._httpx_client is not None:
+                await self._httpx_client.aclose()
+        finally:
+            if self._curl_session is not None:
+                await self._curl_session.close()
 
 
 def get_shared_http_client() -> SharedRawHttpClient:

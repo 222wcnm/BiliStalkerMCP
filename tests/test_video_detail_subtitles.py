@@ -14,6 +14,7 @@ from bili_stalker_mcp.services.subtitle_service import (
 )
 from bili_stalker_mcp.services.user_service import (
     _fetch_video_detail_cached,
+    _fetch_video_metadata_cached,
     fetch_video_detail,
 )
 
@@ -21,8 +22,10 @@ from bili_stalker_mcp.services.user_service import (
 @pytest.fixture(autouse=True)
 def clear_video_detail_cache():
     _fetch_video_detail_cached.cache_clear()
+    _fetch_video_metadata_cached.cache_clear()
     yield
     _fetch_video_detail_cached.cache_clear()
+    _fetch_video_metadata_cached.cache_clear()
 
 
 @pytest.mark.asyncio

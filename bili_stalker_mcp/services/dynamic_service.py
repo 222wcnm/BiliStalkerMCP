@@ -15,6 +15,7 @@ from ..config import (
     LAZY_SLEEP_MIN_SECONDS,
     DynamicType,
 )
+from ..deadline import wait_cached, without_request_deadline
 from ..infra.upstream import timed_upstream_call
 from ..models import DynamicItemResponse, DynamicListResponse
 from ..observability import add_lazy_pause, record_cache_hit
@@ -335,6 +336,7 @@ async def _fetch_user_dynamics_uncached(
 
 
 @alru_cache(maxsize=64, ttl=30)
+@without_request_deadline
 async def _fetch_user_dynamics_cached(
     user_id: int,
     limit: int,
@@ -376,8 +378,8 @@ async def fetch_user_dynamics(
         )
 
     before = _fetch_user_dynamics_cached.cache_info()
-    payload = await _fetch_user_dynamics_cached(
-        user_id, limit, cred, dynamic_type, cursor
+    payload = await wait_cached(
+        _fetch_user_dynamics_cached, user_id, limit, cred, dynamic_type, cursor
     )
     after = _fetch_user_dynamics_cached.cache_info()
     record_cache_hit("user_dynamics", _cache_hit(before, after))

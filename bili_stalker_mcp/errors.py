@@ -79,6 +79,19 @@ class InvalidSubtitleSelectionError(ValueError):
         super().__init__(message)
 
 
+class ToolTimeoutError(TimeoutError):
+    """The whole request exhausted its configured time budget."""
+
+    reason = "tool_timeout"
+    message = (
+        "Tool time budget exceeded. Reduce the requested scope, reuse a BVID "
+        "instead of a short link, or increase BILI_TOOL_TIMEOUT_SECONDS."
+    )
+
+    def __init__(self) -> None:
+        super().__init__(self.message)
+
+
 def normalize_retry_after(seconds: float | int | None) -> int | None:
     if seconds is None:
         return None
@@ -126,7 +139,10 @@ def public_error_from_exception(
     *,
     request_id: str | None = None,
 ) -> PublicError:
-    if isinstance(exc, (InvalidVideoIdentifierError, InvalidSubtitleSelectionError)):
+    if isinstance(
+        exc,
+        (InvalidVideoIdentifierError, InvalidSubtitleSelectionError, ToolTimeoutError),
+    ):
         return PublicError(
             code=None,
             reason=exc.reason,
@@ -168,6 +184,8 @@ def public_error_json(
     section: str | None = None,
 ) -> str:
     payload = public_error_from_exception(exc, request_id=request_id).as_dict()
+    if payload["reason"] == "tool_timeout" and tool:
+        payload["tool"] = tool
     if payload["reason"] == "risk_control":
         # These identify the affected operation, not the endpoint that caused
         # the shared circuit to open. Callers supply static names, never URLs.

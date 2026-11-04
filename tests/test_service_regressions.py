@@ -11,12 +11,14 @@ from bili_stalker_mcp.services import dynamic_service, user_service
 @pytest.fixture(autouse=True)
 def isolated_services(monkeypatch):
     user_service._fetch_video_detail_cached.cache_clear()
+    user_service._fetch_video_metadata_cached.cache_clear()
     dynamic_service._fetch_user_dynamics_cached.cache_clear()
     reset_risk_control_circuit()
     monkeypatch.setattr(upstream, "REQUEST_JITTER_MODE", "never")
     monkeypatch.setattr(dynamic_service, "LAZY_ENABLED", False)
     yield
     user_service._fetch_video_detail_cached.cache_clear()
+    user_service._fetch_video_metadata_cached.cache_clear()
     dynamic_service._fetch_user_dynamics_cached.cache_clear()
     reset_risk_control_circuit()
 

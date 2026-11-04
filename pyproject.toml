@@ -32,7 +32,7 @@ dependencies = [
     "fastmcp>=4.0.10,<5",
     "mcp>=2.2.0,<3",
     "httpx>=0.25.0",
-    "async-lru>=2.0.4",
+    "async-lru>=2.4,<3",
     "pydantic>=2.12,<3",
     "curl_cffi>=0.7.0",
 ]

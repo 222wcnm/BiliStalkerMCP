@@ -19,7 +19,7 @@ from fastmcp.exceptions import ToolError
 from pydantic import Field
 
 from . import __version__
-from .config import DynamicType
+from .config import TOOL_TIMEOUT_SECONDS, DynamicType
 from .cookie_refresh import (
     CookieRefreshConfigError,
     CookieRefreshError,
@@ -41,6 +41,7 @@ from .core import (
 )
 from .core import search_users as search_users_service
 from .credentials import cookie_refresh_enabled
+from .deadline import deadline_scope
 from .errors import RiskControlError, public_error_json
 from .models import (
     ArticleContentResponse,
@@ -161,7 +162,8 @@ def create_server() -> FastMCP:
         started = time.perf_counter()
 
         try:
-            result = await runner()
+            async with deadline_scope(time.monotonic() + TOOL_TIMEOUT_SECONDS):
+                result = await runner()
             total_duration_ms = round((time.perf_counter() - started) * 1000, 3)
             metrics = snapshot_metrics()
             logger.info(

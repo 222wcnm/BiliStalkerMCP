@@ -5,8 +5,10 @@ import json
 import logging
 import os
 import sys
+import time
 from collections.abc import Sequence
 from datetime import datetime, timezone
+from difflib import get_close_matches
 from pathlib import Path
 from typing import Any, Never
 
@@ -19,6 +21,10 @@ class JsonArgumentParser(argparse.ArgumentParser):
     def error(self, message: str) -> Never:
         _write_error("invalid_arguments", message)
         raise SystemExit(2)
+
+
+class ToolArgumentsError(ValueError):
+    """A CLI validation failure with input values removed and repair hints."""
 
 
 class JsonLogFormatter(logging.Formatter):
@@ -133,6 +139,11 @@ def _build_parser() -> argparse.ArgumentParser:
 
     tools = commands.add_parser("tools", help="List tools or inspect one tool's schema")
     tools.add_argument("tool", nargs="?", help="Tool name to inspect")
+    tools.add_argument(
+        "--schema",
+        action="store_true",
+        help="Include input schemas; omit output schemas",
+    )
     tools.add_argument("--pretty", action="store_true", help="Indent the JSON output")
 
     call = commands.add_parser(
@@ -177,36 +188,98 @@ def _write_error(reason: str, message: str) -> None:
 
 
 async def _execute(args: argparse.Namespace, arguments: dict[str, Any]) -> object:
-    from fastmcp.exceptions import NotFoundError
+    from fastmcp.exceptions import NotFoundError, ValidationError
+    from pydantic import ValidationError as PydanticValidationError
 
+    from .config import TOOL_TIMEOUT_SECONDS
+    from .deadline import deadline_scope
     from .infra.http_client import close_shared_http_client
     from .server import create_server
 
     try:
-        mcp = create_server()
-        if args.command == "tools" and args.tool is None:
-            return [
-                {"name": tool.name, "description": tool.description}
-                for tool in await mcp.list_tools()
-            ]
+        deadline = (
+            args.started_at + TOOL_TIMEOUT_SECONDS if args.command == "call" else None
+        )
+        async with deadline_scope(deadline):
+            mcp = create_server()
+            if args.command == "tools":
+                if args.tool is None:
+                    return [
+                        {
+                            "name": tool.name,
+                            "description": tool.description,
+                            **({"inputSchema": tool.parameters} if args.schema else {}),
+                        }
+                        for tool in await mcp.list_tools()
+                    ]
 
-        tool = await mcp.get_tool(args.tool)
-        if tool is None:
-            raise NotFoundError(
-                f"Unknown tool: {args.tool!r}. Use 'tools' to list names."
-            )
-        if args.command == "tools":
-            return tool.to_mcp_tool().model_dump(
-                mode="json", by_alias=True, exclude_none=True
-            )
+            tool = await mcp.get_tool(args.tool)
+            if tool is None:
+                raise NotFoundError(
+                    f"Unknown tool: {args.tool!r}. Use 'tools --schema' to list tools and arguments."
+                )
+            if args.command == "tools":
+                if args.schema:
+                    return {
+                        "name": tool.name,
+                        "description": tool.description,
+                        "inputSchema": tool.parameters,
+                    }
+                return tool.to_mcp_tool().model_dump(
+                    mode="json", by_alias=True, exclude_none=True
+                )
 
-        result = await mcp.call_tool(args.tool, arguments)
-        if result.structured_content is None:
-            raise RuntimeError("Tool returned no structured result")
-        return result.structured_content
+            try:
+                result = await mcp.call_tool(args.tool, arguments)
+            except (ValidationError, PydanticValidationError) as exc:
+                raise ToolArgumentsError(
+                    json.dumps(_argument_error(args.tool, tool.parameters, exc))
+                ) from None
+            if result.structured_content is None:
+                raise RuntimeError("Tool returned no structured result")
+            return result.structured_content
     finally:
         # Close connections on the same event loop that ran the request.
         await close_shared_http_client()
+
+
+def _argument_error(
+    tool: str, schema: dict[str, Any], exc: Exception
+) -> dict[str, Any]:
+    from pydantic import ValidationError
+
+    fields = list(schema.get("properties", {}))
+    validation = exc if isinstance(exc, ValidationError) else exc.__cause__
+    errors = []
+    if isinstance(validation, ValidationError):
+        for error in validation.errors(
+            include_input=False, include_context=False, include_url=False
+        ):
+            field = ".".join(str(part) for part in error["loc"])
+            detail = {"field": field, "type": error["type"], "message": error["msg"]}
+            if error["type"] == "unexpected_keyword_argument":
+                common_names = {
+                    "uid": "user_id_or_username",
+                    "mid": "user_id_or_username",
+                    "user_id": "user_id_or_username",
+                    "target_id": "content_id",
+                }
+                suggestion = common_names.get(field)
+                if suggestion not in fields:
+                    matches = get_close_matches(field, fields, n=1, cutoff=0.6)
+                    suggestion = matches[0] if matches else None
+                if suggestion:
+                    detail["did_you_mean"] = suggestion
+            errors.append(detail)
+    return {
+        "reason": "invalid_arguments",
+        "tool": tool,
+        "message": f"Invalid arguments for {tool}. Check errors and use the declared fields.",
+        "errors": errors,
+        "required_fields": schema.get("required", []),
+        "valid_fields": fields,
+        "schema_command": f"bili-stalker-mcp tools {tool} --schema",
+    }
 
 
 def _run_command(args: argparse.Namespace) -> int:
@@ -232,7 +305,12 @@ def _run_command(args: argparse.Namespace) -> int:
     tool_logger.disabled = True
     try:
         payload = asyncio.run(_execute(args, arguments))
-    except (NotFoundError, ValidationError, PydanticValidationError) as exc:
+    except (
+        ToolArgumentsError,
+        NotFoundError,
+        ValidationError,
+        PydanticValidationError,
+    ) as exc:
         _write_error("invalid_arguments", str(exc))
         return 2
     except CookieRefreshConfigError as exc:
@@ -242,7 +320,7 @@ def _run_command(args: argparse.Namespace) -> int:
         _write_error("tool_error", str(exc))
         return 1
     except Exception as exc:
-        _write_error("internal_error", public_error_json(exc))
+        _write_error("internal_error", public_error_json(exc, tool=args.tool))
         return 1
     finally:
         tool_logger.disabled = was_disabled
@@ -258,6 +336,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             stream.reconfigure(encoding="utf-8")
 
     args = _build_parser().parse_args(argv)
+    args.started_at = time.monotonic()
     try:
         if args.command in (None, "serve"):
             return _serve()

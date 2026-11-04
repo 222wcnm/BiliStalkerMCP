@@ -265,6 +265,79 @@ def test_schema_validation_happens_before_upstream(monkeypatch, capsys, argument
     assert json.loads(captured.err)["error"]["reason"] == "invalid_arguments"
 
 
+def test_schema_catalog_contains_all_inputs_without_outputs(capsys):
+    assert cli.main(["tools", "--schema"]) == 0
+    catalog = json.loads(capsys.readouterr().out)
+    assert len(catalog) == 12
+    assert all("inputSchema" in tool and "outputSchema" not in tool for tool in catalog)
+    snapshot = next(tool for tool in catalog if tool["name"] == "get_user_snapshot")
+    assert snapshot["inputSchema"]["required"] == ["user_id_or_username"]
+    assert cli.main(["tools", "get_user_snapshot", "--schema"]) == 0
+    assert json.loads(capsys.readouterr().out) == snapshot
+
+
+@pytest.mark.parametrize(
+    "field,expected",
+    [
+        ("uid", "user_id_or_username"),
+        ("mid", "user_id_or_username"),
+        ("dynamics_limit", "dynamic_limit"),
+    ],
+)
+def test_invalid_argument_hints_do_not_echo_values(
+    monkeypatch, capsys, field, expected
+):
+    service = AsyncMock()
+    monkeypatch.setattr(server, "fetch_user_info", service)
+    assert (
+        cli.main(
+            [
+                "call",
+                "get_user_snapshot",
+                "--args",
+                json.dumps(
+                    {"user_id_or_username": "123", field: "private-input-value"}
+                ),
+            ]
+        )
+        == 2
+    )
+    service.assert_not_awaited()
+    output = capsys.readouterr()
+    error = json.loads(output.err)["error"]
+    assert error["tool"] == "get_user_snapshot"
+    assert error["required_fields"] == ["user_id_or_username"]
+    assert expected in error["valid_fields"]
+    detail = next(e for e in error["errors"] if e["field"] == field)
+    assert detail["did_you_mean"] == expected
+    assert "private-input-value" not in output.out + output.err
+
+
+def test_doctor_exposes_dead_proxy_fallback_only_after_network_probe(
+    monkeypatch, capsys
+):
+    monkeypatch.setenv("SESSDATA", "test-session")
+    monkeypatch.setenv("BILI_PROXY", "http://user:private-proxy@127.0.0.1:9")
+    monkeypatch.setattr(
+        socket, "create_connection", lambda *_a, **_kw: pytest.fail("unexpected probe")
+    )
+    assert cli.main(["doctor"]) == 0
+    offline = json.loads(capsys.readouterr().out)["checks"]["proxy"]
+    assert offline["tcp_reachable"] is None
+    assert offline["expected_route"] == "not_checked"
+
+    def unavailable(*_a, **_kw):
+        raise ConnectionRefusedError("private transport information")
+
+    monkeypatch.setattr(socket, "create_connection", unavailable)
+    assert cli.main(["doctor", "--network"]) == 1
+    output = capsys.readouterr()
+    proxy = json.loads(output.out)["checks"]["proxy"]
+    assert proxy["tcp_reachable"] is False
+    assert proxy["expected_route"] == "direct_fallback"
+    assert "private" not in output.out + output.err
+
+
 def test_missing_credentials_return_failure_without_upstream(monkeypatch, capsys):
     service = AsyncMock()
     monkeypatch.setattr(server, "fetch_user_info", service)

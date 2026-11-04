@@ -87,6 +87,7 @@ uv run bili-stalker-mcp --help
 uv run bili-stalker-mcp doctor
 uv run bili-stalker-mcp doctor --network
 uv run bili-stalker-mcp tools
+uv run bili-stalker-mcp tools --schema
 uv run bili-stalker-mcp tools get_user_snapshot --pretty
 uv run bili-stalker-mcp call search_users --args '{"keyword":"用户名","limit":5}'
 uv run bili-stalker-mcp call get_user_snapshot --args '{"user_id_or_username":"12345","video_limit":5,"dynamic_limit":5,"article_limit":0}' --pretty
@@ -95,11 +96,13 @@ uv run bili-stalker-mcp call get_video_detail --args '{"bvid":"https://www.bilib
 uv run bili-stalker-mcp call get_video_detail --args '{"bvid":"BV1xx411c7mD","fetch_subtitles":true,"subtitle_scope":"all","subtitle_mode":"full"}'
 ```
 
-`tools` 列出工具名称与简介；`tools 工具名` 返回完整 MCP schema，包含必填参数、默认值
-和取值范围。`call 工具名` 使用与 MCP 完全相同的工具名称及 JSON 参数。
+`tools` 列出工具名称与简介；`tools --schema` 一次返回全部工具的输入 Schema，包含必填参数、
+默认值和取值范围，可在后续调用中复用。`tools 工具名` 保留完整 MCP Schema；加上 `--schema`
+可只看输入约束。`call 工具名` 使用与 MCP 完全相同的工具名称及 JSON 参数。
 `doctor` 输出 JSON 格式的本地诊断，包括凭据来源、自动刷新配置、代理设置和依赖版本；
 默认不联网、不修改凭据文件，也不输出凭据内容。`doctor --network` 额外进行 TCP 连通性检查，
-不验证登录状态或 B 站接口响应。
+不验证登录状态或 B 站接口响应；代理的 `tcp_reachable` 和 `expected_route` 显示本次探测结果
+及预计使用代理还是回退直连，服务启动时仍会重新探测。
 schema 中标为字符串的 ID 必须加引号，包括数字 UID 和较长的专栏、动态 ID。
 
 参数较多或需要避免 shell 引号转义时，可以读取 UTF-8 JSON 文件，或从管道读取 JSON 对象：
@@ -125,6 +128,15 @@ uv run --env-file .env bili-stalker-mcp call get_user_info --args '{"user_id_or_
 查询及参数失败时，标准错误最后一行是包含 `error` 的 JSON 对象；风控错误保留 `code` 和
 `retry_after`；argparse 参数错误也遵循这一格式。用户概览允许部分成功，分析前应检查返回值的 `errors` 字段。
 
+未知参数仍会被拒绝；错误包含 `valid_fields`、`required_fields` 和可用时的 `did_you_mean`，
+可据此修正拼写。提示的 `uid` 等常见名称不会被自动当作别名执行。
+单次调用默认有 25 秒总预算，CLI 从解析命令后开始计时（包括依赖加载和参数读取），
+原生 MCP 从工具开始执行时计时。预算耗尽返回 `reason="tool_timeout"`；如果视频信息已取得，
+会优先保留视频信息，并在字幕的 `errors` 中说明字幕未完成。这类超时结果不会进入视频结果缓存。
+可通过 `BILI_TOOL_TIMEOUT_SECONDS` 调整预算，并使调用方超时设置留有余量；预算通过异步取消生效，
+不会强制中断同步初始化。连接与结果缓存仅在同一进程内复用，连续查询可使用常驻 MCP 服务。
+同键并发调用复用抓取任务，但预算分别计算；最后一个等待者退出后取消未完成的任务。
+
 也可以使用 `uv run python -m bili_stalker_mcp ...`，参数相同。
 安装包后可直接运行 `bili-stalker-mcp ...`。不传子命令时仍然启动 MCP stdio 服务，
 也可显式运行 `bili-stalker-mcp serve`。
@@ -141,6 +153,8 @@ uv run --env-file .env bili-stalker-mcp call get_user_info --args '{"user_id_or_
 | `BILI_ENABLE_COOKIE_REFRESH` | 否 | 设为 `true` 后启用安全自动刷新；默认：`false`。 |
 | `BILI_COOKIE_REFRESH_CHECK_INTERVAL_SECONDS` | 否 | 检查刷新需求的间隔秒数；默认：`21600`，最小：`60`。 |
 | `BILI_PROXY` | 否 | 让全部上游请求（bilibili_api 与内置 HTTP 客户端）走指定代理。系统代理未被自动识别、或 B 站域名 DNS 解析不稳定时建议配置。若启动时代理不可达，服务会自动降级为直连并记录警告。 |
+| `BILI_TOOL_TIMEOUT_SECONDS` | 否 | 单次工具调用的总预算秒数，包含重试和等待；默认：`25`，须为有限正数。 |
+| `BILI_SHORT_LINK_TIMEOUT_SECONDS` | 否 | 短链接解析的总预算秒数；默认：`5`，须为有限正数，同时受工具剩余预算约束。成功解析缓存 300 秒，最多跟随 5 次请求，取得视频地址即停止。 |
 | `BILI_REQUEST_JITTER_MODE` | 否 | 上游抖动策略：`adaptive`（默认；仅在未配置登录态或近期出现 412/429/403 时休眠）、`always`、`never`。 |
 | `BILI_REQUEST_JITTER_MIN_MS` / `BILI_REQUEST_JITTER_MAX_MS` | 否 | 抖动休眠范围；默认：`200`–`1200`。 |
 | `BILI_REQUEST_JITTER_BUDGET_MS` | 否 | 单次工具调用允许的抖动休眠总量；默认：`500`。 |

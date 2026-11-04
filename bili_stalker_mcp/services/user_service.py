@@ -6,9 +6,16 @@ from async_lru import alru_cache
 from bilibili_api import Credential, article, search, user, video
 from bilibili_api.exceptions import ApiException
 
+from ..deadline import (
+    deadline_scope,
+    get_deadline,
+    wait_cached,
+    without_request_deadline,
+)
 from ..errors import (
     RISK_CONTROL_CODES,
     InvalidSubtitleSelectionError,
+    ToolTimeoutError,
     extract_error_code,
 )
 from ..infra.http_client import get_json
@@ -20,6 +27,7 @@ from ..models import (
     ArticleStatsResponse,
     FollowingItemResponse,
     FollowingsResponse,
+    SubtitleResponse,
     SubtitleScopeSummary,
     UserInfoResponse,
     UserSearchItem,
@@ -58,6 +66,7 @@ logger = logging.getLogger(__name__)
 
 USER_SEARCH_LIMIT = 20
 USER_SEARCH_TIMEOUT_SECONDS = 10.0
+SUBTITLE_TIMEOUT_REASON = "Subtitle retrieval exceeded the tool time budget."
 
 # ──────────────────── internal helpers ────────────────────
 
@@ -204,6 +213,7 @@ def _filter_article_stats(raw_stats: Any) -> ArticleStatsResponse:
 
 
 @alru_cache(maxsize=128, ttl=3600)
+@without_request_deadline
 @with_retry(
     max_retries=1,
     base_delay=1.0,
@@ -260,7 +270,7 @@ async def search_users(keyword: str, limit: int = 10) -> dict[str, Any]:
         raise ValueError(f"limit must be between 1 and {USER_SEARCH_LIMIT}")
 
     before = _search_users_cached.cache_info()
-    users = await _search_users_cached(normalized)
+    users = await wait_cached(_search_users_cached, normalized)
     after = _search_users_cached.cache_info()
     record_cache_hit("user_search", _cache_hit(before, after))
 
@@ -284,7 +294,7 @@ async def get_user_id_by_username(username: str) -> int | None:
         return None
 
     before = _search_users_cached.cache_info()
-    users = await _search_users_cached(username)
+    users = await wait_cached(_search_users_cached, username)
     after = _search_users_cached.cache_info()
     record_cache_hit("user_id_by_username", _cache_hit(before, after))
 
@@ -367,6 +377,7 @@ def _parse_user_profile(info: dict[str, Any]) -> dict[str, Any]:
 
 
 @alru_cache(maxsize=32, ttl=300)
+@without_request_deadline
 @with_retry(max_retries=3, base_delay=2.0)
 async def _fetch_user_info_cached(user_id: int, cred: Credential) -> dict[str, Any]:
     u = user.User(uid=user_id, credential=cred)
@@ -378,6 +389,8 @@ async def _fetch_user_info_cached(user_id: int, cred: Credential) -> dict[str, A
                 params={"vmid": user_id},
                 cred=cred,
             )
+        except ToolTimeoutError:
+            raise
         except RetryableBiliApiError as exc:
             logger.warning(
                 "Relation stat request was blocked or rate-limited for uid %s: %s",
@@ -405,6 +418,8 @@ async def _fetch_user_info_cached(user_id: int, cred: Credential) -> dict[str, A
             return None
         try:
             return await timed_upstream_call(u.get_up_stat())
+        except ToolTimeoutError:
+            raise
         except Exception as exc:
             logger.warning("Up stat request failed for uid %s: %s", user_id, exc)
             return None
@@ -448,7 +463,7 @@ async def _fetch_user_info_cached(user_id: int, cred: Credential) -> dict[str, A
 
 async def fetch_user_info(user_id: int, cred: Credential) -> dict[str, Any]:
     before = _fetch_user_info_cached.cache_info()
-    user_data = await _fetch_user_info_cached(user_id, cred)
+    user_data = await wait_cached(_fetch_user_info_cached, user_id, cred)
     after = _fetch_user_info_cached.cache_info()
     record_cache_hit("user_info", _cache_hit(before, after))
 
@@ -457,6 +472,7 @@ async def fetch_user_info(user_id: int, cred: Credential) -> dict[str, Any]:
 
 
 @alru_cache(maxsize=64, ttl=60)
+@without_request_deadline
 @with_retry(max_retries=3, base_delay=2.0)
 async def _fetch_user_videos_cached(
     user_id: int,
@@ -502,8 +518,8 @@ async def fetch_user_videos(
     keyword: str = "",
 ) -> dict[str, Any]:
     before = _fetch_user_videos_cached.cache_info()
-    payload = await _fetch_user_videos_cached(
-        user_id, page, limit, cred, keyword=keyword
+    payload = await wait_cached(
+        _fetch_user_videos_cached, user_id, page, limit, cred, keyword=keyword
     )
     after = _fetch_user_videos_cached.cache_info()
     record_cache_hit("user_videos", _cache_hit(before, after))
@@ -512,20 +528,13 @@ async def fetch_user_videos(
 
 
 @alru_cache(maxsize=64, ttl=180)
+@without_request_deadline
 @with_retry(max_retries=3, base_delay=2.0)
-async def _fetch_video_detail_cached(
+async def _fetch_video_metadata_cached(
     bvid: str,
     fetch_subtitles: bool = False,
     cred: Credential | None = None,
-    *,
-    subtitle_mode: Literal["minimal", "smart", "full"] = DEFAULT_SUBTITLE_MODE,
-    subtitle_lang: str = DEFAULT_SUBTITLE_LANG,
-    subtitle_max_chars: int = DEFAULT_SUBTITLE_MAX_CHARS,
-    subtitle_scope: SubtitleScope = "single",
-    subtitle_page: int | None = None,
-    subtitle_cid: int | None = None,
-    subtitle_url_page: int | None = None,
-) -> dict[str, Any]:
+) -> tuple[VideoDetailItem, dict[str, Any], list[dict[str, Any]]]:
     v = video.Video(bvid=bvid, credential=cred) if fetch_subtitles else None
     video_data: Any
     if v is not None:
@@ -584,15 +593,43 @@ async def _fetch_video_detail_cached(
         tags=_extract_tags(video_data),
         pages=[VideoPageItem(**page) for page in normalized_pages],
     )
+    return video_item, video_data, normalized_pages
+
+
+@alru_cache(maxsize=64, ttl=180)
+@without_request_deadline
+async def _fetch_video_detail_cached(
+    bvid: str,
+    fetch_subtitles: bool = False,
+    cred: Credential | None = None,
+    *,
+    subtitle_mode: Literal["minimal", "smart", "full"] = DEFAULT_SUBTITLE_MODE,
+    subtitle_lang: str = DEFAULT_SUBTITLE_LANG,
+    subtitle_max_chars: int = DEFAULT_SUBTITLE_MAX_CHARS,
+    subtitle_scope: SubtitleScope = "single",
+    subtitle_page: int | None = None,
+    subtitle_cid: int | None = None,
+    subtitle_url_page: int | None = None,
+) -> dict[str, Any]:
+    video_item, video_data, normalized_pages = await wait_cached(
+        _fetch_video_metadata_cached, bvid, fetch_subtitles, cred
+    )
 
     if fetch_subtitles:
-        assert v is not None
+        v = video.Video(bvid=bvid, credential=cred)
         subtitle_pages = _select_subtitle_pages(
             normalized_pages,
             subtitle_scope,
             subtitle_page,
             subtitle_cid,
             subtitle_url_page,
+        )
+        scope = SubtitleScopeSummary(
+            mode=subtitle_scope,
+            target_page=(
+                subtitle_pages[0]["page"] if subtitle_scope == "single" else None
+            ),
+            total_pages=len(normalized_pages),
         )
         subtitles = await collect_subtitles(
             v,
@@ -601,16 +638,9 @@ async def _fetch_video_detail_cached(
             subtitle_mode=subtitle_mode,
             subtitle_lang=subtitle_lang,
             subtitle_max_chars=subtitle_max_chars,
-            # Inline subtitles can only be trusted for originally single-page
-            # videos, never merely because the selected range is one page.
+            # Inline subtitles are only reliable for single-page videos.
             video_info=video_data if len(normalized_pages) == 1 else None,
-            scope=SubtitleScopeSummary(
-                mode=subtitle_scope,
-                target_page=(
-                    subtitle_pages[0]["page"] if subtitle_scope == "single" else None
-                ),
-                total_pages=len(normalized_pages),
-            ),
+            scope=scope,
         )
     else:
         subtitles = build_disabled_subtitles(subtitle_lang)
@@ -637,18 +667,63 @@ async def fetch_video_detail(
             subtitle_scope, subtitle_page, subtitle_cid, subtitle_url_page
         )
     before = _fetch_video_detail_cached.cache_info()
-    payload = await _fetch_video_detail_cached(
-        bvid=bvid,
-        fetch_subtitles=fetch_subtitles,
-        cred=cred,
-        subtitle_mode=subtitle_mode,
-        subtitle_lang=subtitle_lang,
-        subtitle_max_chars=subtitle_max_chars,
-        subtitle_scope=subtitle_scope,
-        subtitle_page=subtitle_page,
-        subtitle_cid=subtitle_cid,
-        subtitle_url_page=subtitle_url_page,
-    )
+    cache_arguments: dict[str, Any] = {
+        "bvid": bvid,
+        "fetch_subtitles": fetch_subtitles,
+        "cred": cred,
+        "subtitle_mode": subtitle_mode,
+        "subtitle_lang": subtitle_lang,
+        "subtitle_max_chars": subtitle_max_chars,
+        "subtitle_scope": subtitle_scope,
+        "subtitle_page": subtitle_page,
+        "subtitle_cid": subtitle_cid,
+        "subtitle_url_page": subtitle_url_page,
+    }
+    if fetch_subtitles and subtitle_mode != "minimal":
+        deadline = get_deadline()
+        reserve = (
+            min(0.1, max(0.0, deadline - asyncio.get_running_loop().time()) * 0.2)
+            if deadline is not None
+            else 0.0
+        )
+        try:
+            # Only this caller gives up early; other waiters can finish the cache entry.
+            async with deadline_scope(
+                deadline - reserve if deadline is not None else None
+            ):
+                payload = await wait_cached(
+                    _fetch_video_detail_cached, **cache_arguments
+                )
+        except ToolTimeoutError:
+            if not _fetch_video_metadata_cached.cache_contains(bvid, True, cred):
+                raise
+            video_item, _, pages = await wait_cached(
+                _fetch_video_metadata_cached, bvid, True, cred
+            )
+            selected = _select_subtitle_pages(
+                pages, subtitle_scope, subtitle_page, subtitle_cid, subtitle_url_page
+            )
+            scope = SubtitleScopeSummary(
+                mode=subtitle_scope,
+                target_page=(
+                    selected[0]["page"] if subtitle_scope == "single" else None
+                ),
+                total_pages=len(pages),
+                summary=SUBTITLE_TIMEOUT_REASON,
+            )
+            payload = VideoDetailResponse(
+                video=video_item,
+                subtitles=SubtitleResponse(
+                    enabled=True,
+                    mode=subtitle_mode,
+                    scope=scope,
+                    requested_language=subtitle_lang,
+                    fallback_reason=SUBTITLE_TIMEOUT_REASON,
+                    errors=[SUBTITLE_TIMEOUT_REASON],
+                ),
+            ).model_dump()
+    else:
+        payload = await wait_cached(_fetch_video_detail_cached, **cache_arguments)
     after = _fetch_video_detail_cached.cache_info()
     record_cache_hit("video_detail", _cache_hit(before, after))
     # Match the other cached services: callers must not mutate the cache entry.
