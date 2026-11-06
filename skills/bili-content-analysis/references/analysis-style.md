@@ -1,65 +1,59 @@
-# Analysis Style Guide
+# 视频与字幕深度解析规范
 
-This reference expands writing behavior for deep Bilibili content analysis tasks.
+基于获取到的视频字幕、专栏文稿或动态文本，输出一份逻辑严密、信息完整、潜台词清晰的最佳书面还原稿，并在文末独立附上校注依据与话语拆解。
 
-## Role
+## 一、 核心原则
 
-- Act as a content analysis specialist focused on reconstruction, interpretation, and evidence-backed discussion.
-- Stay capable of normal discussion when users switch from analysis to conversation.
+深度解析源材料的目的，是**把源材料讲得最透彻、最完整，并顺着它的思路把话讲透**，而不是做缩水摘要，也不是在正文里给原作者挑刺或做外部事实核查。
 
-## Core principles
+四项衡量标准：
+1. **完整承接源材料信息**：保留原有的信息量、论证过程、细节、情绪和语境，用连贯的章节和段落把源材料里有价值的内容全部呈现出来，不做压缩摘要或零散的单行列表。
+2. **理顺表达与重组结构**：顺着源材料原本的逻辑和语气，修复口语破碎、倒装、重复与语音识别（ASR）错字，按内在论证脉络重排松散或穿插的内容，让最终文本读起来像是**源材料整理打磨后的最佳书面稿**。
+3. **点明弦外之音与潜在信息**：源材料里未直接说透的潜台词、隐含前提、言外之意、避讳代称和深层意图，本来就是内容的一部分。在解析中主动点明并融入论述脉络，让潜台词与明面上的话自然结合。
+4. **正文直接笃定，依据与分歧放文末**：正文直接顺着源材料的内在视角行文，不加“作者认为”“疑似”等旁观或免责套话；同时所有重组、延伸和解读必须有源材料线索支撑，跨步推导、拿不准的多解之处与外部视角的话术拆解，统一放入文末校注。
 
-- Prioritize analytical depth and completeness before rhetorical polish.
-- Keep fidelity to source intent while improving readability and structure.
-- Treat user intent as the highest-priority decision rule.
+---
 
-## Source identification and cleanup
+## 二、 正文写作要求（还原、重组与延伸）
 
-- Detect and fix likely transcription errors only when contextual evidence is strong.
-- Identify multi-speaker structure when language style, claims, or discourse markers support it.
-- Preserve uncertainty when evidence is weak instead of forcing certainty.
+### 1. 语言打磨与视角控制
+- **直接修正口语和识别错误**：结合上下文、领域背景（如哲学、政经、亚文化、行业黑话等）和说话人的习惯，直接修正语音识别错字、术语误听、口头禅、车轱辘话和半截话，不在正文里保留生硬的转录残句或表示犹豫的括号。若涉及多人对话或交锋，根据语气、立场与话轮标记清晰区分说话人。
+- **贴合原片质感的表达优化**：在忠于原意、原本思路和语气的前提下，改写松散的口语长句，让概念更清晰、论证更顺畅。如果原话啰嗦模糊但核心意思犀利，就帮它把话讲透、讲利落；如果原话靠密集的比喻、反讽或激烈修辞推进逻辑，保留原本的锋芒和力度，不改写成四平八稳的温吞水，也不套用脱离原片语气的生造黑话或公文腔。
+- **采用内生视角直接陈述**：直接进入源材料的论述视角展开推导，让观点、论据和逻辑自己呈现出来，不在正文中使用“作者认为”“视频主要讲了”“说话人声称”“通过分析可以看出”“疑似”等抽离总结或防御免责的措辞。
 
-## Structure and depth
+### 2. 结构重组与顺势延伸
+- **按内在逻辑重排结构**：当源材料因即兴发挥、直播闲聊或口语插叙导致结构散乱、前后穿插时，按内在的论证脉络或话题推进阶段重新组织章节与段落。
+- **补全未说透的逻辑链条**：顺着源材料已经铺好的思路和问题，把说话人因口语跳跃省掉的中间推导、起了头没说完的结论、或散在各处的同一条线索自然收拢并推导完整。延伸必须顺着源材料本身的思路走，不强行塞入不相干的外部话题。
 
-- Follow original source structure (timeline, sections, or argument flow) whenever possible.
-- Use Markdown to organize output, but avoid over-fragmented formatting.
-- For each core claim, include background, logic chain, evidence, and implicit assumptions when available.
+### 3. 直接点明潜在信息
+- **挑明隐含前提与潜台词**：把表面言论背后的默认前提、价值立场、针对的目标或语境背景，直接写进正文的论述脉络中，让不了解背景的读者也能直接看懂话里的分量和交锋。
+- **直接写出有把握的黑话与暗指**：对于圈子黑话、缩写、典故，以及上下文已经能明确锁定的暗指对象或事件，在正文里直接用清楚准确的词点明，并附上脚注角标（如 `[^1]`、`[^2]`），在文末校注中记下还原依据。
 
-## Fidelity and rewriting
+---
 
-- Aim to cover all high-value source information with intelligent prioritization.
-- Preserve critical phrasing and tone; remove only obvious colloquial redundancy or grammar noise that hurts clarity.
-- Separate direct evidence from inference explicitly.
+## 三、 证据边界与两段式输出结构
 
-## Revealing latent information (when requested)
+为了保证正文干净连贯，同时做到有据可查、不靠猜测误导读者，统一采用**「第一部分：正文 + 第二部分：文末校注」**的两段式结构。
 
-When the task explicitly asks to "reveal latent information" beyond cleanup, split into two tracks and never blend them into the transcript body:
+### 1. 证据边界
+- **有据可依**：对潜台词的补充、暗指的解读和逻辑的延伸，必须在源材料里找得到具体线索（如用词反常、话说一半留白、语气加重、前后文呼应或明确的圈子语境），不脱离源材料凭个人想象发挥。
+- **多解分流**：如果某处暗指、残句或动机线索只有孤证，存在两种以上合理解释，正文保留原本的模糊空间，不在正文中强行选定一种当成确定事实，而是把几种可能放到文末校注里并列说明。
 
-- Track A — decoding what the speaker deliberately left unclear (self-censorship, risk avoidance, intentional vagueness about names or referents). Only attempt this when the transcript itself gives strong contextual evidence, and state confidence explicitly. When evidence is weak, preserve the original ambiguity instead of resolving it — do not name real individuals the speaker themselves declined to name outright.
-- Track B — discourse/rhetorical analysis: self-justifying narrative structures, argumentative functions, or ideological effects the discourse produces, regardless of whether the speaker intends or would acknowledge them. This is analytical inference, not the speaker's words. Present it in a clearly separated section (e.g. an appendix), explicitly labeled as inference.
+### 2. 输出结构
 
-Rules that apply to both tracks:
-- Named accusations against real, identifiable people stay attributed as "the speaker's claim" — never asserted as verified fact.
-- Extreme or degrading rhetoric: preserve its structural/argumentative function; don't reproduce the most graphic phrasing verbatim — paraphrase instead.
+1. **第一部分：正文（完整还原、重组与合理延伸）**
+   - 直接围绕源材料的核心话题或重组后的章节展开。
+   - 涉及关键的黑话翻译、暗指点明、重要语音识别修正或较大幅度的逻辑延伸时，在正文相应位置加上脚注角标（如 `[^1]`、`[^2]`），不在正文句中插括号做解释或免责说明。
 
-## Discussion mode
+2. **第二部分：校注、还原依据与话语分析（文末独立章节）**
+   - 集中放置需要向读者交代的判断依据与跳出原片的外部观察，按实际需要包含以下模块（无则省略）：
+     - **【黑话、概念与暗指校注】**：对应正文角标或关键段落，说明原片里的黑话、代称、欲言又止或严重识别错字原本是什么，并给出原片位置（时间点或行号）及还原所依据的上下文线索与背景知识；若有多种解读可能，在此处如实列出。
+     - **【深层话语与修辞手法拆解】**：需要跳出原作者视角，指出其未察觉或不愿承认的叙事套路、话术闭环、情绪动员方式、逻辑盲区或立场倾向时，统一放在此处做冷静、直接的拆解。
+     - **【源材料信息】**：记录基础信息（如视频标题、UP主、`bvid`、发布时间、分P范围及核心段落对应的时间轴或行号区间），方便回查核对。
 
-- Continue the conversation with context-aware depth.
-- Use style mirroring only when it improves comprehension and does not distort facts.
+---
 
-## Output behavior
+## 四、 异常与交付边界
 
-- Prefer opening with final analysis when information is sufficient.
-- Avoid process narration or filler unless users request methodology.
-- Expand length when needed for completeness; stay concise when user asks for brevity.
-
-## Failure handling
-
-When either condition occurs:
-1. Required data for analysis is unavailable.
-2. Retrieved data cannot be parsed or validated reliably.
-
-Then:
-- State concrete failure reasons immediately.
-- Do not fabricate analysis from incomplete premises.
-- Provide only factual clarification and actionable next steps.
+- **有效数据直接交付**：拿到有效的字幕或文稿后，直接输出解析正文与文末校注，不在开头铺垫分析方法或处理过程。
+- **数据缺失如实说明**：仅当工具调用失败、字幕缺失或被截断等客观数据不全时，说明已获取的范围与缺失部分，不编造未获取到的源材料内容。

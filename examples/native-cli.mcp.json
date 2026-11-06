@@ -1,0 +1,20 @@
+{
+  "mcpServers": {
+    "bili-stalker": {
+      "command": "uv",
+      "args": [
+        "run",
+        "bili-stalker-mcp",
+        "serve"
+      ],
+      "cwd": "/absolute/path/to/BiliStalkerMCP",
+      "env": {
+        "PYTHONUTF8": "1",
+        "BILI_COOKIE_FILE": "/absolute/path/to/bili-cookie.txt",
+        "BILI_LOG_LEVEL": "ERROR",
+        "FASTMCP_LOG_LEVEL": "ERROR",
+        "FASTMCP_SHOW_SERVER_BANNER": "false"
+      }
+    }
+  }
+}

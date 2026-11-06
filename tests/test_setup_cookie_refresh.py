@@ -7,6 +7,19 @@ import pytest
 from bili_stalker_mcp import setup_cookie_refresh as setup
 
 
+@pytest.fixture(autouse=True)
+def setup_project(tmp_path, monkeypatch):
+    # Keep the repository boundary under test independent of where pytest's
+    # scratch directory lives (it can be inside the real checkout in a sandbox).
+    project = tmp_path / "project"
+    project.mkdir()
+    (project / "pyproject.toml").write_text("[project]\n", encoding="utf-8")
+    monkeypatch.setattr(
+        setup, "__file__", str(project / "bili_stalker_mcp" / "setup_cookie_refresh.py")
+    )
+    return project
+
+
 def test_create_credential_files_writes_supported_values_only(tmp_path):
     secret = "refresh-token-test-secret"
 
@@ -73,12 +86,10 @@ def test_create_credential_files_removes_new_cookie_if_token_write_fails(
     assert not (directory / setup.COOKIE_FILE_NAME).exists()
 
 
-def test_create_credential_files_rejects_a_repository_directory():
-    project_root = Path(__file__).parents[1]
-
+def test_create_credential_files_rejects_a_repository_directory(setup_project):
     with pytest.raises(setup.SetupError, match="outside this repository"):
         setup.create_credential_files(
-            project_root / "not-secret-output",
+            setup_project / "not-secret-output",
             "SESSDATA=test-sess; bili_jct=test-jct",
             "refresh-token-test-secret",
         )

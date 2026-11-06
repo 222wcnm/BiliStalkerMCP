@@ -1,10 +1,9 @@
-﻿import logging
+import logging
 from typing import Optional
 
 from bilibili_api import user  # compatibility export for tests/monkeypatching
 from bilibili_api import Credential
 
-from .config import initialize_bilibili_request_settings
 from .credentials import CredentialLoadError, load_credential_snapshot
 from .infra.http_client import get_shared_http_client
 from .parsers.dynamic_parser import format_timestamp, parse_dynamic_item
@@ -29,8 +28,6 @@ from .services.user_service import (
     get_user_id_by_username,
     search_users,
 )
-
-initialize_bilibili_request_settings()
 
 logger = logging.getLogger(__name__)
 

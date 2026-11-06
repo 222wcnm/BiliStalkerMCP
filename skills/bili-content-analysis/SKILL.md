@@ -8,7 +8,7 @@ description: Deep analysis and tracking of Bilibili creators, videos, dynamics, 
 ## Choose an available interface
 
 - Use the user's requested interface. Otherwise use connected BiliStalker MCP tools, or the CLI when terminal access and the project are available.
-- For CLI invocation, read [references/cli.md](references/cli.md). Discover tool names with `bili-stalker-mcp tools` and inspect arguments with `bili-stalker-mcp tools TOOL`; the CLI shares MCP tool names, schemas, and results.
+- For CLI invocation, read [references/cli.md](references/cli.md). Prefer native `fastmcp list CONFIG` / `fastmcp call CONFIG TOOL`; discover input schemas before calling. Existing scripts may retain the legacy CLI.
 - Use credentials configured for the chosen runtime. An MCP client's environment settings do not automatically apply to a separate terminal.
 
 ## Run workflow
@@ -27,19 +27,18 @@ description: Deep analysis and tracking of Bilibili creators, videos, dynamics, 
 - For video clues in recent dynamics, use `get_user_dynamics` with `dynamic_type="VIDEO"`. Use video list/search tools for upload history, totals, or keyword search; dynamics provide only partial coverage. Video dynamics carry top-level `type="VIDEO"` and `video`; `origin.video` belongs to a repost and may be another creator's work.
 - For discussion analysis, use `get_content_comments` and fetch a selected thread with `get_content_comment_replies`. Note-style comments may be previews; retrieve `note.cvid` with `get_article_content` when full text is needed.
 
-3. Reconstruct source before interpreting
-- Preserve source structure by timeline, chapter, or original logic order.
-- Correct obvious transcription noise only when context provides strong evidence.
+3. Reconstruct and develop the source
+- For deep video/subtitle or article parsing, read and follow [references/analysis-style.md](references/analysis-style.md).
+- Repair ASR errors and spoken fragments using context and domain knowledge; reorganize scattered spoken structure by its underlying argument progression.
 - Distinguish speakers when style, viewpoint, or surrounding context supports separation.
 
 4. Build the analysis
-- Explain facts, logic chain, assumptions, evidence, themes, and recent shifts.
-- Describe recent patterns from the observed sample; infer a change over time only when earlier material provides a comparable baseline.
-- Mark inferred conclusions explicitly when they are not directly stated by the source.
-- Preserve original wording and tone where it carries analytical value.
+- Present the full argument chain, implicit premises, high-confidence subtext, and original rhetorical force directly from the source's internal logic, avoiding detached summary clichés or defensive hedging in the main text.
+- Place decoding basis, multi-interpretation boundaries, external discourse/rhetorical critique, and source metadata in the endnotes/appendix section as specified in [references/analysis-style.md](references/analysis-style.md).
+- For multi-item creator tracking, describe recent patterns from the observed sample and infer a change over time only when earlier material provides a comparable baseline.
 
 5. Keep output useful for downstream tasks
-- Keep key anchors in output: `uid`, `bvid`, `article_id`, publish times, and key source snippets.
+- Keep key anchors in output: `uid`, `bvid`, `article_id`, publish times, and key source timeline/line ranges.
 - Avoid fragmented one-line bullet dumps; keep coherent narrative blocks with clear headings.
 
 6. Handle failures safely
@@ -54,7 +53,7 @@ description: Deep analysis and tracking of Bilibili creators, videos, dynamics, 
 - Skip method narration unless the user asks for it.
 - Match depth to intent: brief asks get concise conclusions plus key evidence; deep asks get full reconstruction and multi-dimensional interpretation.
 
-## Load detailed style rules on demand
+## Load deep parsing and style rules
 
-- Read [references/analysis-style.md](references/analysis-style.md) when detailed style constraints are required.
+- Read [references/analysis-style.md](references/analysis-style.md) when performing deep video/subtitle or article parsing, or when detailed style constraints are required.
 - Follow system and developer instructions first if any conflict appears.

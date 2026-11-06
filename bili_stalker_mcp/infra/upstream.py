@@ -11,6 +11,7 @@ from ..config import (
     REQUEST_JITTER_MIN_MS,
     REQUEST_JITTER_MODE,
     RISK_PRESSURE_WINDOW_SECONDS,
+    initialize_bilibili_request_settings,
 )
 from ..credentials import has_configured_credential
 from ..deadline import deadline_scope, get_deadline
@@ -54,6 +55,7 @@ async def timed_upstream_call(awaitable: Awaitable[T]) -> T:
     started: float | None = None
     try:
         async with deadline_scope(get_deadline()):
+            initialize_bilibili_request_settings()
             if (
                 get_request_id() is not None
                 and call_count > 1

@@ -80,10 +80,50 @@ Then replace `/path/to/BiliStalkerMCP` below with your actual absolute path:
 
 ### Method 3: Command-line queries
 
+#### Native FastMCP CLI (recommended)
+
+Use native FastMCP for terminal queries; the legacy CLI remains compatible.
+Reuse an existing `.mcp.json`, or customize the absolute paths in the
+[connection template](examples/native-cli.mcp.json) and save a local copy.
+Configure credentials and proxies on the server subprocess explicitly.
+The template's `/absolute/path/to/...` values are placeholders. Replace them with
+absolute paths on the server machine; Windows paths such as `C:/path/to/...` are
+valid too. JSON paths do not expand shell variables such as `$HOME`.
+
+Enable UTF-8 for the current shell (PowerShell examples target PowerShell 7):
+
+Bash / Linux:
+
+```bash
+export PYTHONUTF8=1
+```
+
+PowerShell:
+
+```powershell
+$env:PYTHONUTF8 = "1"
+```
+
+These query commands work in either shell:
+
+```sh
+uv run fastmcp list .mcp.json
+uv run fastmcp list .mcp.json --json
+uv run fastmcp call .mcp.json search_users "keyword=中文 用户" limit=5 --json
+```
+
+Successful JSON responses contain `structured_content`; failures may be JSON with
+`is_error` or plain text. Inspect the exit code and partial-result errors.
+See [native CLI guide](skills/bili-content-analysis/references/cli.md) for UTF-8,
+.env loading, complex arguments, saved results and error recovery.
+Native calls start a subprocess each time; this migration does not promise faster queries.
+
+#### Legacy CLI
+
 From this checkout, use the CLI to query any of the 12 tools without configuring an
 MCP client or starting a persistent server:
 
-```powershell
+```sh
 uv run bili-stalker-mcp --help
 uv run bili-stalker-mcp doctor
 uv run bili-stalker-mcp doctor --network
@@ -108,18 +148,43 @@ proxy settings, and dependency versions. By default it does not use the network,
 change credential files, or print credential values. `doctor --network` adds a TCP
 connectivity check; it does not verify login or an API response. Proxy fields
 `tcp_reachable` and `expected_route` report the probe and expected proxy/direct
-fallback route. Server startup probes the configured proxy again.
+fallback route. The server probes the configured proxy on its first runtime use,
+then reuses that routing decision until the process restarts.
 
 For larger arguments or to avoid shell quoting issues, read a UTF-8 JSON file or
 pipe a JSON object through stdin:
 
-```powershell
+```sh
 uv run bili-stalker-mcp call get_user_snapshot --args-file args.json --pretty
+```
+
+Bash / Linux:
+
+```bash
+printf '%s\n' '{"user_id_or_username":"12345","limit":5}' | uv run bili-stalker-mcp call get_user_videos --args-file -
+```
+
+PowerShell:
+
+```powershell
 @{ user_id_or_username = "12345"; limit = 5 } | ConvertTo-Json -Compress | uv run bili-stalker-mcp call get_user_videos --args-file -
 ```
 
-Set the environment variables below in the calling shell, for example
-`$env:BILI_COOKIE_FILE = 'D:\BiliStalkerSecrets\bili-cookie.txt'` in PowerShell.
+Set the environment variables below in the calling shell. Replace this example
+with the credential file path on the machine running the server:
+
+Bash / Linux:
+
+```bash
+export BILI_COOKIE_FILE="$HOME/.config/bili-stalker/bili-cookie.txt"
+```
+
+PowerShell:
+
+```powershell
+$env:BILI_COOKIE_FILE = "$HOME/.config/bili-stalker/bili-cookie.txt"
+```
+
 An MCP client's `env` configuration is not automatically inherited by a separate
 terminal. The CLI uses the same credential, refresh, proxy, and rate-limit behavior
 as MCP. Help, version, and tool discovery do not require login credentials.
@@ -127,7 +192,7 @@ as MCP. Help, version, and tool discovery do not require login credentials.
 If the checkout already has a `.env` file, load it explicitly for the command;
 neither the CLI nor a plain `uv run` automatically loads it:
 
-```powershell
+```sh
 uv run --env-file .env bili-stalker-mcp call get_user_info --args '{"user_id_or_username":"12345"}'
 ```
 
@@ -167,7 +232,7 @@ still starts the MCP stdio server; `bili-stalker-mcp serve` makes that explicit.
 | `BILI_REFRESH_TOKEN_FILE` | No | Path to the separate refresh-token file; never set the token through an environment variable. |
 | `BILI_ENABLE_COOKIE_REFRESH` | No | `true` enables safe automatic refresh; default: `false`. |
 | `BILI_COOKIE_REFRESH_CHECK_INTERVAL_SECONDS` | No | Refresh-check interval; default: `21600`, minimum: `60`. |
-| `BILI_PROXY` | No | Route all upstream requests (bilibili_api and the built-in HTTP clients) through this proxy. Recommended when the system proxy is not picked up automatically or DNS resolution for Bilibili hosts is unstable. If the proxy is unreachable at startup, the server falls back to direct connections and logs a warning. |
+| `BILI_PROXY` | No | Route all upstream requests (bilibili_api and the built-in HTTP clients) through this proxy. Recommended when the system proxy is not picked up automatically or DNS resolution for Bilibili hosts is unstable. If the proxy is unreachable on first runtime use, the server falls back to direct connections and logs a warning. The routing decision lasts until the process restarts; tool discovery does not probe the proxy. |
 | `BILI_TOOL_TIMEOUT_SECONDS` | No | Total seconds per tool call, including retries and waits; default: `25`. Must be finite and positive. |
 | `BILI_SHORT_LINK_TIMEOUT_SECONDS` | No | Total seconds for short-link resolution; default: `5`, also bounded by the remaining tool budget. Must be finite and positive. Successful resolutions are cached for 300 seconds; at most 5 requests are made, stopping as soon as a video destination is known. |
 | `BILI_REQUEST_JITTER_MODE` | No | Upstream jitter behavior: `adaptive` (default; sleeps only without a configured login or after recent 412/429/403), `always`, `never`. |
@@ -204,14 +269,17 @@ between runs.
 For a quicker initial setup, copy the complete Cookie header value from a Bilibili
 browser request and `ac_time_value` from Local Storage, then run:
 
-```powershell
-uv run bili-stalker-cookie-setup --directory D:\BiliStalkerSecrets
+The path below is under the current user's home directory and works in Bash and
+PowerShell. You can choose another directory outside the checkout.
+
+```sh
+uv run bili-stalker-cookie-setup --directory "$HOME/.config/bili-stalker"
 ```
 
 For a PyPI-only invocation without cloning this repository:
 
-```powershell
-uvx --from bili-stalker-mcp bili-stalker-cookie-setup --directory D:\BiliStalkerSecrets
+```sh
+uvx --from bili-stalker-mcp bili-stalker-cookie-setup --directory "$HOME/.config/bili-stalker"
 ```
 
 The script hides both pasted values, refuses directories inside the repository and
@@ -222,7 +290,7 @@ paste an entire cURL command: paste only the value after its `cookie:` header.
 
 All verification commands use mocks and do not require Bilibili credentials:
 
-```powershell
+```sh
 uv run pytest -q tests/test_credentials.py tests/test_cookie_refresh.py tests/test_tool_contract.py
 uv run pytest -q
 uv run black --check bili_stalker_mcp tests scripts
@@ -374,27 +442,33 @@ uv run python scripts/perf_baseline.py -u <UID> --tools dynamics -n 3
 
 ## Release (Maintainers)
 
-> **Credentials**: The release script uses `UV_PUBLISH_TOKEN` when set; otherwise it reads the matching `[pypi]` or `[testpypi]` token from `$HOME\.pypirc`.
+> **Credentials**: The release script uses `UV_PUBLISH_TOKEN` when set; otherwise it reads the matching `[pypi]` or `[testpypi]` token from `~/.pypirc`.
 > Twine is invoked transiently through `uvx` only for package metadata validation and is not a project dependency.
+
+The release script requires PowerShell 7 (`pwsh`) on Windows or Linux:
 
 ```powershell
 # Build + test + package metadata validation (no upload)
-.\scripts\pypi_release.ps1
+pwsh -File ./scripts/pypi_release.ps1
 
 # Upload to TestPyPI
-.\scripts\pypi_release.ps1 -TestPyPI -Upload
+pwsh -File ./scripts/pypi_release.ps1 -TestPyPI -Upload
 
 # Upload to PyPI
-.\scripts\pypi_release.ps1 -Upload
+pwsh -File ./scripts/pypi_release.ps1 -Upload
 ```
 
 ## Docker
 
 Runs via `stdio` transport. No ports exposed.
 
+Set `SESSDATA` in the calling shell first; `-e SESSDATA` passes it to the
+container, and `-i` keeps stdin open for stdio. Credential paths must refer to
+paths inside the container; a loopback proxy there does not address the host.
+
 ```bash
 docker build -t bilistalker-mcp .
-docker run -e SESSDATA=... bilistalker-mcp
+docker run --rm -i -e SESSDATA bilistalker-mcp
 ```
 
 ## Troubleshooting

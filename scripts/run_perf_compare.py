@@ -1,10 +1,10 @@
 """Launcher for perf_compare_raw.py using a real login cookie file.
 
-Env-driven so other machines don't inherit this one's paths:
+Configure credential paths for the machine running the benchmark:
 
 - BILI_BENCH_COOKIE_FILE  cookie file to read credentials from
-  (default: D:\\BiliStalkerSecrets\\bili-cookie.txt, this project's dev box)
-- BILI_BENCH_PROXY        optional proxy, e.g. http://127.0.0.1:50888;
+  (falls back to BILI_COOKIE_FILE; one of the two must be set)
+- BILI_BENCH_PROXY        optional proxy, e.g. http://127.0.0.1:8080;
                           unset means "no forced proxy"
 
 Env vars take precedence over .env (load_dotenv override=False), so exporting
@@ -17,7 +17,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-DEFAULT_COOKIE_FILE = Path(r"D:\BiliStalkerSecrets\bili-cookie.txt")
 FIELD_TO_ENV = {
     "SESSDATA": "SESSDATA",
     "bili_jct": "BILI_JCT",
@@ -37,7 +36,18 @@ def parse_cookies(text: str) -> dict[str, str]:
 
 
 def main() -> int:
-    cookie_file = Path(os.environ.get("BILI_BENCH_COOKIE_FILE") or DEFAULT_COOKIE_FILE)
+    cookie_path = (
+        os.environ.get("BILI_BENCH_COOKIE_FILE", "").strip()
+        or os.environ.get("BILI_COOKIE_FILE", "").strip()
+    )
+    if not cookie_path:
+        print(
+            "Set BILI_BENCH_COOKIE_FILE or BILI_COOKIE_FILE to a Cookie file "
+            "on this machine.",
+            file=sys.stderr,
+        )
+        return 2
+    cookie_file = Path(cookie_path).expanduser()
     if not cookie_file.is_file():
         print(
             f"Cookie file not found: {cookie_file} "

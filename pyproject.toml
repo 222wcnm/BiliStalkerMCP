@@ -79,6 +79,7 @@ include = [
     "/README.md",
     "/README_zh.md",
     "/pyproject.toml",
+    "/examples/native-cli.mcp.json",
 ]
 exclude = [
     "/.claude",

@@ -173,3 +173,8 @@ skills/*.zip
 
 # ZCode local config (machine-specific MCP env)
 .zcode/
+
+# Local attachments, test scratch directories and research notes
+/.codex-attachments/
+/pytest-of-*/
+/research/

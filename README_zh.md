@@ -80,9 +80,46 @@ cd BiliStalkerMCP
 
 ### 方式三：命令行查询
 
-在本地仓库中，可以通过 CLI 直接调用全部 12 个工具，无需配置 MCP 客户端或启动常驻服务：
+#### FastMCP 原生命令行（推荐）
+
+终端默认推荐 FastMCP 原生入口；旧 CLI 继续兼容。复用已有 `.mcp.json`，或修改
+[无秘密配置示例](examples/native-cli.mcp.json) 中的绝对路径后保存本地副本。
+凭据、代理必须配置到服务子进程，不能依赖父进程自动继承 BILI 环境变量。
+配置示例中的 `/absolute/path/to/...` 是占位路径，必须替换成运行服务的机器上的实际绝对路径；Windows 可使用 `C:/path/to/...`。JSON 中的路径不会展开 `$HOME` 等终端变量。
+
+先按当前终端启用 UTF-8（PowerShell 示例面向 PowerShell 7）：
+
+Bash / Linux:
+
+```bash
+export PYTHONUTF8=1
+```
+
+PowerShell:
 
 ```powershell
+$env:PYTHONUTF8 = "1"
+```
+
+以下查询命令两种终端均可使用：
+
+```sh
+uv run fastmcp list .mcp.json
+uv run fastmcp list .mcp.json --json
+uv run fastmcp call .mcp.json search_users "keyword=中文 用户" limit=5 --json
+```
+
+成功时，JSON 响应中的 `structured_content` 是业务结果；失败时可能返回带有
+`is_error` 的 JSON，也可能返回纯文本。请检查退出码及部分结果中的错误。
+UTF-8、`.env` 加载、复杂参数、结果保存及错误处理见
+[原生命令行指南](skills/bili-content-analysis/references/cli.md)。
+每次原生命令行调用都会启动一个服务子进程，不保证比旧入口更快。
+
+#### 兼容命令行查询
+
+在本地仓库中，可以通过 CLI 直接调用全部 12 个工具，无需配置 MCP 客户端或启动常驻服务：
+
+```sh
 uv run bili-stalker-mcp --help
 uv run bili-stalker-mcp doctor
 uv run bili-stalker-mcp doctor --network
@@ -102,24 +139,47 @@ uv run bili-stalker-mcp call get_video_detail --args '{"bvid":"BV1xx411c7mD","fe
 `doctor` 输出 JSON 格式的本地诊断，包括凭据来源、自动刷新配置、代理设置和依赖版本；
 默认不联网、不修改凭据文件，也不输出凭据内容。`doctor --network` 额外进行 TCP 连通性检查，
 不验证登录状态或 B 站接口响应；代理的 `tcp_reachable` 和 `expected_route` 显示本次探测结果
-及预计使用代理还是回退直连，服务启动时仍会重新探测。
+及预计使用代理还是回退直连。服务在首次实际使用时探测代理，并沿用该路由决定直到进程重启。
 schema 中标为字符串的 ID 必须加引号，包括数字 UID 和较长的专栏、动态 ID。
 
 参数较多或需要避免 shell 引号转义时，可以读取 UTF-8 JSON 文件，或从管道读取 JSON 对象：
 
-```powershell
+```sh
 uv run bili-stalker-mcp call get_user_snapshot --args-file args.json --pretty
+```
+
+Bash / Linux:
+
+```bash
+printf '%s\n' '{"user_id_or_username":"12345","limit":5}' | uv run bili-stalker-mcp call get_user_videos --args-file -
+```
+
+PowerShell:
+
+```powershell
 @{ user_id_or_username = "12345"; limit = 5 } | ConvertTo-Json -Compress | uv run bili-stalker-mcp call get_user_videos --args-file -
 ```
 
-凭据使用下表中的环境变量，需在调用 CLI 的终端中设置。例如在 PowerShell 中设置
-`$env:BILI_COOKIE_FILE = 'D:\BiliStalkerSecrets\bili-cookie.txt'`。
+凭据使用下表中的环境变量，需在调用 CLI 的终端中设置。将下列路径替换为当前运行机器上的实际凭据文件路径：
+
+Bash / Linux:
+
+```bash
+export BILI_COOKIE_FILE="$HOME/.config/bili-stalker/bili-cookie.txt"
+```
+
+PowerShell:
+
+```powershell
+$env:BILI_COOKIE_FILE = "$HOME/.config/bili-stalker/bili-cookie.txt"
+```
+
 MCP 客户端配置里的 `env` 不会自动传给单独打开的终端。CLI 复用 MCP 的凭据、自动刷新、
 代理及请求限流逻辑；帮助、版本和工具发现命令不需要登录凭据。
 
 如果仓库已经有 `.env` 文件，需要在命令中显式加载；CLI 和普通 `uv run` 都不会自动读取它：
 
-```powershell
+```sh
 uv run --env-file .env bili-stalker-mcp call get_user_info --args '{"user_id_or_username":"12345"}'
 ```
 
@@ -152,7 +212,7 @@ uv run --env-file .env bili-stalker-mcp call get_user_info --args '{"user_id_or_
 | `BILI_REFRESH_TOKEN_FILE` | 否 | 独立 refresh token 文件路径；不得通过环境变量提供 token。 |
 | `BILI_ENABLE_COOKIE_REFRESH` | 否 | 设为 `true` 后启用安全自动刷新；默认：`false`。 |
 | `BILI_COOKIE_REFRESH_CHECK_INTERVAL_SECONDS` | 否 | 检查刷新需求的间隔秒数；默认：`21600`，最小：`60`。 |
-| `BILI_PROXY` | 否 | 让全部上游请求（bilibili_api 与内置 HTTP 客户端）走指定代理。系统代理未被自动识别、或 B 站域名 DNS 解析不稳定时建议配置。若启动时代理不可达，服务会自动降级为直连并记录警告。 |
+| `BILI_PROXY` | 否 | 让全部上游请求（bilibili_api 与内置 HTTP 客户端）走指定代理。系统代理未被自动识别、或 B 站域名 DNS 解析不稳定时建议配置。若首次实际使用时代理不可达，服务会自动降级为直连并记录警告。该路由决定沿用到进程重启；工具发现不会探测代理。 |
 | `BILI_TOOL_TIMEOUT_SECONDS` | 否 | 单次工具调用的总预算秒数，包含重试和等待；默认：`25`，须为有限正数。 |
 | `BILI_SHORT_LINK_TIMEOUT_SECONDS` | 否 | 短链接解析的总预算秒数；默认：`5`，须为有限正数，同时受工具剩余预算约束。成功解析缓存 300 秒，最多跟随 5 次请求，取得视频地址即停止。 |
 | `BILI_REQUEST_JITTER_MODE` | 否 | 上游抖动策略：`adaptive`（默认；仅在未配置登录态或近期出现 412/429/403 时休眠）、`always`、`never`。 |
@@ -186,14 +246,16 @@ uv run --env-file .env bili-stalker-mcp call get_user_info --args '{"user_id_or_
 如需更快完成首次配置，可从 B 站浏览器请求中复制完整 Cookie header 的值，再从 Local
 Storage 复制 `ac_time_value`，然后运行：
 
-```powershell
-uv run bili-stalker-cookie-setup --directory D:\BiliStalkerSecrets
+以下路径位于当前用户主目录；Bash 和 PowerShell 均支持此写法。可替换为仓库外的其他目录。
+
+```sh
+uv run bili-stalker-cookie-setup --directory "$HOME/.config/bili-stalker"
 ```
 
 如果只从 PyPI 调用、不克隆仓库，可以运行：
 
-```powershell
-uvx --from bili-stalker-mcp bili-stalker-cookie-setup --directory D:\BiliStalkerSecrets
+```sh
+uvx --from bili-stalker-mcp bili-stalker-cookie-setup --directory "$HOME/.config/bili-stalker"
 ```
 
 脚本会隐藏两次粘贴输入，拒绝写入仓库内目录或覆盖已有凭据文件，并且只输出不含 secret 的
@@ -203,7 +265,7 @@ MCP `env` 配置片段。不要粘贴完整 cURL 命令，只粘贴其中 `cooki
 
 以下命令均使用 mock，不需要也不应填入 B 站真实凭据：
 
-```powershell
+```sh
 uv run pytest -q tests/test_credentials.py tests/test_cookie_refresh.py tests/test_tool_contract.py
 uv run pytest -q
 uv run black --check bili_stalker_mcp tests scripts
@@ -344,27 +406,32 @@ uv run python scripts/perf_baseline.py -u <UID> --tools dynamics -n 3
 
 ## 📦 发布 (维护者)
 
-> **凭据**: 发布脚本优先使用 `UV_PUBLISH_TOKEN`；未设置时，会自动读取 `$HOME\.pypirc` 中对应的 `[pypi]` 或 `[testpypi]` Token。
+> **凭据**: 发布脚本优先使用 `UV_PUBLISH_TOKEN`；未设置时，会自动读取 `~/.pypirc` 中对应的 `[pypi]` 或 `[testpypi]` Token。
 > Twine 仅通过 `uvx` 临时执行包元数据校验，不作为项目依赖。
+
+发布脚本需要 PowerShell 7（`pwsh`），Windows 和 Linux 均使用下列命令：
 
 ```powershell
 # 构建 + 测试 + 包元数据校验（不上传）
-.\scripts\pypi_release.ps1
+pwsh -File ./scripts/pypi_release.ps1
 
 # 上传到 TestPyPI
-.\scripts\pypi_release.ps1 -TestPyPI -Upload
+pwsh -File ./scripts/pypi_release.ps1 -TestPyPI -Upload
 
 # 上传到 PyPI
-.\scripts\pypi_release.ps1 -Upload
+pwsh -File ./scripts/pypi_release.ps1 -Upload
 ```
 
 ## Docker 部署
 
 基于 `stdio` 传输，无外部端口暴露。
 
+先在当前终端设置 `SESSDATA`；`-e SESSDATA` 将其传给容器，`-i` 保持 stdio 输入可用。
+容器中的凭据路径必须使用容器内路径；本机代理的 `127.0.0.1` 不会指向宿主机。
+
 ```bash
 docker build -t bilistalker-mcp .
-docker run -e SESSDATA=... bilistalker-mcp
+docker run --rm -i -e SESSDATA bilistalker-mcp
 ```
 
 ## ⚠️ 常见问题

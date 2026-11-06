@@ -4,6 +4,7 @@ import logging
 import math
 import os
 import socket
+from threading import Lock
 from typing import Literal
 from urllib.parse import urlsplit, urlunsplit
 
@@ -159,18 +160,27 @@ def _proxy_reachable(proxy_url: str, timeout: float = 1.5) -> bool:
         return False
 
 
-# The proxy actually used at runtime: PROXY_URL when it answered the startup
-# probe, otherwise "" (direct). Re-probing only happens on process restart.
-ACTIVE_PROXY_URL = ""
-if PROXY_URL:
-    if _proxy_reachable(PROXY_URL):
-        ACTIVE_PROXY_URL = PROXY_URL
-    else:
-        logger.warning(
-            "BILI_PROXY %s is unreachable; falling back to direct connections. "
-            "Restart the server once the proxy is back to use it again.",
-            sanitize_proxy_url(PROXY_URL),
-        )
+# Resolve once, on first runtime use; discovery must remain offline.
+_active_proxy_url: str | None = None
+_proxy_resolution_lock = Lock()
+
+
+def get_active_proxy_url() -> str:
+    global _active_proxy_url
+    with _proxy_resolution_lock:
+        if _active_proxy_url is None:
+            _active_proxy_url = ""
+            if PROXY_URL:
+                if _proxy_reachable(PROXY_URL):
+                    _active_proxy_url = PROXY_URL
+                else:
+                    logger.warning(
+                        "BILI_PROXY %s is unreachable; falling back to direct connections. "
+                        "Restart the server once the proxy is back to use it again.",
+                        sanitize_proxy_url(PROXY_URL),
+                    )
+        return _active_proxy_url
+
 
 REQUEST_JITTER_MIN_MS = max(0, _get_env_int("BILI_REQUEST_JITTER_MIN_MS", 200))
 REQUEST_JITTER_MAX_MS = max(0, _get_env_int("BILI_REQUEST_JITTER_MAX_MS", 1200))
@@ -259,17 +269,18 @@ def initialize_bilibili_request_settings() -> None:
     except Exception as exc:
         logger.debug("curl_cffi client unavailable, using default client: %s", exc)
 
-    if ACTIVE_PROXY_URL:
+    active_proxy_url = get_active_proxy_url()
+    if active_proxy_url:
         try:
-            request_settings.set_proxy(ACTIVE_PROXY_URL)
+            request_settings.set_proxy(active_proxy_url)
             logger.debug(
                 "Routing bilibili_api requests through proxy %s",
-                sanitize_proxy_url(ACTIVE_PROXY_URL),
+                sanitize_proxy_url(active_proxy_url),
             )
         except Exception as exc:
             logger.warning(
                 "Failed to configure bilibili_api proxy %s: %s",
-                sanitize_proxy_url(ACTIVE_PROXY_URL),
+                sanitize_proxy_url(active_proxy_url),
                 exc,
             )
 

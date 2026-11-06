@@ -71,7 +71,7 @@ def test_initialize_applies_explicit_proxy_to_bilibili_api(
         lambda proxy: calls.append(proxy),
         raising=False,
     )
-    monkeypatch.setattr(config, "ACTIVE_PROXY_URL", "http://127.0.0.1:50888")
+    monkeypatch.setattr(config, "_active_proxy_url", "http://127.0.0.1:50888")
 
     config.initialize_bilibili_request_settings()
 
@@ -90,8 +90,24 @@ def test_initialize_skips_proxy_when_unset(monkeypatch, _reset_initialized):
         lambda proxy: calls.append(proxy),
         raising=False,
     )
-    monkeypatch.setattr(config, "ACTIVE_PROXY_URL", "")
+    monkeypatch.setattr(config, "_active_proxy_url", "")
 
     config.initialize_bilibili_request_settings()
 
     assert calls == []
+
+
+@pytest.mark.parametrize("reachable", [True, False])
+def test_proxy_resolution_is_cached(monkeypatch, reachable):
+    from bili_stalker_mcp import config
+
+    calls = []
+    monkeypatch.setattr(config, "_active_proxy_url", None)
+    monkeypatch.setattr(config, "PROXY_URL", "http://127.0.0.1:9")
+    monkeypatch.setattr(
+        config, "_proxy_reachable", lambda url: calls.append(url) or reachable
+    )
+    expected = config.PROXY_URL if reachable else ""
+    assert config.get_active_proxy_url() == expected
+    assert config.get_active_proxy_url() == expected
+    assert calls == [config.PROXY_URL]

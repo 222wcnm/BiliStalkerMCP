@@ -167,7 +167,7 @@ def _assert_sdk_compatibility() -> None:
 def validate_cookie_refresh_runtime(
     env: Mapping[str, str] | None = None,
 ) -> None:
-    """Fail server startup safely when enabled SDK internals are incompatible."""
+    """Reject refresh use safely when enabled SDK internals are incompatible."""
     source = os.environ if env is None else env
     if credentials.cookie_refresh_enabled(source):
         _assert_sdk_compatibility()

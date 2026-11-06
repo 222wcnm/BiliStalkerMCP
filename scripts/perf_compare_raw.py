@@ -2,7 +2,7 @@
 
 Both groups run in one process, sharing the same event loop, credential, target
 user, and the bilibili_api global request settings (headers/timeout/curl_cffi),
-which are applied when ``bili_stalker_mcp.core`` is imported. Group order is
+which are applied before either benchmark group runs. Group order is
 alternated per round to cancel network drift, and the same inter-call gap is
 applied to both groups.
 
@@ -53,15 +53,12 @@ except ImportError:  # pragma: no cover - dev dependency normally present
     load_dotenv = None
 
 from bili_stalker_mcp import core
-from bili_stalker_mcp.services import user_service as _user_service
-
-if BENCH_PROXY:
-    from bilibili_api import request_settings
-
-    request_settings.set_proxy(BENCH_PROXY)
-
-from bili_stalker_mcp.config import sanitize_proxy_url
+from bili_stalker_mcp.config import (
+    initialize_bilibili_request_settings,
+    sanitize_proxy_url,
+)
 from bili_stalker_mcp.observability import begin_request
+from bili_stalker_mcp.services import user_service as _user_service
 
 TaskFn = Callable[[], Awaitable[object]]
 
@@ -230,6 +227,12 @@ async def _measure_mcp_protocol(uid: int, iterations: int) -> dict[str, float]:
 async def main() -> None:
     args = _parse_args()
     uid = int(args.user)
+
+    initialize_bilibili_request_settings()
+    if BENCH_PROXY:
+        from bilibili_api import request_settings
+
+        request_settings.set_proxy(BENCH_PROXY)
 
     if load_dotenv is not None:
         load_dotenv(Path(__file__).resolve().parents[1] / ".env")

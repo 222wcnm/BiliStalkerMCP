@@ -19,7 +19,11 @@ from fastmcp.exceptions import ToolError
 from pydantic import Field
 
 from . import __version__
-from .config import TOOL_TIMEOUT_SECONDS, DynamicType
+from .config import (
+    TOOL_TIMEOUT_SECONDS,
+    DynamicType,
+    initialize_bilibili_request_settings,
+)
 from .cookie_refresh import (
     CookieRefreshConfigError,
     CookieRefreshError,
@@ -78,6 +82,7 @@ async def _get_credential_from_context(_ctx: Context) -> Credential:
     """Get credential from environment or raise protocol-level tool error."""
     try:
         if cookie_refresh_enabled():
+            validate_cookie_refresh_runtime()
             return await load_refreshing_credential()
 
         cred = get_credential()
@@ -129,7 +134,6 @@ async def _normalize_comment_content_id(
 
 def create_server() -> FastMCP:
     """Create and configure the BiliStalkerMCP server."""
-    validate_cookie_refresh_runtime()
     logger = logging.getLogger(__name__)
     mcp = FastMCP("BiliStalkerMCP", version=__version__)
 
@@ -163,6 +167,7 @@ def create_server() -> FastMCP:
 
         try:
             async with deadline_scope(time.monotonic() + TOOL_TIMEOUT_SECONDS):
+                initialize_bilibili_request_settings()
                 result = await runner()
             total_duration_ms = round((time.perf_counter() - started) * 1000, 3)
             metrics = snapshot_metrics()

@@ -6,12 +6,12 @@ from urllib.parse import urlparse
 import httpx
 
 from ..config import (
-    ACTIVE_PROXY_URL,
     CONNECT_TIMEOUT,
     DEFAULT_HEADERS,
     DEFAULT_IMPERSONATE,
     READ_TIMEOUT,
     REQUEST_TIMEOUT,
+    get_active_proxy_url,
 )
 from ..errors import RISK_CONTROL_CODES, RiskControlError
 from ..observability import (
@@ -161,13 +161,13 @@ class SharedRawHttpClient:
         if curl_requests is not None:
             try:
                 self._curl_session = curl_requests.AsyncSession(
-                    **_build_curl_session_kwargs(ACTIVE_PROXY_URL)
+                    **_build_curl_session_kwargs(get_active_proxy_url())
                 )
             except TypeError:  # older curl_cffi only accepts a proxies mapping
                 self._curl_session = curl_requests.AsyncSession(
                     **{
                         **_build_curl_session_kwargs(""),
-                        "proxies": {"all": ACTIVE_PROXY_URL},
+                        "proxies": {"all": get_active_proxy_url()},
                     }
                 )
         else:
@@ -199,7 +199,7 @@ class SharedRawHttpClient:
         if follow_redirects is not None:
             request_kwargs["follow_redirects"] = follow_redirects
         if self._httpx_client is None:
-            self._httpx_client = _build_httpx_client(ACTIVE_PROXY_URL)
+            self._httpx_client = _build_httpx_client(get_active_proxy_url())
         return await self._httpx_client.request(method.upper(), url, **request_kwargs)
 
     async def get(self, url: str, **kwargs: Any) -> Any:
