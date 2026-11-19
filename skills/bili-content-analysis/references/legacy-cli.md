@@ -40,6 +40,11 @@ uv run bili-stalker-mcp call get_video_detail --args '{"bvid":"https://www.bilib
 uv run bili-stalker-mcp call get_video_detail --args '{"bvid":"BV1xx411c7mD","fetch_subtitles":true,"subtitle_scope":"all","subtitle_mode":"full"}'
 ```
 
+For `get_video_detail`, read subtitle text from `subtitles.full_text`. Within
+`subtitles`, `tracks[].text` is an always-empty compatibility field. Check
+`returned_chars` for text length, `scope.returned_pages` for coverage, and
+`errors` and `truncated` for partial text.
+
 Discover arguments once with `tools --schema` and reuse the returned input schemas
 for subsequent calls. `tools` keeps the compact name/description list.
 `tools TOOL` returns the complete schema; `tools TOOL --schema` omits output schemas.
@@ -58,8 +63,7 @@ or `subtitle_cid` selects another chapter. Preserve the user's URL chapter.
 that scope. For the whole video, set `subtitle_scope="all"` with a BVID or URL
 without `p`. Explicit page/CID selectors are mutually exclusive and must agree
 with URL `p`; `all` cannot be combined with any chapter selector. Correct an
-`invalid_subtitle_selection` error before retrying. Read `subtitles.scope` for
-coverage and check `errors`/`truncated` even when a page has returned text.
+`invalid_subtitle_selection` error before retrying.
 
 Keep string IDs quoted, especially article and dynamic IDs that exceed JavaScript's
 safe integer range. JSON booleans are `true`/`false`; optional cursors can be omitted

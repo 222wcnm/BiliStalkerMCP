@@ -28,7 +28,13 @@ uv run fastmcp list .mcp.json
 uv run fastmcp list .mcp.json --json
 uv run fastmcp call .mcp.json search_users "keyword=中文 用户" limit=5 --json
 uv run fastmcp call .mcp.json get_user_snapshot user_id_or_username=12345 video_limit=5 dynamic_limit=5 article_limit=0 --json
+uv run fastmcp call .mcp.json get_video_detail bvid=BV1xx411c7mD fetch_subtitles=true subtitle_mode=smart subtitle_max_chars=12000 --json
 ```
+
+For `get_video_detail`, read subtitle text from
+`structured_content.subtitles.full_text`. Within `subtitles`, `tracks[].text`
+is an always-empty compatibility field. Check `returned_chars` for text length,
+`scope.returned_pages` for coverage, and `errors` and `truncated` for partial text.
 
 Read inputSchema for names, constraints, defaults and enum values. Ordinary
 arguments use key=value; quote an entire argument when it contains spaces.
@@ -57,7 +63,7 @@ also be enabled, especially for config files containing non-ASCII paths.
 
 On success, --json returns content, is_error=false and structured_content.
 Read structured_content as the business result, avoiding duplicate reading of the
-text content. Check partial errors and subtitle scope/truncation even on success.
+text content. Check partial errors even on success.
 Tool failures return is_error=true and text content; a text block may contain the
 server's JSON error with reason, retry_after and request_id. Unknown tools,
 connection failures and client argument failures can instead produce plain text,
