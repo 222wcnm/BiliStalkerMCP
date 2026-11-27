@@ -244,7 +244,11 @@ async def test_short_link_stops_at_video_location_and_caches_page(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_short_link_follows_only_needed_relative_hop(monkeypatch):
+@pytest.mark.parametrize("prefix", ["/video/", "/zh-Hans/video/"])
+@pytest.mark.parametrize("identifier", ["BV1xx411c7mD", "av170001"])
+async def test_short_link_follows_only_needed_relative_hop(
+    monkeypatch, prefix, identifier
+):
     calls = []
 
     class FakeClient:
@@ -253,13 +257,15 @@ async def test_short_link_follows_only_needed_relative_hop(monkeypatch):
             location = (
                 "/next"
                 if len(calls) == 1
-                else "https://m.bilibili.com/video/av170001?p=3"
+                else f"https://m.bilibili.com{prefix}{identifier}?p=2"
             )
-            return httpx.Response(302, headers={"Location": location})
+            status = 302 if len(calls) == 1 else 301
+            return httpx.Response(status, headers={"Location": location})
 
     monkeypatch.setattr(video_id_parser, "get_shared_http_client", lambda: FakeClient())
     result = await extract_video_reference("https://b23.tv/AbCdEfG")
-    assert result.bvid == aid2bvid(170001) and result.page == 3
+    expected = aid2bvid(170001) if identifier.startswith("av") else identifier
+    assert result.bvid == expected and result.page == 2
     assert calls == ["https://b23.tv/AbCdEfG", "https://b23.tv/next"]
 
 
@@ -269,6 +275,7 @@ async def test_short_link_follows_only_needed_relative_hop(monkeypatch):
     [
         "https://evilbilibili.com/video/BV1xx411c7mD",
         "https://bilibili.com.evil.test/video/BV1xx411c7mD",
+        "https://bilibili.com.evil.test/zh-Hans/video/BV1xx411c7mD",
         "http://127.0.0.1/video/BV1xx411c7mD",
         "file:///video/BV1xx411c7mD",
         "https://private@www.bilibili.com/video/BV1xx411c7mD",

@@ -76,7 +76,7 @@ def _video_destination(url: str) -> str | None:
     if not _trusted_redirect_url(url) or _is_b23_short_url(url):
         return None
     path = urlparse(url).path
-    if not path.startswith("/video/"):
+    if not path.startswith(("/video/", "/zh-Hans/video/")):
         return None
     return _extract_local_bvid(path)
 
