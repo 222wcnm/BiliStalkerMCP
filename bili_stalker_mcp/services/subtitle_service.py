@@ -12,6 +12,12 @@ from ..infra.upstream import timed_upstream_call
 from ..models import SubtitleResponse, SubtitleScopeSummary, SubtitleTrack
 from ..retry import RetryableBiliApiError, with_retry
 from ..utils.converters import coerce_int
+from .subtitle_output import (
+    SubtitleCue,
+    SubtitleOutput,
+    SubtitleOutputOptions,
+    subtitle_seconds,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -59,33 +65,44 @@ async def _fetch_subtitle_payload(
     return await get_json(url, cred=cred)
 
 
-async def _fetch_subtitle_text(
+async def _fetch_subtitle_cues(
     subtitle_url: Any,
     cred: Credential | None,
-) -> tuple[str, str | None]:
+) -> tuple[list[SubtitleCue] | None, str | None]:
     url = _normalize_subtitle_url(subtitle_url)
     if not url:
-        return "", "subtitle_url missing"
+        return None, "subtitle_url missing"
 
     try:
         subtitle_payload = await _fetch_subtitle_payload(url, cred)
 
         body = subtitle_payload.get("body") or []
-        lines: list[str] = []
+        cues: list[SubtitleCue] = []
         for item in body:
             if not isinstance(item, dict):
                 continue
             content = item.get("content")
-            if isinstance(content, str) and content.strip():
-                lines.append(content.strip())
+            if not isinstance(content, str):
+                continue
+            text = content.strip()
+            if not text:
+                continue
+            start = subtitle_seconds(item.get("from"))
+            end = subtitle_seconds(item.get("to"))
+            timing = (
+                (start, end)
+                if start is not None and end is not None and start < end
+                else None
+            )
+            cues.append(SubtitleCue(text, timing))
 
-        return "\n".join(lines), None
+        return cues, None
     except RiskControlError as exc:
-        return "", public_error_json(exc)
+        return None, public_error_json(exc)
     except RetryableBiliApiError as exc:
-        return "", f"blocked or rate-limited: {public_error_json(exc)}"
+        return None, f"blocked or rate-limited: {public_error_json(exc)}"
     except Exception as exc:
-        return "", str(exc)
+        return None, str(exc)
 
 
 def _normalize_language_tag(value: Any) -> str | None:
@@ -125,40 +142,6 @@ def _build_track_metadata(
     )
     subtitle_url = subtitle_item.get("subtitle_url")
     return track, subtitle_url
-
-
-def _append_track_with_budget(
-    track: SubtitleTrack,
-    raw_text: str,
-    selected_tracks: list[SubtitleTrack],
-    full_text_lines: list[str],
-    remaining_budget: int,
-    label: str | None = None,
-) -> tuple[int, bool]:
-    text = raw_text or ""
-    was_truncated = False
-    header = f"[{label}]\n" if label else ""
-    if text:
-        separator_cost = 1 if full_text_lines else 0
-        overhead = separator_cost + len(header)
-        if remaining_budget <= overhead:
-            text = ""
-            was_truncated = True
-        else:
-            remaining_budget -= overhead
-            if len(text) > remaining_budget:
-                text = text[:remaining_budget]
-                remaining_budget = 0
-                was_truncated = True
-            else:
-                remaining_budget -= len(text)
-
-    # Tracks carry metadata only; subtitle text is returned once via full_text
-    # to avoid doubling the token cost of the response.
-    selected_tracks.append(track.model_copy(update={"text": ""}))
-    if text:
-        full_text_lines.append(f"{header}{text}")
-    return remaining_budget, was_truncated
 
 
 def _track_label(track: SubtitleTrack) -> str:
@@ -238,10 +221,7 @@ def _extract_inline_subtitle_candidates(
 def _select_smart_subtitle_candidate(
     candidates: list[dict[str, Any]],
     requested_language: str,
-) -> tuple[dict[str, Any] | None, str | None]:
-    if not candidates:
-        return None, None
-
+) -> tuple[dict[str, Any], str | None]:
     requested_raw = (
         requested_language.strip() if isinstance(requested_language, str) else ""
     )
@@ -353,6 +333,7 @@ async def collect_subtitles(
     *,
     video_info: dict[str, Any] | None = None,
     scope: SubtitleScopeSummary | None = None,
+    output_options: SubtitleOutputOptions = SubtitleOutputOptions(),
 ) -> SubtitleResponse:
     mode = subtitle_mode.strip().lower() if isinstance(subtitle_mode, str) else ""
     if mode == "minimal":
@@ -407,9 +388,11 @@ async def collect_subtitles(
         async with semaphore:
             return await timed_upstream_call(video_client.get_player_info(cid=cid))
 
-    async def _timed_fetch_track_text(subtitle_url: Any) -> tuple[str, str | None]:
+    async def _timed_fetch_track_cues(
+        subtitle_url: Any,
+    ) -> tuple[list[SubtitleCue] | None, str | None]:
         async with semaphore:
-            return await _fetch_subtitle_text(subtitle_url, cred)
+            return await _fetch_subtitle_cues(subtitle_url, cred)
 
     async def _collect_page_tracks(
         page: dict[str, Any],
@@ -458,13 +441,13 @@ async def collect_subtitles(
         return page_tracks, page_errors, login_required
 
     inline_candidates = None
+    login_required = False
     if normalized_mode == "smart":
         inline_candidates = _extract_inline_subtitle_candidates(video_info, pages)
 
     if inline_candidates is not None:
         candidates.extend(inline_candidates)
     else:
-        login_required = False
         page_tasks = [_collect_page_tracks(page) for page in pages]
         for page_tracks, page_errors, page_login_required in await asyncio.gather(
             *page_tasks
@@ -509,10 +492,7 @@ async def collect_subtitles(
             errors=errors,
         )
 
-    selected_tracks: list[SubtitleTrack] = []
-    full_text_lines: list[str] = []
-    truncated = False
-    dropped_tracks = 0
+    output = SubtitleOutput(output_options, char_budget)
     selected_language: str | None = None
     fallback_reason: str | None = None
 
@@ -521,80 +501,40 @@ async def collect_subtitles(
             candidates=candidates,
             requested_language=subtitle_lang,
         )
-        if selected_candidate is None:
-            return SubtitleResponse(
-                enabled=True,
-                mode=normalized_mode,
-                scope=_summarize_scope(scope, returned_pages),
-                requested_language=(
-                    subtitle_lang
-                    if isinstance(subtitle_lang, str)
-                    else DEFAULT_SUBTITLE_LANG
-                ),
-                available_languages=available_languages,
-                selected_language=None,
-                fallback_reason="No subtitle tracks available",
-                truncated=False,
-                returned_chars=0,
-                dropped_tracks=0,
-                track_count=0,
-                tracks=[],
-                full_text="",
-                errors=errors,
-            )
-
-        text, error = await _timed_fetch_track_text(selected_candidate["subtitle_url"])
-        if error:
-            track = selected_candidate["track"]
-            errors.append(
-                f"cid {track.cid} {track.lan_doc or track.lan or 'unknown'}: {error}"
-            )
-
-        remaining_budget = char_budget
-        remaining_budget, was_truncated = _append_track_with_budget(
-            track=selected_candidate["track"],
-            raw_text=text,
-            selected_tracks=selected_tracks,
-            full_text_lines=full_text_lines,
-            remaining_budget=remaining_budget,
-        )
-        _ = remaining_budget
-        page_number = page_numbers.get(selected_candidate["track"].cid)
-        if full_text_lines and page_number is not None:
-            returned_pages.add(page_number)
-        truncated = truncated or was_truncated
-        dropped_tracks = max(0, len(candidates) - len(selected_tracks))
         selected_language = selected_candidate["track"].lan
-    else:
-        track_tasks = [
-            _timed_fetch_track_text(candidate["subtitle_url"])
-            for candidate in candidates
+        selected_candidates = [selected_candidate]
+        track_results = [
+            await _timed_fetch_track_cues(selected_candidate["subtitle_url"])
         ]
-        track_results = await asyncio.gather(*track_tasks)
-        remaining_budget = char_budget
-        use_labels = len(candidates) > 1
-        for candidate, (text, error) in zip(candidates, track_results):
-            track = candidate["track"]
-            if error:
-                errors.append(
-                    f"cid {track.cid} {track.lan_doc or track.lan or 'unknown'}: {error}"
-                )
-            previous_line_count = len(full_text_lines)
-            remaining_budget, was_truncated = _append_track_with_budget(
-                track=track,
-                raw_text=text,
-                selected_tracks=selected_tracks,
-                full_text_lines=full_text_lines,
-                remaining_budget=remaining_budget,
-                label=_track_label(track) if use_labels else None,
+    else:
+        selected_candidates = candidates
+        track_results = await asyncio.gather(
+            *(
+                _timed_fetch_track_cues(candidate["subtitle_url"])
+                for candidate in candidates
             )
-            page_number = page_numbers.get(track.cid) if track.cid is not None else None
-            if len(full_text_lines) > previous_line_count and page_number is not None:
-                returned_pages.add(page_number)
-            truncated = truncated or was_truncated
-        dropped_tracks = max(0, len(candidates) - len(selected_tracks))
+        )
+    use_labels = normalized_mode == "full" and len(candidates) > 1
 
-    full_text = "\n".join(full_text_lines)
+    for candidate, (cues, error) in zip(selected_candidates, track_results):
+        track = candidate["track"]
+        language = track.lan_doc or track.lan or "unknown"
+        if error:
+            errors.append(f"cid {track.cid} {language}: {error}")
+        if output_options.format != "text" and cues:
+            invalid = sum(cue.timing is None for cue in cues)
+            if invalid:
+                errors.append(
+                    f"cid {track.cid} {language}: {invalid} subtitle cues have missing or invalid timestamps"
+                )
+        if output.append_track(
+            track, cues, _track_label(track) if use_labels else None
+        ):
+            page_number = page_numbers.get(track.cid) if track.cid is not None else None
+            if page_number is not None:
+                returned_pages.add(page_number)
+    if output_options.format == "anchors":
+        output.limit_anchors()
 
     return SubtitleResponse(
         enabled=True,
@@ -606,11 +546,11 @@ async def collect_subtitles(
         available_languages=available_languages,
         selected_language=selected_language,
         fallback_reason=fallback_reason,
-        truncated=truncated,
-        returned_chars=len(full_text),
-        dropped_tracks=dropped_tracks,
-        track_count=len(selected_tracks),
-        tracks=selected_tracks,
-        full_text=full_text,
+        truncated=output.truncated,
+        returned_chars=output.returned_chars,
+        dropped_tracks=len(candidates) - len(output.tracks),
+        track_count=len(output.tracks),
+        tracks=output.tracks,
+        full_text=output.full_text,
         errors=errors,
     )

@@ -8,10 +8,12 @@ from jsonschema import validate
 from bili_stalker_mcp.models import SubtitleTrack, VideoDetailResponse
 from bili_stalker_mcp.observability import begin_request, snapshot_metrics
 from bili_stalker_mcp.retry import RetryableBiliApiError
-from bili_stalker_mcp.services.subtitle_service import (
-    _append_track_with_budget,
-    _fetch_subtitle_text,
+from bili_stalker_mcp.services.subtitle_output import (
+    SubtitleCue,
+    SubtitleOutput,
+    SubtitleOutputOptions,
 )
+from bili_stalker_mcp.services.subtitle_service import _fetch_subtitle_cues
 from bili_stalker_mcp.services.user_service import (
     _fetch_video_detail_cached,
     _fetch_video_metadata_cached,
@@ -29,7 +31,7 @@ def clear_video_detail_cache():
 
 
 @pytest.mark.asyncio
-async def test_fetch_subtitle_text_retries_curl_connection_error(monkeypatch):
+async def test_fetch_subtitle_cues_retry_curl_connection_error(monkeypatch):
     calls = 0
     delays = []
 
@@ -52,14 +54,14 @@ async def test_fetch_subtitle_text_retries_curl_connection_error(monkeypatch):
     )
     monkeypatch.setattr("bili_stalker_mcp.retry.asyncio.sleep", fake_sleep)
 
-    text, error = await _fetch_subtitle_text(
+    cues, error = await _fetch_subtitle_cues(
         "https://aisubtitle.hdslb.com/test.json",
         cred=None,
     )
 
     assert calls == 2
     assert len(delays) == 1
-    assert text == "recovered subtitle"
+    assert cues == [SubtitleCue("recovered subtitle")]
     assert error is None
 
 
@@ -136,18 +138,18 @@ async def test_fetch_video_detail_falls_back_to_subtitle_api_for_multi_page_smar
                 }
             raise RuntimeError("metadata unavailable")
 
-    async def fake_fetch_subtitle_text(subtitle_url, cred):
+    async def fake_get_json(subtitle_url, cred):
         calls["subtitle_text"].append(subtitle_url)
         if subtitle_url.endswith("zh.json"):
-            return "zh line 1\nzh line 2", None
+            return {"body": [{"content": "zh line 1"}, {"content": "zh line 2"}]}
         if subtitle_url.endswith("en.json"):
-            return "en line 1\nen line 2", None
-        return "", "unknown subtitle url"
+            return {"body": [{"content": "en line 1"}, {"content": "en line 2"}]}
+        pytest.fail("unknown subtitle url")
 
     monkeypatch.setattr("bili_stalker_mcp.services.user_service.video.Video", FakeVideo)
     monkeypatch.setattr(
-        "bili_stalker_mcp.services.subtitle_service._fetch_subtitle_text",
-        fake_fetch_subtitle_text,
+        "bili_stalker_mcp.services.subtitle_service.get_json",
+        fake_get_json,
     )
 
     result = await fetch_video_detail(
@@ -254,18 +256,18 @@ async def test_fetch_video_detail_smart_mode_short_circuits_single_page_inline_s
             calls["get_subtitle"] += 1
             return {"subtitle": {"subtitles": []}}
 
-    async def fake_fetch_subtitle_text(subtitle_url, cred):
+    async def fake_get_json(subtitle_url, cred):
         calls["subtitle_text"].append(subtitle_url)
         if subtitle_url.endswith("zh-inline.json"):
-            return "inline zh body", None
+            return {"body": [{"content": "inline zh body"}]}
         if subtitle_url.endswith("en-inline.json"):
-            return "inline en body", None
-        return "", "unknown subtitle url"
+            return {"body": [{"content": "inline en body"}]}
+        pytest.fail("unknown subtitle url")
 
     monkeypatch.setattr("bili_stalker_mcp.services.user_service.video.Video", FakeVideo)
     monkeypatch.setattr(
-        "bili_stalker_mcp.services.subtitle_service._fetch_subtitle_text",
-        fake_fetch_subtitle_text,
+        "bili_stalker_mcp.services.subtitle_service.get_json",
+        fake_get_json,
     )
 
     result = await fetch_video_detail(
@@ -333,16 +335,16 @@ async def test_fetch_video_detail_invalid_inline_subtitles_fall_back_to_subtitle
                 },
             }
 
-    async def fake_fetch_subtitle_text(subtitle_url, cred):
+    async def fake_get_json(subtitle_url, cred):
         calls["subtitle_text"].append(subtitle_url)
         if subtitle_url.endswith("fallback.json"):
-            return "fallback body", None
-        return "", "unknown subtitle url"
+            return {"body": [{"content": "fallback body"}]}
+        pytest.fail("unknown subtitle url")
 
     monkeypatch.setattr("bili_stalker_mcp.services.user_service.video.Video", FakeVideo)
     monkeypatch.setattr(
-        "bili_stalker_mcp.services.subtitle_service._fetch_subtitle_text",
-        fake_fetch_subtitle_text,
+        "bili_stalker_mcp.services.subtitle_service.get_json",
+        fake_get_json,
     )
 
     result = await fetch_video_detail(
@@ -497,18 +499,18 @@ async def test_fetch_video_detail_full_mode_keeps_all_tracks(monkeypatch):
                 },
             }
 
-    async def fake_fetch_subtitle_text(subtitle_url, cred):
+    async def fake_get_json(subtitle_url, cred):
         calls["subtitle_text"].append(subtitle_url)
         if subtitle_url.endswith("zh.json"):
-            return "zh body", None
+            return {"body": [{"content": "zh body"}]}
         if subtitle_url.endswith("en.json"):
-            return "en body", None
-        return "", "unknown subtitle url"
+            return {"body": [{"content": "en body"}]}
+        pytest.fail("unknown subtitle url")
 
     monkeypatch.setattr("bili_stalker_mcp.services.user_service.video.Video", FakeVideo)
     monkeypatch.setattr(
-        "bili_stalker_mcp.services.subtitle_service._fetch_subtitle_text",
-        fake_fetch_subtitle_text,
+        "bili_stalker_mcp.services.subtitle_service.get_json",
+        fake_get_json,
     )
 
     result = await fetch_video_detail(
@@ -541,36 +543,18 @@ def test_append_track_with_budget_counts_label_overhead():
     label = "Chinese · P1"
     header_len = len(f"[{label}]\n")
 
-    # Budget large enough: header + text both charged against the budget.
-    tracks: list[SubtitleTrack] = []
-    lines: list[str] = []
-    remaining, truncated = _append_track_with_budget(
-        track=track,
-        raw_text="abcdef",
-        selected_tracks=tracks,
-        full_text_lines=lines,
-        remaining_budget=30,
-        label=label,
-    )
-    assert not truncated
-    assert remaining == 30 - header_len - len("abcdef")
-    assert lines == [f"[{label}]\nabcdef"]
-    assert tracks[0].text == ""
+    output = SubtitleOutput(SubtitleOutputOptions(), char_budget=30)
+    assert output.append_track(track, [SubtitleCue("abcdef")], label)
+    assert not output.truncated
+    assert output.returned_chars == header_len + len("abcdef")
+    assert output.full_text == f"[{label}]\nabcdef"
+    assert output.tracks[0].text == ""
 
-    # Budget smaller than the header alone: text must be dropped, not overflow.
-    tracks = []
-    lines = []
-    remaining, truncated = _append_track_with_budget(
-        track=track,
-        raw_text="abcdef",
-        selected_tracks=tracks,
-        full_text_lines=lines,
-        remaining_budget=header_len - 1,
-        label=label,
-    )
-    assert truncated
-    assert lines == []
-    assert len("\n".join(lines)) <= header_len - 1
+    limited = SubtitleOutput(SubtitleOutputOptions(), char_budget=header_len - 1)
+    assert not limited.append_track(track, [SubtitleCue("abcdef")], label)
+    assert limited.truncated
+    assert limited.full_text == ""
+    assert limited.returned_chars == 0
 
 
 @pytest.mark.asyncio

@@ -27,6 +27,7 @@ from ..models import (
     ArticleStatsResponse,
     FollowingItemResponse,
     FollowingsResponse,
+    SubtitleFormat,
     SubtitleResponse,
     SubtitleScopeSummary,
     UserInfoResponse,
@@ -53,6 +54,7 @@ from .article_renderer import (
     build_article_fallback_markdown,
     fetch_opus_payload,
 )
+from .subtitle_output import SubtitleOutputOptions
 from .subtitle_service import (
     DEFAULT_SUBTITLE_LANG,
     DEFAULT_SUBTITLE_MAX_CHARS,
@@ -610,6 +612,7 @@ async def _fetch_video_detail_cached(
     subtitle_page: int | None = None,
     subtitle_cid: int | None = None,
     subtitle_url_page: int | None = None,
+    output_options: SubtitleOutputOptions = SubtitleOutputOptions(),
 ) -> dict[str, Any]:
     video_item, video_data, normalized_pages = await wait_cached(
         _fetch_video_metadata_cached, bvid, fetch_subtitles, cred
@@ -641,12 +644,13 @@ async def _fetch_video_detail_cached(
             # Inline subtitles are only reliable for single-page videos.
             video_info=video_data if len(normalized_pages) == 1 else None,
             scope=scope,
+            output_options=output_options,
         )
     else:
         subtitles = build_disabled_subtitles(subtitle_lang)
 
     payload = VideoDetailResponse(video=video_item, subtitles=subtitles)
-    return payload.model_dump()
+    return payload.model_dump(mode="json")
 
 
 async def fetch_video_detail(
@@ -661,11 +665,25 @@ async def fetch_video_detail(
     subtitle_page: int | None = None,
     subtitle_cid: int | None = None,
     subtitle_url_page: int | None = None,
+    subtitle_format: SubtitleFormat = "text",
+    subtitle_anchor_interval_sec: int | None = None,
+    subtitle_anchor_interval_lines: int | None = None,
+    subtitle_start_sec: float | None = None,
+    subtitle_end_sec: float | None = None,
 ) -> dict[str, Any]:
+    output_options = SubtitleOutputOptions()
     if fetch_subtitles:
         _validate_subtitle_selection(
             subtitle_scope, subtitle_page, subtitle_cid, subtitle_url_page
         )
+        output_options = SubtitleOutputOptions(
+            format=subtitle_format,
+            anchor_interval_sec=subtitle_anchor_interval_sec,
+            anchor_interval_lines=subtitle_anchor_interval_lines,
+            start_sec=subtitle_start_sec,
+            end_sec=subtitle_end_sec,
+        )
+        output_options.validate(mode=subtitle_mode, scope=subtitle_scope)
     before = _fetch_video_detail_cached.cache_info()
     cache_arguments: dict[str, Any] = {
         "bvid": bvid,
@@ -678,6 +696,7 @@ async def fetch_video_detail(
         "subtitle_page": subtitle_page,
         "subtitle_cid": subtitle_cid,
         "subtitle_url_page": subtitle_url_page,
+        "output_options": output_options,
     }
     if fetch_subtitles and subtitle_mode != "minimal":
         deadline = get_deadline()
@@ -727,7 +746,7 @@ async def fetch_video_detail(
     after = _fetch_video_detail_cached.cache_info()
     record_cache_hit("video_detail", _cache_hit(before, after))
     # Match the other cached services: callers must not mutate the cache entry.
-    return VideoDetailResponse(**payload).model_dump()
+    return VideoDetailResponse(**payload).model_dump(mode="json")
 
 
 @with_retry(max_retries=3, base_delay=2.0)

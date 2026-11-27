@@ -3377,7 +3377,7 @@
       "idempotentHint": true,
       "readOnlyHint": true
     },
-    "description": "Get video detail including owner.mid (uploader UID) and total duration in seconds.\n\nSubtitle text is returned only in subtitles.full_text; tracks contain\nmetadata and their text field is always empty. selected_language applies\nonly to smart mode; full mode returns null and identifies languages in\ntracks[].lan. Check errors and truncated for incomplete text. Subtitles\nhave no timecodes. Empty video.tags can mean the source omitted tags.\nBoth smart and full default to P1 unless a page/CID or URL p is supplied.\nSet subtitle_scope=all with a BVID or URL without p for all pages.\nRead subtitles.scope for the selected range and actual returned pages;\nreturned_pages can contain partial text, so still check errors/truncated.\nPage selection only applies when fetch_subtitles=true.",
+    "description": "Get video detail including owner.mid (uploader UID) and total duration in seconds.\n\nRead subtitle text from subtitles.full_text in text or anchors format\nor from subtitles.tracks[].segments in segments format. The tracks[].text\ncompatibility field is always empty. Timing formats include per-track\ncoverage for the source and returned cues. selected_language applies\nonly to smart mode; full mode returns null and identifies languages in\ntracks[].lan. Check errors and truncated for incomplete text.\nEmpty video.tags can mean the source omitted tags.\nBoth smart and full default to P1 unless a page/CID or URL p is supplied.\nSet subtitle_scope=all with a BVID or URL without p for all pages.\nRead subtitles.scope for the selected range and actual returned pages;\nreturned_pages can contain partial text, so still check errors/truncated.\nPage selection only applies when fetch_subtitles=true.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
@@ -3391,6 +3391,30 @@
           "description": "Whether to fetch and aggregate subtitle tracks.",
           "type": "boolean"
         },
+        "subtitle_anchor_interval_lines": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "In anchors format, sample by this many text lines per track. Mutually exclusive with subtitle_anchor_interval_sec."
+        },
+        "subtitle_anchor_interval_sec": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "In anchors format, sample one cue per nonempty time window of this many seconds. Defaults to 30 seconds when no interval is set."
+        },
         "subtitle_cid": {
           "anyOf": [
             {
@@ -3403,6 +3427,28 @@
           ],
           "default": null,
           "description": "Subtitle CID belonging to this video. Mutually exclusive with subtitle_page; must agree with URL p if present."
+        },
+        "subtitle_end_sec": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Exclusive end of an optional time range in segments format and single scope. Unbounded if omitted."
+        },
+        "subtitle_format": {
+          "default": "text",
+          "description": "Subtitle output: text (default), anchors (text plus a sparse line-to-time index), or segments (text with exact start and end times for each cue). Timing formats require smart or full mode.",
+          "enum": [
+            "text",
+            "anchors",
+            "segments"
+          ],
+          "type": "string"
         },
         "subtitle_lang": {
           "default": "auto",
@@ -3447,6 +3493,18 @@
             "all"
           ],
           "type": "string"
+        },
+        "subtitle_start_sec": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Start of an optional time range in segments format and single scope. Defaults to zero."
         }
       },
       "required": [
@@ -3497,7 +3555,7 @@
             },
             "full_text": {
               "default": "",
-              "description": "Subtitle text, returned once within subtitle_max_chars; multiple full-mode tracks have language/part labels. No timecodes.",
+              "description": "Subtitle text in text and anchors formats, within subtitle_max_chars. Multiple full-mode tracks have language/part labels. Empty in segments format.",
               "title": "Full Text",
               "type": "string"
             },
@@ -3513,6 +3571,7 @@
             },
             "returned_chars": {
               "default": 0,
+              "description": "Length of full_text, or sum of segment text lengths in segments mode.",
               "title": "Returned Chars",
               "type": "integer"
             },
@@ -3591,9 +3650,41 @@
               "type": "integer"
             },
             "tracks": {
-              "description": "Track metadata only. A track can be listed even if its text failed to download; inspect errors.",
+              "description": "Track metadata and any requested timing data. A track can be listed even if its text failed to download; inspect errors.",
               "items": {
                 "properties": {
+                  "anchors": {
+                    "anyOf": [
+                      {
+                        "items": {
+                          "maxItems": 2,
+                          "minItems": 2,
+                          "prefixItems": [
+                            {
+                              "type": "integer"
+                            },
+                            {
+                              "type": "number"
+                            }
+                          ],
+                          "type": "array"
+                        },
+                        "type": "array"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "description": "Anchors mode only. Each pair is [one-based line in subtitles.full_text, start seconds within this part].",
+                    "title": "Anchors"
+                  },
+                  "anchors_truncated": {
+                    "default": false,
+                    "description": "True when the anchor count limit reduced this track's index.",
+                    "title": "Anchors Truncated",
+                    "type": "boolean"
+                  },
                   "cid": {
                     "anyOf": [
                       {
@@ -3605,6 +3696,76 @@
                     ],
                     "default": null,
                     "title": "Cid"
+                  },
+                  "coverage": {
+                    "anyOf": [
+                      {
+                        "properties": {
+                          "returned_cues": {
+                            "title": "Returned Cues",
+                            "type": "integer"
+                          },
+                          "returned_end_sec": {
+                            "anyOf": [
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ],
+                            "title": "Returned End Sec"
+                          },
+                          "returned_start_sec": {
+                            "anyOf": [
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ],
+                            "title": "Returned Start Sec"
+                          },
+                          "source_end_sec": {
+                            "anyOf": [
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ],
+                            "title": "Source End Sec"
+                          },
+                          "source_start_sec": {
+                            "anyOf": [
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ],
+                            "title": "Source Start Sec"
+                          }
+                        },
+                        "required": [
+                          "source_start_sec",
+                          "source_end_sec",
+                          "returned_start_sec",
+                          "returned_end_sec",
+                          "returned_cues"
+                        ],
+                        "title": "SubtitleCoverage",
+                        "type": "object"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "description": "In timing modes, source and returned time bounds in seconds from the start of this part. Null bounds mean no valid timings."
                   },
                   "is_ai_generated": {
                     "default": false,
@@ -3647,9 +3808,45 @@
                     "default": null,
                     "title": "Part"
                   },
+                  "segments": {
+                    "anyOf": [
+                      {
+                        "items": {
+                          "properties": {
+                            "end_sec": {
+                              "title": "End Sec",
+                              "type": "number"
+                            },
+                            "start_sec": {
+                              "title": "Start Sec",
+                              "type": "number"
+                            },
+                            "text": {
+                              "title": "Text",
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "start_sec",
+                            "end_sec",
+                            "text"
+                          ],
+                          "title": "SubtitleSegment",
+                          "type": "object"
+                        },
+                        "type": "array"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "description": "Segments mode only. Text with original start/end seconds within this part.",
+                    "title": "Segments"
+                  },
                   "text": {
                     "default": "",
-                    "description": "Compatibility field, always empty. Read subtitles.full_text for text.",
+                    "description": "Compatibility field, always empty. Read subtitles.full_text or the requested segments.",
                     "title": "Text",
                     "type": "string"
                   }

@@ -16,7 +16,7 @@ from typing import (
 from bilibili_api import Credential
 from fastmcp import Context, FastMCP
 from fastmcp.exceptions import ToolError
-from pydantic import Field
+from pydantic import BeforeValidator, Field
 
 from . import __version__
 from .config import (
@@ -54,6 +54,7 @@ from .models import (
     CommentsResponse,
     DynamicListResponse,
     FollowingsResponse,
+    SubtitleFormat,
     UserInfoResponse,
     UserSearchResponse,
     UserSnapshotResponse,
@@ -63,11 +64,20 @@ from .models import (
 from .observability import begin_request, snapshot_metrics
 from .utils import extract_bvid, extract_video_reference
 
+
+def _reject_boolean_number(value: object) -> object:
+    if isinstance(value, bool):
+        raise ValueError("Expected a numeric value, received a boolean.")
+    return value
+
+
 DynamicTypeLiteral = Literal[
     "ALL", "ALL_RAW", "VIDEO", "ARTICLE", "DRAW", "TEXT", "REVIEW"
 ]
 SubtitleModeLiteral = Literal["minimal", "smart", "full"]
 SubtitleScopeLiteral = Literal["single", "all"]
+SubtitleInterval = Annotated[int | None, BeforeValidator(_reject_boolean_number)]
+SubtitleSeconds = Annotated[float | None, BeforeValidator(_reject_boolean_number)]
 CommentContentTypeLiteral = Literal["video", "article", "dynamic"]
 
 MAX_PAGE = 1000
@@ -613,14 +623,56 @@ def create_server() -> FastMCP:
                 ),
             ),
         ] = None,
+        subtitle_format: Annotated[
+            SubtitleFormat,
+            Field(
+                description=(
+                    "Subtitle output: text (default), anchors (text plus a sparse "
+                    "line-to-time index), or segments (text with exact start and end "
+                    "times for each cue). Timing formats require smart or full mode."
+                )
+            ),
+        ] = "text",
+        subtitle_anchor_interval_sec: Annotated[
+            SubtitleInterval,
+            Field(
+                description=(
+                    "In anchors format, sample one cue per nonempty time window "
+                    "of this many seconds. Defaults to 30 seconds when no interval is set."
+                ),
+            ),
+        ] = None,
+        subtitle_anchor_interval_lines: Annotated[
+            SubtitleInterval,
+            Field(
+                description=(
+                    "In anchors format, sample by this many text lines per track. "
+                    "Mutually exclusive with subtitle_anchor_interval_sec."
+                ),
+            ),
+        ] = None,
+        subtitle_start_sec: Annotated[
+            SubtitleSeconds,
+            Field(
+                description="Start of an optional time range in segments format and single scope. Defaults to zero.",
+            ),
+        ] = None,
+        subtitle_end_sec: Annotated[
+            SubtitleSeconds,
+            Field(
+                description="Exclusive end of an optional time range in segments format and single scope. Unbounded if omitted.",
+            ),
+        ] = None,
     ) -> Dict[str, Any]:
         """Get video detail including owner.mid (uploader UID) and total duration in seconds.
 
-        Subtitle text is returned only in subtitles.full_text; tracks contain
-        metadata and their text field is always empty. selected_language applies
+        Read subtitle text from subtitles.full_text in text or anchors format
+        or from subtitles.tracks[].segments in segments format. The tracks[].text
+        compatibility field is always empty. Timing formats include per-track
+        coverage for the source and returned cues. selected_language applies
         only to smart mode; full mode returns null and identifies languages in
-        tracks[].lan. Check errors and truncated for incomplete text. Subtitles
-        have no timecodes. Empty video.tags can mean the source omitted tags.
+        tracks[].lan. Check errors and truncated for incomplete text.
+        Empty video.tags can mean the source omitted tags.
         Both smart and full default to P1 unless a page/CID or URL p is supplied.
         Set subtitle_scope=all with a BVID or URL without p for all pages.
         Read subtitles.scope for the selected range and actual returned pages;
@@ -647,6 +699,11 @@ def create_server() -> FastMCP:
                 subtitle_page=subtitle_page,
                 subtitle_cid=subtitle_cid,
                 subtitle_url_page=subtitle_url_page,
+                subtitle_format=subtitle_format,
+                subtitle_anchor_interval_sec=subtitle_anchor_interval_sec,
+                subtitle_anchor_interval_lines=subtitle_anchor_interval_lines,
+                subtitle_start_sec=subtitle_start_sec,
+                subtitle_end_sec=subtitle_end_sec,
                 cred=cred,
             )
 

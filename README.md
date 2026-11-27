@@ -308,7 +308,7 @@ uv run mypy bili_stalker_mcp
 | `get_user_info` | Rich profile: level, official title, VIP, live room, ban status, following/follower, total video views/article views/likes (needs `bili_jct`) | `user_id_or_username` |
 | `get_user_videos` | Lightweight video list | `user_id_or_username`, `page`, `limit` |
 | `search_user_videos` | Keyword search in one user's video list | `user_id_or_username`, `keyword`, `page`, `limit` |
-| `get_video_detail` | Full video detail + optional subtitles | `bvid`, `fetch_subtitles` (default: `false`), `subtitle_scope` (`single`/`all`, default: `single`), `subtitle_page`, `subtitle_cid`, `subtitle_mode` (`smart`/`full`/`minimal`), `subtitle_lang` (default: `auto`), `subtitle_max_chars` |
+| `get_video_detail` | Full video detail + optional subtitles | `bvid`, `fetch_subtitles` (default: `false`), `subtitle_scope` (`single`/`all`, default: `single`), `subtitle_page`, `subtitle_cid`, `subtitle_mode` (`smart`/`full`/`minimal`), `subtitle_lang` (default: `auto`), `subtitle_max_chars`, `subtitle_format` |
 | `get_user_dynamics` | Structured dynamics with image metadata and cursor pagination | `user_id_or_username`, `cursor`, `limit`, `dynamic_type` |
 | `get_user_articles` | Lightweight article list | `user_id_or_username`, `page`, `limit` |
 | `get_article_content` | Full article markdown content | `article_id` |
@@ -367,9 +367,26 @@ In `smart` mode, `subtitle_lang` can request a language (for example `en-US`);
 `auto` uses built-in priority fallback.
 `subtitle_max_chars` caps returned subtitle text size to avoid token explosion.
 
-Subtitle text is returned once via `full_text`; `tracks` carry metadata only
-(`text` is always empty). In `full` mode with multiple tracks, each segment in
-`full_text` is prefixed with a `[language · part]` label.
+`subtitle_format` defaults to `text`. Read `subtitles.full_text` for the default
+transcript. In `full` mode, multiple tracks have `[language · part]` labels.
+The compatibility field `tracks[].text` is always empty.
+
+- `anchors` adds `tracks[].anchors` to the same transcript. Each pair is
+  `[line, start_sec]` with a 1-based line number in `full_text`, including labels.
+  The default picks the first returned cue in each occupied 30-second window.
+  Set `subtitle_anchor_interval_sec` or `subtitle_anchor_interval_lines` to sample
+  by a different time or per-track line interval. At most 1,000 anchors are returned
+  per response. Check `anchors_truncated` on each track for a reduced index.
+- `segments` returns exact `{start_sec, end_sec, text}` cues in `tracks[].segments`.
+  For a single part, pass `subtitle_start_sec`, `subtitle_end_sec`, or both to
+  select cues overlapping that time range. The end is exclusive, and each cue
+  retains its original times. Omitted boundaries mean zero or an open end.
+  At most 5,000 complete cues are returned within the character budget.
+
+Both timing formats use seconds from the start of each part. Each fetched track
+includes `coverage` with source and returned time bounds and the returned cue
+count. The bounds describe the available subtitle cues. For a clipped text cue
+in anchors format, its reported end is the original cue end.
 
 Video detail includes `owner: {mid, name, face}` (or `null`), `duration` (upstream
 total seconds across all parts), `pic`, `tname`, `videos`, and `ctime` (Unix
@@ -378,9 +395,8 @@ with each part's duration in seconds. `mid` and `uid` both identify a Bilibili
 user. An empty `tags` array can also mean the detail source omitted tags.
 
 `selected_language` is set only in `smart` mode; `full` mode returns `null`
-and lists languages in `tracks[].lan`. `truncated=true` means the character
-budget cut or dropped subtitle text. A track can remain in `tracks` when its
-download fails; check `errors` and `full_text`. Subtitle text has no timecodes.
+and lists languages in `tracks[].lan`. Check `truncated` for text omitted due to
+either output limit, and check `errors` for failed downloads or invalid timestamps.
 
 `subtitles.scope` contains `mode`, `target_page`, `total_pages`, `returned_pages`,
 and `summary`, distinguishing the selected scope from pages actually represented

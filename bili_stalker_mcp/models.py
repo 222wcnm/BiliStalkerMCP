@@ -127,6 +127,24 @@ class VideoDetailItem(BaseModel):
     pages: list[VideoPageItem] = Field(default_factory=list)
 
 
+SubtitleFormat = Literal["text", "anchors", "segments"]
+SubtitleAnchor = tuple[int, float]
+
+
+class SubtitleSegment(BaseModel):
+    start_sec: float
+    end_sec: float
+    text: str
+
+
+class SubtitleCoverage(BaseModel):
+    source_start_sec: float | None
+    source_end_sec: float | None
+    returned_start_sec: float | None
+    returned_end_sec: float | None
+    returned_cues: int
+
+
 class SubtitleTrack(BaseModel):
     cid: int | None = None
     part: str | None = None
@@ -135,7 +153,27 @@ class SubtitleTrack(BaseModel):
     is_ai_generated: bool = False
     text: str = Field(
         default="",
-        description="Compatibility field, always empty. Read subtitles.full_text for text.",
+        description="Compatibility field, always empty. Read subtitles.full_text or the requested segments.",
+    )
+    coverage: SubtitleCoverage | None = Field(
+        default=None,
+        exclude_if=lambda value: value is None,
+        description="In timing modes, source and returned time bounds in seconds from the start of this part. Null bounds mean no valid timings.",
+    )
+    anchors: list[SubtitleAnchor] | None = Field(
+        default=None,
+        exclude_if=lambda value: value is None,
+        description="Anchors mode only. Each pair is [one-based line in subtitles.full_text, start seconds within this part].",
+    )
+    anchors_truncated: bool = Field(
+        default=False,
+        exclude_if=lambda value: not value,
+        description="True when the anchor count limit reduced this track's index.",
+    )
+    segments: list[SubtitleSegment] | None = Field(
+        default=None,
+        exclude_if=lambda value: value is None,
+        description="Segments mode only. Text with original start/end seconds within this part.",
     )
 
 
@@ -165,16 +203,19 @@ class SubtitleResponse(BaseModel):
     )
     fallback_reason: str | None = None
     truncated: bool = False
-    returned_chars: int = 0
+    returned_chars: int = Field(
+        default=0,
+        description="Length of full_text, or sum of segment text lengths in segments mode.",
+    )
     dropped_tracks: int = 0
     track_count: int = 0
     tracks: list[SubtitleTrack] = Field(
         default_factory=list,
-        description="Track metadata only. A track can be listed even if its text failed to download; inspect errors.",
+        description="Track metadata and any requested timing data. A track can be listed even if its text failed to download; inspect errors.",
     )
     full_text: str = Field(
         default="",
-        description="Subtitle text, returned once within subtitle_max_chars; multiple full-mode tracks have language/part labels. No timecodes.",
+        description="Subtitle text in text and anchors formats, within subtitle_max_chars. Multiple full-mode tracks have language/part labels. Empty in segments format.",
     )
     errors: list[str] = Field(default_factory=list)
 

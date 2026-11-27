@@ -29,12 +29,17 @@ uv run fastmcp list .mcp.json --json
 uv run fastmcp call .mcp.json search_users "keyword=中文 用户" limit=5 --json
 uv run fastmcp call .mcp.json get_user_snapshot user_id_or_username=12345 video_limit=5 dynamic_limit=5 article_limit=0 --json
 uv run fastmcp call .mcp.json get_video_detail bvid=BV1xx411c7mD fetch_subtitles=true subtitle_mode=smart subtitle_max_chars=12000 --json
+uv run fastmcp call .mcp.json get_video_detail bvid=BV1xx411c7mD fetch_subtitles=true subtitle_format=anchors --json
+uv run fastmcp call .mcp.json get_video_detail bvid=BV1xx411c7mD fetch_subtitles=true subtitle_format=segments subtitle_start_sec=240 subtitle_end_sec=300 --json
 ```
 
-For `get_video_detail`, read subtitle text from
-`structured_content.subtitles.full_text`. Within `subtitles`, `tracks[].text`
-is an always-empty compatibility field. Check `returned_chars` for text length,
-`scope.returned_pages` for coverage, and `errors` and `truncated` for partial text.
+Read `structured_content.subtitles.full_text` in the default and anchors
+formats. `tracks[].anchors` pairs 1-based transcript lines with times in that
+part. Segments format returns `tracks[].segments` with exact text and times.
+Use each track's `coverage` to compare source and returned subtitle bounds.
+`tracks[].text` is an always-empty compatibility field. Check `returned_chars`
+for text length, `scope.returned_pages` for page coverage, and `errors` and
+`truncated` for partial text.
 
 Read inputSchema for names, constraints, defaults and enum values. Ordinary
 arguments use key=value; quote an entire argument when it contains spaces.

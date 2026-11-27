@@ -84,11 +84,14 @@ def course(monkeypatch):
 
     async def fetch_text(url, cred):
         calls["text"].append(url)
-        return texts[url]
+        text, error = texts[url]
+        if error:
+            raise RuntimeError(error)
+        return {"body": [{"content": text}]}
 
     monkeypatch.setattr(user_service.video, "Video", FakeVideo)
     monkeypatch.setattr(
-        "bili_stalker_mcp.services.subtitle_service._fetch_subtitle_text", fetch_text
+        "bili_stalker_mcp.services.subtitle_service.get_json", fetch_text
     )
     return {"calls": calls, "info": info, "players": players, "texts": texts}
 

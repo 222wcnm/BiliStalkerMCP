@@ -283,7 +283,7 @@ uv run mypy bili_stalker_mcp
 | `get_user_info` | 丰富档案：等级、认证头衔、大会员、直播间、封禁状态、关注/粉丝数、视频总播放/专栏总阅读/总获赞（需 `bili_jct`） | `user_id_or_username` |
 | `get_user_videos` | 轻量视频列表 | `user_id_or_username`, `page`, `limit` |
 | `search_user_videos` | 指定用户视频关键词检索 | `user_id_or_username`, `keyword`, `page`, `limit` |
-| `get_video_detail` | 视频详情与可选字幕聚合 | `bvid`, `fetch_subtitles`（默认：`false`）, `subtitle_scope`（`single`/`all`，默认：`single`）, `subtitle_page`, `subtitle_cid`, `subtitle_mode`（`smart`/`full`/`minimal`）, `subtitle_lang`（默认：`auto`）, `subtitle_max_chars` |
+| `get_video_detail` | 视频详情与可选字幕聚合 | `bvid`, `fetch_subtitles`（默认：`false`）, `subtitle_scope`（`single`/`all`，默认：`single`）, `subtitle_page`, `subtitle_cid`, `subtitle_mode`（`smart`/`full`/`minimal`）, `subtitle_lang`（默认：`auto`）, `subtitle_max_chars`, `subtitle_format` |
 | `get_user_dynamics` | 含图片元数据的结构化动态流（Cursor 分页） | `user_id_or_username`, `cursor`, `limit`, `dynamic_type` |
 | `get_user_articles` | 轻量专栏列表 | `user_id_or_username`, `page`, `limit` |
 | `get_article_content` | 专栏 Markdown 全文 | `article_id` |
@@ -335,9 +335,22 @@ uv run mypy bili_stalker_mcp
 `auto` 会按内置优先级自动回退。
 `subtitle_max_chars` 可限制字幕正文最大返回字符数，避免 token 膨胀。
 
-字幕正文只通过 `full_text` 返回一次；`tracks` 仅承载元数据（`text` 恒为空），
-避免同一内容重复计费 token。`full` 模式多轨时，`full_text` 中每段正文前会带
-`[语言 · 分P]` 标签以保留归属信息。
+`subtitle_format` 默认为 `text`，正文在 `subtitles.full_text`。
+`full` 模式多轨时，正文以 `[语言 · 分P]` 标签区分各轨。`tracks[].text` 是恒为空的兼容字段。
+
+- `anchors` 保留相同的正文，在 `tracks[].anchors` 增加 `[行号, 起始秒数]`。
+  行号从 1 开始，对应 `full_text`，计入轨道标题。默认每 30 秒取非空窗口内
+  首条返回的字幕。可通过 `subtitle_anchor_interval_sec` 或
+  `subtitle_anchor_interval_lines` 自定时间间隔或每轨行间隔，二者择一。
+  每次最多返回 1,000 条锚点，某轨索引被缩减时标记 `anchors_truncated`。
+- `segments` 在 `tracks[].segments` 返回带起止秒数的完整字幕条目。查询单 P 时，
+  可传 `subtitle_start_sec`、`subtitle_end_sec` 或二者，取与该时间段相交的字幕。
+  结束时刻不计入区间，条目保留原始起止秒数。省略起点时从 0 秒起，省略终点时查到轨道末尾。
+  每次最多返回 5,000 条，同时遵守正文字数上限。
+
+两种时间码格式都以各分 P 的播放起点为零。已获取的轨道通过 `coverage` 分别提供
+源字幕和实际返回字幕的首尾时间，并给出返回条数。锚点模式下，如果末条正文被截断，
+覆盖摘要仍使用这条字幕的原始结束时间。
 
 视频详情增加 `owner: {mid, name, face}`（缺失为 `null`）、`duration`（上游视频总时长，秒）、
 `pic`、`tname`、`videos` 和 `ctime`（Unix 秒时间戳）。缺失元数据为 `null`；
@@ -345,9 +358,8 @@ uv run mypy bili_stalker_mcp
 `mid` 与 `uid` 都指 B 站用户标识；`tags=[]` 也可能是详情数据源未提供标签。
 
 `selected_language` 仅在 `smart` 模式表示选中语言；`full` 模式为 `null`，
-各轨语言见 `tracks[].lan`。`truncated=true` 表示字符上限截断或舍弃了字幕正文。
-字幕下载失败时，轨道仍可能留在 `tracks` 中；需同时检查 `errors` 与 `full_text`。
-字幕正文不含时间码。
+各轨语言见 `tracks[].lan`。检查 `truncated` 可知预算是否截断或省略了字幕正文，
+检查 `errors` 可知字幕下载是否失败或时间戳是否异常。
 
 `subtitles.scope` 包含 `mode`、`target_page`、`total_pages`、`returned_pages` 和 `summary`，
 区分选择范围与正文实际包含的分 P，并提示未覆盖数量。`returned_pages` 只表示该分 P

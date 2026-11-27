@@ -38,12 +38,16 @@ uv run bili-stalker-mcp call get_user_snapshot --args '{"user_id_or_username":"1
 uv run bili-stalker-mcp call get_video_detail --args '{"bvid":"BV1xx411c7mD","fetch_subtitles":true,"subtitle_mode":"smart","subtitle_max_chars":12000}'
 uv run bili-stalker-mcp call get_video_detail --args '{"bvid":"https://www.bilibili.com/video/BV16cj96FEmw?p=2","fetch_subtitles":true}'
 uv run bili-stalker-mcp call get_video_detail --args '{"bvid":"BV1xx411c7mD","fetch_subtitles":true,"subtitle_scope":"all","subtitle_mode":"full"}'
+uv run bili-stalker-mcp call get_video_detail --args '{"bvid":"BV1xx411c7mD","fetch_subtitles":true,"subtitle_format":"anchors"}'
+uv run bili-stalker-mcp call get_video_detail --args '{"bvid":"BV1xx411c7mD","fetch_subtitles":true,"subtitle_format":"segments","subtitle_start_sec":240,"subtitle_end_sec":300}'
 ```
 
-For `get_video_detail`, read subtitle text from `subtitles.full_text`. Within
-`subtitles`, `tracks[].text` is an always-empty compatibility field. Check
-`returned_chars` for text length, `scope.returned_pages` for coverage, and
-`errors` and `truncated` for partial text.
+Read `subtitles.full_text` in the default and anchors formats. `tracks[].anchors`
+pairs 1-based transcript lines with times in that part. Segments format returns
+`tracks[].segments` with exact text and times. Use each track's `coverage` to
+compare source and returned subtitle bounds. `tracks[].text` is an always-empty
+compatibility field. Check `returned_chars` for text length, `scope.returned_pages`
+for page coverage, and `errors` and `truncated` for partial text.
 
 Discover arguments once with `tools --schema` and reuse the returned input schemas
 for subsequent calls. `tools` keeps the compact name/description list.
